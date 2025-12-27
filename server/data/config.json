@@ -1,0 +1,140 @@
+{
+    "rooms": [
+        {
+            "id": "garage",
+            "name": "Garage",
+            "floor": 1,
+            "gridArea": "span 2"
+        },
+        {
+            "id": "living_room",
+            "name": "Living Room",
+            "floor": 1,
+            "gridArea": "span 2"
+        },
+        {
+            "id": "kitchen",
+            "name": "Kitchen",
+            "floor": 1,
+            "gridArea": "span 1"
+        },
+        {
+            "id": "den",
+            "name": "Den",
+            "floor": 1,
+            "gridArea": "span 1"
+        },
+        {
+            "id": "half_bath",
+            "name": "Half Bath",
+            "floor": 1,
+            "gridArea": "span 1",
+            "opacity": 0.5
+        },
+        {
+            "id": "master_bed",
+            "name": "Master Bed",
+            "floor": 2,
+            "gridArea": "span 1 row-span-2"
+        },
+        {
+            "id": "bedroom_2",
+            "name": "Bedroom 2",
+            "floor": 2,
+            "gridArea": "span 1"
+        },
+        {
+            "id": "bedroom_3",
+            "name": "Bedroom 3",
+            "floor": 2,
+            "gridArea": "span 1"
+        },
+        {
+            "id": "bedroom_4",
+            "name": "Bedroom 4",
+            "floor": 2,
+            "gridArea": "span 1"
+        },
+        {
+            "id": "baths",
+            "name": "Bathrooms",
+            "floor": 2,
+            "gridArea": "span 1",
+            "opacity": 0.5
+        }
+    ],
+    "sensors": [
+        {
+            "id": "garage_door",
+            "roomId": "garage",
+            "label": "Main Door",
+            "type": "entry"
+        },
+        {
+            "id": "garage_side",
+            "roomId": "garage",
+            "label": "Side Entry",
+            "type": "entry"
+        },
+        {
+            "id": "front_door",
+            "roomId": "living_room",
+            "label": "Front Door",
+            "type": "entry"
+        },
+        {
+            "id": "living_window",
+            "roomId": "living_room",
+            "label": "Window",
+            "type": "window"
+        },
+        {
+            "id": "back_door",
+            "roomId": "kitchen",
+            "label": "Patio Door",
+            "type": "entry"
+        },
+        {
+            "id": "kitchen_window",
+            "roomId": "kitchen",
+            "label": "Window",
+            "type": "window"
+        },
+        {
+            "id": "den_window",
+            "roomId": "den",
+            "label": "Window",
+            "type": "window"
+        },
+        {
+            "id": "master_window_1",
+            "roomId": "master_bed",
+            "label": "Win 1",
+            "type": "window"
+        },
+        {
+            "id": "master_window_2",
+            "roomId": "master_bed",
+            "label": "Win 2",
+            "type": "window"
+        },
+        {
+            "id": "bed2_window",
+            "roomId": "bedroom_2",
+            "label": "Window",
+            "type": "window"
+        },
+        {
+            "id": "bed3_window",
+            "roomId": "bedroom_3",
+            "label": "Window",
+            "type": "window"
+        },
+        {
+            "id": "bed4_window",
+            "roomId": "bedroom_4",
+            "label": "Window",
+            "type": "window"
+        }
+    ]
+}
