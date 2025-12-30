@@ -199,13 +199,12 @@ This repo is currently tuned for a specific home/network. For any new installati
 - **HTTP port**: `PORT = 3000` in `server/server.js`.
 - **CORS policy**: Socket.IO and Express currently allow `origin: "*"`.
 - **Hubitat connection defaults**: `HUBITAT_HOST`, `HUBITAT_APP_ID`, `HUBITAT_ACCESS_TOKEN` should not have hard-coded fallback values.
-- **Hubitat polling interval**: `setInterval(syncHabitatData, 2000)` (2s refresh).
+- **Hubitat polling interval**: `setInterval(syncHubitatData, 2000)` (2s refresh).
 - **Weather defaults**: default lat/lon + units + timezone.
 - **Weather cache TTL**: `/api/weather` caches for 5 minutes.
 - **Filesystem locations**:
   - `server/data/config.json` (persisted config)
   - `server/data/backups/` (auto-created backups; will grow over time)
-  - floorplan SVG search path candidates
 
 ### Frontend (`client/`)
 

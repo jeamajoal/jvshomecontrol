@@ -19,10 +19,6 @@ const MAX_BACKUP_FILES = (() => {
     const parsed = raw ? Number(raw) : 200;
     return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 200;
 })();
-const FLOORPLAN_SVG_CANDIDATES = [
-    path.join(DATA_DIR, 'floorplan.svg'),
-    path.join(__dirname, '..', 'client', 'public', 'floorplan.svg'),
-];
 
 // If the UI is built (`client/dist`), serve it from the backend so a single service
 // provides both the API and the dashboard.
@@ -32,10 +28,10 @@ const HAS_BUILT_CLIENT = fs.existsSync(CLIENT_INDEX_HTML);
 
 // Hubitat Maker API
 // Prefer env vars for deploy safety, but keep the existing defaults.
-const HUBITAT_HOST = process.env.HUBITAT_HOST || process.env.HABITAT_HOST || "http://192.168.102.174";
-const HUBITAT_APP_ID = process.env.HUBITAT_APP_ID || process.env.HABITAT_APP_ID || "30";
-const HUBITAT_ACCESS_TOKEN = process.env.HUBITAT_ACCESS_TOKEN || process.env.HABITAT_ACCESS_TOKEN || "2c459973-2cf2-4157-aeb8-e13d8789ba6a";
-const HUBITAT_API_BASE = `${HUBITAT_HOST}/apps/api/${HUBITAT_APP_ID}`;
+const HUBITAT_HOST = process.env.HUBITAT_HOST 
+const HUBITAT_MAKER_APP_ID = process.env.HUBITAT_MAKER_APP_ID
+const HUBITAT_ACCESS_TOKEN = process.env.HUBITAT_ACCESS_TOKEN 
+const HUBITAT_API_BASE = `${HUBITAT_HOST}/apps/api/${HUBITAT_MAKER_APP_ID}`;
 const HUBITAT_API_URL = `${HUBITAT_API_BASE}/devices/all?access_token=${HUBITAT_ACCESS_TOKEN}`;
 
 // Open-Meteo (free) weather
@@ -220,248 +216,6 @@ function persistConfigToDiskIfChanged(label) {
 }
 
 loadPersistedConfig();
-
-// --- FLOORPLAN SVG IMPORT (schematic rooms) ---
-
-function tokenizeSvgPath(d) {
-    const tokens = [];
-    const re = /([a-zA-Z])|([-+]?\d*\.?\d+(?:e[-+]?\d+)?)/g;
-    let m;
-    while ((m = re.exec(d)) !== null) {
-        if (m[1]) tokens.push({ type: 'cmd', value: m[1] });
-        else tokens.push({ type: 'num', value: Number(m[2]) });
-    }
-    return tokens;
-}
-
-function parseTransform(transformString) {
-    // Supports the common potrace form: translate(tx, ty) scale(sx, sy)
-    // SVG applies transforms right-to-left, so we apply: p' = scale(p) then translate.
-    const t = String(transformString || '');
-    const translateMatch = t.match(/translate\(\s*([-+\d.eE]+)(?:[\s,]+([-+\d.eE]+))?\s*\)/);
-    const scaleMatch = t.match(/scale\(\s*([-+\d.eE]+)(?:[\s,]+([-+\d.eE]+))?\s*\)/);
-
-    const tx = translateMatch ? Number(translateMatch[1]) : 0;
-    const ty = translateMatch && translateMatch[2] !== undefined ? Number(translateMatch[2]) : 0;
-    const sx = scaleMatch ? Number(scaleMatch[1]) : 1;
-    const sy = scaleMatch && scaleMatch[2] !== undefined ? Number(scaleMatch[2]) : sx;
-
-    return {
-        tx: Number.isFinite(tx) ? tx : 0,
-        ty: Number.isFinite(ty) ? ty : 0,
-        sx: Number.isFinite(sx) ? sx : 1,
-        sy: Number.isFinite(sy) ? sy : 1,
-    };
-}
-
-function computePathBounds(d, transform) {
-    const tokens = tokenizeSvgPath(d);
-    let i = 0;
-    let cmd = null;
-
-    let cx = 0;
-    let cy = 0;
-    let sx0 = 0;
-    let sy0 = 0;
-
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-
-    const addPoint = (x, y) => {
-        const x2 = (x * transform.sx) + transform.tx;
-        const y2 = (y * transform.sy) + transform.ty;
-        if (x2 < minX) minX = x2;
-        if (y2 < minY) minY = y2;
-        if (x2 > maxX) maxX = x2;
-        if (y2 > maxY) maxY = y2;
-    };
-
-    const readNum = () => {
-        const tok = tokens[i];
-        if (!tok || tok.type !== 'num') return null;
-        i += 1;
-        return tok.value;
-    };
-
-    while (i < tokens.length) {
-        const tok = tokens[i];
-        if (tok.type === 'cmd') {
-            cmd = tok.value;
-            i += 1;
-        }
-        if (!cmd) break;
-
-        const isRel = cmd === cmd.toLowerCase();
-        const c = cmd.toLowerCase();
-
-        if (c === 'z') {
-            // closepath
-            cx = sx0;
-            cy = sy0;
-            addPoint(cx, cy);
-            cmd = null;
-            continue;
-        }
-
-        if (c === 'm' || c === 'l') {
-            // pairs
-            const x = readNum();
-            const y = readNum();
-            if (x === null || y === null) break;
-            const nx = isRel ? (cx + x) : x;
-            const ny = isRel ? (cy + y) : y;
-            cx = nx;
-            cy = ny;
-            if (c === 'm') {
-                sx0 = cx;
-                sy0 = cy;
-                // Subsequent pairs after M are implicit L
-                cmd = isRel ? 'l' : 'L';
-            }
-            addPoint(cx, cy);
-            continue;
-        }
-
-        if (c === 'h') {
-            const x = readNum();
-            if (x === null) break;
-            cx = isRel ? (cx + x) : x;
-            addPoint(cx, cy);
-            continue;
-        }
-
-        if (c === 'v') {
-            const y = readNum();
-            if (y === null) break;
-            cy = isRel ? (cy + y) : y;
-            addPoint(cx, cy);
-            continue;
-        }
-
-        if (c === 'c') {
-            // cubic bezier: x1 y1 x2 y2 x y
-            const x1 = readNum();
-            const y1 = readNum();
-            const x2 = readNum();
-            const y2 = readNum();
-            const x = readNum();
-            const y = readNum();
-            if ([x1, y1, x2, y2, x, y].some(v => v === null)) break;
-
-            const p1x = isRel ? (cx + x1) : x1;
-            const p1y = isRel ? (cy + y1) : y1;
-            const p2x = isRel ? (cx + x2) : x2;
-            const p2y = isRel ? (cy + y2) : y2;
-            const nx = isRel ? (cx + x) : x;
-            const ny = isRel ? (cy + y) : y;
-
-            // Conservative bounds: include control points + end point.
-            addPoint(p1x, p1y);
-            addPoint(p2x, p2y);
-            cx = nx;
-            cy = ny;
-            addPoint(cx, cy);
-            continue;
-        }
-
-        // Unsupported command: bail out to avoid infinite loop.
-        break;
-    }
-
-    if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null;
-    return { minX, minY, maxX, maxY };
-}
-
-function importRoomsFromFloorplanSvg({ replace = false } = {}) {
-    let svgPath = null;
-    for (const candidate of FLOORPLAN_SVG_CANDIDATES) {
-        if (fs.existsSync(candidate)) {
-            svgPath = candidate;
-            break;
-        }
-    }
-    if (!svgPath) throw new Error('floorplan.svg not found (expected server/data/floorplan.svg or client/public/floorplan.svg)');
-
-    const svg = fs.readFileSync(svgPath, 'utf8');
-    const viewBoxMatch = svg.match(/viewBox\s*=\s*"\s*([-+\d.eE]+)\s+([-+\d.eE]+)\s+([-+\d.eE]+)\s+([-+\d.eE]+)\s*"/);
-    if (!viewBoxMatch) throw new Error('floorplan.svg missing viewBox');
-    const vb = {
-        x: Number(viewBoxMatch[1]),
-        y: Number(viewBoxMatch[2]),
-        w: Number(viewBoxMatch[3]),
-        h: Number(viewBoxMatch[4]),
-    };
-    if (![vb.x, vb.y, vb.w, vb.h].every(Number.isFinite) || vb.w <= 0 || vb.h <= 0) {
-        throw new Error('Invalid viewBox');
-    }
-
-    // Try to capture the first <g transform="..."> (potrace-style)
-    const gTransformMatch = svg.match(/<g\s+[^>]*transform\s*=\s*"([^"]+)"/i);
-    const transform = parseTransform(gTransformMatch ? gTransformMatch[1] : '');
-
-    const pathMatches = [...svg.matchAll(/<path\s+[^>]*d\s*=\s*"([^"]+)"/gi)];
-    if (!pathMatches.length) throw new Error('No <path d="..."> elements found');
-
-    const COLS = 6;
-    const ROWS = 12;
-
-    const boxes = [];
-    for (const pm of pathMatches) {
-        const d = pm[1];
-        const b = computePathBounds(d, transform);
-        if (!b) continue;
-
-        // Normalize into viewBox space
-        const minX = Math.max(vb.x, Math.min(vb.x + vb.w, b.minX));
-        const maxX = Math.max(vb.x, Math.min(vb.x + vb.w, b.maxX));
-        const minY = Math.max(vb.y, Math.min(vb.y + vb.h, b.minY));
-        const maxY = Math.max(vb.y, Math.min(vb.y + vb.h, b.maxY));
-
-        const bw = Math.max(0, maxX - minX);
-        const bh = Math.max(0, maxY - minY);
-        if (bw < 10 || bh < 10) continue; // skip tiny artifacts
-
-        const x = Math.max(0, Math.min(COLS - 1, Math.floor(((minX - vb.x) / vb.w) * COLS)));
-        const y = Math.max(0, Math.floor(((minY - vb.y) / vb.h) * ROWS));
-        const w = Math.max(1, Math.min(COLS - x, Math.ceil((bw / vb.w) * COLS)));
-        const h = Math.max(1, Math.min(ROWS - y, Math.ceil((bh / vb.h) * ROWS)));
-
-        boxes.push({ minX, minY, maxX, maxY, x, y, w, h });
-    }
-
-    // Order top-to-bottom, left-to-right
-    boxes.sort((a, b) => (a.y - b.y) || (a.x - b.x) || ((b.w * b.h) - (a.w * a.h)));
-
-    // Map boxes onto the currently-monitored rooms (the ones we actually send to the UI).
-    // This avoids assigning boxes to any manually-added/unmonitored rooms.
-    const existingRooms = Array.isArray(config?.rooms) ? config.rooms : [];
-    if (!existingRooms.length) {
-        throw new Error('No rooms in config.json to map floorplan onto. Fetch /api/config first to populate rooms, then re-run import.');
-    }
-
-    const count = Math.min(existingRooms.length, boxes.length);
-    for (let i = 0; i < count; i += 1) {
-        const box = boxes[i];
-        existingRooms[i].layout = { x: box.x, y: box.y, w: box.w, h: box.h };
-    }
-
-    // Never create placeholder rooms; only update existing monitored rooms.
-    // Persist layouts back into the canonical persisted config.
-    const persistedRooms = Array.isArray(persistedConfig?.rooms) ? persistedConfig.rooms : [];
-    const byId = new Map(persistedRooms.map(r => [String(r?.id), r]));
-    for (const r of existingRooms) {
-        const target = byId.get(String(r?.id));
-        if (target) target.layout = r.layout;
-    }
-    persistedConfig.rooms = persistedRooms;
-    persistConfigToDiskIfChanged(replace ? 'import-floorplan-replace' : 'import-floorplan');
-    // Update runtime view immediately
-    syncHubitatData();
-
-    return { svgPath, imported: boxes.length, roomsUpdated: count, roomsTotal: existingRooms.length };
-}
 
 // --- HUBITAT MAPPER ---
 
@@ -992,30 +746,6 @@ app.post('/api/layout', (req, res) => {
     // Re-sync runtime (positions + layouts affect UI)
     syncHubitatData();
     res.json({ success: true });
-});
-
-// Import schematic room boxes from floorplan.svg into config.json rooms[].layout
-// Body: { replace?: boolean }
-app.post('/api/layout/import-floorplan', (req, res) => {
-    try {
-        const replace = !!req.body?.replace;
-        const result = importRoomsFromFloorplanSvg({ replace });
-        return res.json({ success: true, ...result });
-    } catch (err) {
-        return res.status(400).json({ error: err?.message || String(err) });
-    }
-});
-
-// Same as POST, but easier to trigger from a browser.
-// Query: ?replace=true
-app.get('/api/layout/import-floorplan', (req, res) => {
-    try {
-        const replace = String(req.query.replace || '').toLowerCase() === 'true';
-        const result = importRoomsFromFloorplanSvg({ replace });
-        return res.json({ success: true, ...result });
-    } catch (err) {
-        return res.status(400).json({ error: err?.message || String(err) });
-    }
 });
 
 app.delete('/api/layout', (req, res) => {
