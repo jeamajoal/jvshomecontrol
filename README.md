@@ -46,7 +46,7 @@ Set these environment variables before starting the server:
 - `HUBITAT_APP_ID`
 - `HUBITAT_ACCESS_TOKEN` (secret)
 
-Security note: the current code contains a fallback/default token value in `server/server.js`. Treat it as compromised and rotate your Maker API token if it’s real.
+If these are not set, the server will still start, but Hubitat polling/commands are disabled.
 
 ### Weather (Open‑Meteo)
 

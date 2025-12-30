@@ -27,17 +27,19 @@ const CLIENT_INDEX_HTML = path.join(CLIENT_DIST_DIR, 'index.html');
 const HAS_BUILT_CLIENT = fs.existsSync(CLIENT_INDEX_HTML);
 
 // Hubitat Maker API
-// Prefer env vars for deploy safety.
-// Back-compat: accept older HABITAT_* env var names.
-const HUBITAT_HOST = (process.env.HUBITAT_HOST || process.env.HABITAT_HOST || "http://192.168.102.174").replace(/\/$/, '');
-const HUBITAT_APP_ID = process.env.HUBITAT_APP_ID || process.env.HUBITAT_MAKER_APP_ID || process.env.HABITAT_APP_ID || "30";
-const HUBITAT_ACCESS_TOKEN = process.env.HUBITAT_ACCESS_TOKEN || process.env.HABITAT_ACCESS_TOKEN || "";
-const HUBITAT_API_BASE = `${HUBITAT_HOST}/apps/api/${HUBITAT_APP_ID}`;
-const HUBITAT_API_URL = `${HUBITAT_API_BASE}/devices/all?access_token=${encodeURIComponent(HUBITAT_ACCESS_TOKEN)}`;
+// Public-repo posture: no built-in defaults or legacy env var fallbacks.
+// If Hubitat isn't configured, the server still runs but Hubitat polling/commands are disabled.
+const envTrim = (name) => String(process.env[name] || '').trim();
 
-if (!HUBITAT_ACCESS_TOKEN) {
-    console.warn('Hubitat access token missing: set HUBITAT_ACCESS_TOKEN in /etc/jvshomecontrol.env');
-}
+const HUBITAT_HOST = envTrim('HUBITAT_HOST').replace(/\/$/, '');
+const HUBITAT_APP_ID = envTrim('HUBITAT_APP_ID');
+const HUBITAT_ACCESS_TOKEN = envTrim('HUBITAT_ACCESS_TOKEN');
+const HUBITAT_CONFIGURED = Boolean(HUBITAT_HOST && HUBITAT_APP_ID && HUBITAT_ACCESS_TOKEN);
+
+const HUBITAT_API_BASE = HUBITAT_CONFIGURED ? `${HUBITAT_HOST}/apps/api/${HUBITAT_APP_ID}` : '';
+const HUBITAT_API_URL = HUBITAT_CONFIGURED
+    ? `${HUBITAT_API_BASE}/devices/all?access_token=${encodeURIComponent(HUBITAT_ACCESS_TOKEN)}`
+    : '';
 
 // Open-Meteo (free) weather
 // Config priority: env vars > server/data/config.json > defaults
@@ -561,6 +563,9 @@ async function syncHubitatData() {
 }
 
 async function fetchHubitatAllDevices() {
+    if (!HUBITAT_CONFIGURED) {
+        throw new Error('Hubitat not configured. Set HUBITAT_HOST, HUBITAT_APP_ID, and HUBITAT_ACCESS_TOKEN to enable Hubitat polling.');
+    }
     const res = await fetch(HUBITAT_API_URL);
     if (!res.ok) {
         const text = await res.text().catch(() => '');
@@ -589,8 +594,13 @@ async function fetchHubitatAllDevices() {
     return devices;
 }
 
-setInterval(syncHubitatData, 2000);
-syncHubitatData();
+if (HUBITAT_CONFIGURED) {
+    setInterval(syncHubitatData, 2000);
+    syncHubitatData();
+} else {
+    lastHubitatError = 'Hubitat not configured. Set HUBITAT_HOST, HUBITAT_APP_ID, and HUBITAT_ACCESS_TOKEN to enable Hubitat polling.';
+    console.warn(lastHubitatError);
+}
 
 // --- API ---
 
@@ -688,6 +698,9 @@ app.get('/api/weather/health', (req, res) => {
 // Body: { command: string, args?: (string|number)[] }
 app.post('/api/devices/:id/command', async (req, res) => {
     try {
+        if (!HUBITAT_CONFIGURED) {
+            return res.status(503).json({ error: 'Hubitat not configured' });
+        }
         const deviceId = req.params.id;
         const { command, args = [] } = req.body || {};
         if (!command || typeof command !== 'string') {
