@@ -16,7 +16,7 @@
       "floor": 1,
       "gridArea": "span 1",
       "layout": {
-        "x": 4,
+        "x": 2,
         "y": 7,
         "w": 2,
         "h": 3
@@ -38,7 +38,7 @@
       "name": "Upper Living Room",
       "floor": 1,
       "layout": {
-        "x": 2,
+        "x": 1,
         "y": 10,
         "w": 2,
         "h": 3
@@ -60,8 +60,8 @@
       "name": "Lower Living room",
       "floor": 1,
       "layout": {
-        "x": 6,
-        "y": 9,
+        "x": 5,
+        "y": 10,
         "w": 2,
         "h": 3
       }
@@ -82,8 +82,8 @@
       "name": "Dining Room",
       "floor": 1,
       "layout": {
-        "x": 2,
-        "y": 7,
+        "x": 0,
+        "y": 9,
         "w": 2,
         "h": 2
       }
@@ -104,8 +104,8 @@
       "name": "Foyer",
       "floor": 1,
       "layout": {
-        "x": 5,
-        "y": 13,
+        "x": 0,
+        "y": 0,
         "w": 2,
         "h": 2
       }
@@ -115,7 +115,7 @@
       "name": "Kadence Room",
       "floor": 2,
       "layout": {
-        "x": 4,
+        "x": 0,
         "y": 0,
         "w": 2,
         "h": 3
@@ -126,8 +126,8 @@
       "name": "Boys room",
       "floor": 2,
       "layout": {
-        "x": 4,
-        "y": 3,
+        "x": 0,
+        "y": 0,
         "w": 2,
         "h": 3
       }

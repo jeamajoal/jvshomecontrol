@@ -4,10 +4,38 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>client</title>
+    <title>JVS Home Control</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="boot-status" style="height:100vh;display:flex;align-items:center;justify-content:center;background:#000;color:#9ca3af;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;letter-spacing:0.12em;text-transform:uppercase;font-weight:700;font-size:12px;padding:24px;text-align:center;">
+        Booting UI…
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        const el = document.getElementById('boot-status');
+        const set = (msg) => { if (el) el.textContent = msg; };
+
+        window.__APP_MOUNTED__ = false;
+
+        window.addEventListener('error', (e) => {
+          const msg = (e && e.message) ? e.message : 'Unknown error';
+          set('UI crashed: ' + msg);
+        });
+        window.addEventListener('unhandledrejection', (e) => {
+          const msg = (e && e.reason) ? (e.reason.message || String(e.reason)) : 'Unhandled promise rejection';
+          set('UI rejected: ' + msg);
+        });
+
+        setTimeout(() => {
+          if (!window.__APP_MOUNTED__) {
+            set('UI did not mount. Check network requests for /src/main.jsx and console for module load errors.');
+          }
+        }, 3000);
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
