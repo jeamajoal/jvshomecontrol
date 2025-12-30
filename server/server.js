@@ -24,6 +24,12 @@ const FLOORPLAN_SVG_CANDIDATES = [
     path.join(__dirname, '..', 'client', 'public', 'floorplan.svg'),
 ];
 
+// If the UI is built (`client/dist`), serve it from the backend so a single service
+// provides both the API and the dashboard.
+const CLIENT_DIST_DIR = path.join(__dirname, '..', 'client', 'dist');
+const CLIENT_INDEX_HTML = path.join(CLIENT_DIST_DIR, 'index.html');
+const HAS_BUILT_CLIENT = fs.existsSync(CLIENT_INDEX_HTML);
+
 // Hubitat Maker API
 // Prefer env vars for deploy safety, but keep the existing defaults.
 const HUBITAT_HOST = process.env.HUBITAT_HOST || process.env.HABITAT_HOST || "http://192.168.102.174";
@@ -50,6 +56,10 @@ let settings = {
 
 app.use(cors());
 app.use(bodyParser.json());
+
+if (HAS_BUILT_CLIENT) {
+    app.use(express.static(CLIENT_DIST_DIR));
+}
 
 // State
 let persistedConfig = { weather: settings.weather, rooms: [], sensors: [] }; // Stored in server/data/config.json
@@ -813,7 +823,11 @@ syncHubitatData();
 
 // --- API ---
 
-app.get('/', (req, res) => res.send('Home Automation Server - Layout Enabled'));
+// If we have a built UI, serve it at '/'. Otherwise provide a simple health message.
+app.get('/', (req, res) => {
+    if (HAS_BUILT_CLIENT) return res.sendFile(CLIENT_INDEX_HTML);
+    return res.send('Home Automation Server - Layout Enabled');
+});
 app.get('/api/config', (req, res) => {
     // Persist the latest discovered mapping/layout into config.json.
     // This makes config.json the stable source of truth.
@@ -1020,6 +1034,13 @@ app.delete('/api/layout', (req, res) => {
     syncHubitatData();
     res.json({ success: true });
 });
+
+// SPA fallback (only when client is built). Must be after /api routes.
+if (HAS_BUILT_CLIENT) {
+    app.get(/^(?!\/api\/|\/socket\.io\/).*/, (req, res) => {
+        res.sendFile(CLIENT_INDEX_HTML);
+    });
+}
 
 io.on('connection', (socket) => {
     console.log('Client connected');

@@ -34,6 +34,8 @@ npm run dev
 
 Then open the Vite URL (usually `http://localhost:5173`). The client expects the server at port **3000** by default.
 
+Production note: if you run `npm run build` in `client/`, the server will serve the built UI from `client/dist` at `http://<host>:3000/`.
+
 ## Configuration
 
 ### Hubitat Maker API
@@ -99,6 +101,7 @@ sudo chown -R jvshome:jvshome /opt/jvshomecontrol
 
 sudo -u jvshome -H bash -lc 'cd /opt/jvshomecontrol && git clone https://github.com/jeamajoal/JVSHomeControl.git .'
 sudo -u jvshome -H bash -lc 'cd /opt/jvshomecontrol/server && npm ci --omit=dev'
+sudo -u jvshome -H bash -lc 'cd /opt/jvshomecontrol/client && npm ci --omit=dev && npm run build'
 ```
 
 3) Create an environment file for secrets/settings:
