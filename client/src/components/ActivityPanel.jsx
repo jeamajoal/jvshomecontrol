@@ -9,6 +9,15 @@ const asText = (value) => {
   return s.length ? s : null;
 };
 
+const getAlertSoundUrls = (config) => {
+  const sounds = config?.ui?.alertSounds && typeof config.ui.alertSounds === 'object' ? config.ui.alertSounds : {};
+  return {
+    motion: asText(sounds.motion),
+    doorOpen: asText(sounds.doorOpen),
+    doorClose: asText(sounds.doorClose),
+  };
+};
+
 const buildRoomsWithActivity = (config, statuses) => {
   const rooms = Array.isArray(config?.rooms) ? config.rooms : [];
   const sensors = Array.isArray(config?.sensors) ? config.sensors : [];
@@ -93,9 +102,38 @@ const playDoorSound = async (audioCtx) => {
   await tone(audioCtx, { freq: 360, durationMs: 180, gain: 0.075 });
 };
 
+const playDoorCloseSound = async (audioCtx) => {
+  // Short “click-ish” close.
+  await tone(audioCtx, { freq: 280, durationMs: 70, gain: 0.08 });
+  await tone(audioCtx, { freq: 220, durationMs: 70, gain: 0.07 });
+};
+
+const playBuffer = (audioCtx, buffer, { gain = 0.9 } = {}) => {
+  const src = audioCtx.createBufferSource();
+  const g = audioCtx.createGain();
+  src.buffer = buffer;
+  g.gain.value = gain;
+  src.connect(g);
+  g.connect(audioCtx.destination);
+  src.start();
+};
+
+const loadAudioBuffer = async (audioCtx, url) => {
+  const res = await fetch(url, { cache: 'force-cache' });
+  if (!res.ok) throw new Error(`Failed to fetch sound: ${res.status}`);
+  const data = await res.arrayBuffer();
+  // decodeAudioData has both promise + callback forms depending on browser.
+  const decoded = await new Promise((resolve, reject) => {
+    const p = audioCtx.decodeAudioData(data, resolve, reject);
+    if (p && typeof p.then === 'function') p.then(resolve).catch(reject);
+  });
+  return decoded;
+};
+
 const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
   const [alertsEnabled, setAlertsEnabled] = useState(false);
   const audioCtxRef = useRef(null);
+  const soundRef = useRef({ urls: null, buffers: { motion: null, doorOpen: null, doorClose: null } });
 
   const prevRef = useRef({ byId: new Map(), initialized: false });
   const lastPlayedRef = useRef({ perSensor: new Map(), globalAt: 0 });
@@ -116,6 +154,40 @@ const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
     }
 
     return audioCtxRef.current;
+  };
+
+  const ensureSoundBuffers = async (audioCtx) => {
+    const urls = getAlertSoundUrls(config);
+    const prevUrls = soundRef.current.urls;
+    const sameUrls =
+      prevUrls &&
+      prevUrls.motion === urls.motion &&
+      prevUrls.doorOpen === urls.doorOpen &&
+      prevUrls.doorClose === urls.doorClose;
+
+    if (!sameUrls) {
+      soundRef.current.urls = urls;
+      soundRef.current.buffers = { motion: null, doorOpen: null, doorClose: null };
+    }
+
+    const entries = [
+      ['motion', urls.motion],
+      ['doorOpen', urls.doorOpen],
+      ['doorClose', urls.doorClose],
+    ];
+
+    await Promise.all(
+      entries.map(async ([key, url]) => {
+        if (!url) return;
+        if (soundRef.current.buffers[key]) return;
+        try {
+          soundRef.current.buffers[key] = await loadAudioBuffer(audioCtx, url);
+        } catch (e) {
+          // Keep fallback tones if loading fails.
+          console.warn('[Activity] Failed to load custom sound', key, url, e);
+        }
+      })
+    );
   };
 
   // Track state transitions from polling refreshes (visual correctness + fallback audio).
@@ -154,12 +226,17 @@ const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
       const prevState = prev.byId.get(id) || {};
 
       const motionTriggered = prevState.motion !== 'active' && nextState.motion === 'active';
-      const doorTriggered = prevState.contact !== 'open' && nextState.contact === 'open';
+      const doorOpenTriggered = prevState.contact !== 'open' && nextState.contact === 'open';
+      const doorCloseTriggered = prevState.contact === 'open' && nextState.contact === 'closed';
 
-      if (!motionTriggered && !doorTriggered) continue;
+      let eventType = null;
+      if (doorOpenTriggered) eventType = 'doorOpen';
+      else if (doorCloseTriggered) eventType = 'doorClose';
+      else if (motionTriggered) eventType = 'motion';
+      if (!eventType) continue;
 
       const last = lastPlayedRef.current;
-      const perKey = `${id}:${doorTriggered ? 'door' : 'motion'}`;
+      const perKey = `${id}:${eventType}`;
       const lastAt = last.perSensor.get(perKey) || 0;
       const sinceKey = nowMs - lastAt;
       const sinceGlobal = nowMs - last.globalAt;
@@ -171,8 +248,17 @@ const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
       last.perSensor.set(perKey, nowMs);
       last.globalAt = nowMs;
 
-      if (doorTriggered) playDoorSound(audioCtx).catch(() => undefined);
-      else playMotionSound(audioCtx).catch(() => undefined);
+      const buffers = soundRef.current.buffers;
+      if (eventType === 'motion') {
+        if (buffers.motion) playBuffer(audioCtx, buffers.motion);
+        else playMotionSound(audioCtx).catch(() => undefined);
+      } else if (eventType === 'doorOpen') {
+        if (buffers.doorOpen) playBuffer(audioCtx, buffers.doorOpen);
+        else playDoorSound(audioCtx).catch(() => undefined);
+      } else if (eventType === 'doorClose') {
+        if (buffers.doorClose) playBuffer(audioCtx, buffers.doorClose);
+        else playDoorCloseSound(audioCtx).catch(() => undefined);
+      }
     }
 
     prev.byId = nextById;
@@ -187,6 +273,9 @@ const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
       const audioCtx = await ensureAudio();
       if (!audioCtx) return;
 
+      // Load custom sounds (if configured) before trying to play any.
+      await ensureSoundBuffers(audioCtx);
+
       const nowMs = Date.now();
 
       for (const e of events) {
@@ -198,12 +287,15 @@ const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
         const id = deviceId !== null && deviceId !== undefined ? String(deviceId) : '';
         if (!id) continue;
 
-        const isDoor = name && name.toLowerCase() === 'contact' && value && value.toLowerCase() === 'open';
+        const isDoorOpen = name && name.toLowerCase() === 'contact' && value && value.toLowerCase() === 'open';
+        const isDoorClose = name && name.toLowerCase() === 'contact' && value && value.toLowerCase() === 'closed';
         const isMotion = name && name.toLowerCase() === 'motion' && value && value.toLowerCase() === 'active';
-        if (!isDoor && !isMotion) continue;
+        if (!isDoorOpen && !isDoorClose && !isMotion) continue;
+
+        const eventType = isDoorOpen ? 'doorOpen' : isDoorClose ? 'doorClose' : 'motion';
 
         const last = lastPlayedRef.current;
-        const perKey = `${id}:${isDoor ? 'door' : 'motion'}`;
+        const perKey = `${id}:${eventType}`;
         const lastAt = last.perSensor.get(perKey) || 0;
         const sinceKey = nowMs - lastAt;
         const sinceGlobal = nowMs - last.globalAt;
@@ -214,8 +306,17 @@ const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
         last.perSensor.set(perKey, nowMs);
         last.globalAt = nowMs;
 
-        if (isDoor) playDoorSound(audioCtx).catch(() => undefined);
-        else playMotionSound(audioCtx).catch(() => undefined);
+        const buffers = soundRef.current.buffers;
+        if (eventType === 'motion') {
+          if (buffers.motion) playBuffer(audioCtx, buffers.motion);
+          else playMotionSound(audioCtx).catch(() => undefined);
+        } else if (eventType === 'doorOpen') {
+          if (buffers.doorOpen) playBuffer(audioCtx, buffers.doorOpen);
+          else playDoorSound(audioCtx).catch(() => undefined);
+        } else if (eventType === 'doorClose') {
+          if (buffers.doorClose) playBuffer(audioCtx, buffers.doorClose);
+          else playDoorCloseSound(audioCtx).catch(() => undefined);
+        }
       }
     };
 
@@ -234,8 +335,10 @@ const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
             if (!alertsEnabled) {
               const ctx = await ensureAudio();
               if (!ctx) return;
+              await ensureSoundBuffers(ctx);
               // Quick confirmation chirp so users know audio is working.
-              playMotionSound(ctx).catch(() => undefined);
+              if (soundRef.current.buffers.motion) playBuffer(ctx, soundRef.current.buffers.motion);
+              else playMotionSound(ctx).catch(() => undefined);
               setAlertsEnabled(true);
               return;
             }

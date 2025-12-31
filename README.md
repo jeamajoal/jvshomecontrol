@@ -130,6 +130,27 @@ sudo -u jvshome -H bash -lc 'cd /opt/jvshomecontrol/server && npm ci --omit=dev'
 sudo -u jvshome -H bash -lc 'cd /opt/jvshomecontrol/client && npm ci && npm run build && npm prune --omit=dev'
 ```
 
+## Optional: custom Activity alert sounds
+
+The Activity page can play custom sounds for motion/door events. Add URLs under `ui.alertSounds` in `server/data/config.json`:
+
+```json
+{
+  "ui": {
+    "alertSounds": {
+      "motion": "/sounds/footsteps.mp3",
+      "doorOpen": "/sounds/door-open.mp3",
+      "doorClose": "/sounds/door-close.mp3"
+    }
+  }
+}
+```
+
+Notes:
+
+- URLs must be reachable by the browser (same-origin recommended) and permit fetch/CORS if hosted elsewhere.
+- Sounds load when you enable alerts (tap the volume icon). If loading fails, the app falls back to built-in tones.
+
 3) Create an environment file for secrets/settings:
 
 ```bash
