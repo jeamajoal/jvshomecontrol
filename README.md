@@ -97,14 +97,14 @@ The recommended way to run the backend continuously (kiosk, home server, Raspber
 
 ### Debian Linux (systemd)
 
-0) Install Node.js (18+) and required tools:
+0) Install Node.js (20+; recommended: 22 LTS) and required tools:
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y ca-certificates curl git
 
-# NodeSource (recommended to ensure Node 18+ on older Debian releases)
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+# NodeSource (recommended to ensure Node 22 LTS on older Debian releases)
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt-get install -y nodejs
 ```
 

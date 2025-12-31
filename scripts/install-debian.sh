@@ -2,11 +2,16 @@
 set -euo pipefail
 
 # JVSHomeControl - Debian install/update script
-# - Installs Node.js 18+ (via NodeSource)
+# - Installs Node.js 22 LTS (via NodeSource) *only with explicit confirmation*
+# - If Node is already installed, we do not change it unless it's too old and the user confirms an upgrade
 # - Creates unprivileged service user
 # - Clones or updates repo in /opt/jvshomecontrol
 # - Installs server deps and builds client
 # - Creates systemd service + env file if missing
+
+# Supported Node.js baseline (modern toolchain); recommend the latest LTS.
+MIN_NODE_MAJOR=20
+RECOMMENDED_NODE_MAJOR=22
 
 APP_USER="jvshome"
 APP_GROUP="jvshome"
@@ -18,6 +23,36 @@ CONFIG_FILE_REL="server/data/config.json"
 
 log() { echo "[install] $*"; }
 warn() { echo "[install][WARN] $*"; }
+
+confirm() {
+  local prompt="$1"
+
+  # Explicitly require confirmation unless the caller opts in.
+  if [[ "${JVS_ASSUME_YES:-}" == "1" ]]; then
+    return 0
+  fi
+
+  # If we're not attached to a TTY, we cannot ask; default to NO.
+  if [[ ! -t 0 ]]; then
+    return 1
+  fi
+
+  local reply
+  read -r -p "${prompt} [y/N] " reply
+  case "${reply}" in
+    y|Y|yes|YES) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+get_node_major() {
+  if ! command -v node >/dev/null 2>&1; then
+    echo ""
+    return 0
+  fi
+
+  node -p "parseInt(process.versions.node.split('.')[0], 10)" 2>/dev/null || true
+}
 
 die() {
   echo "[install][ERROR] $*" >&2
@@ -36,14 +71,27 @@ install_prereqs() {
   apt-get install -y ca-certificates curl git
 
   if command -v node >/dev/null 2>&1; then
-    local v
+    local v major
     v="$(node -v | sed 's/^v//' || true)"
+    major="$(get_node_major || true)"
     log "Node already installed (v${v})."
-    return 0
+
+    if [[ -n "${major}" ]] && (( major < MIN_NODE_MAJOR )); then
+      warn "Detected Node.js ${major}.x; this project expects Node ${MIN_NODE_MAJOR}+ (recommended: ${RECOMMENDED_NODE_MAJOR} LTS)."
+      if ! confirm "Upgrade Node to ${RECOMMENDED_NODE_MAJOR} LTS via NodeSource?"; then
+        die "Node.js ${MIN_NODE_MAJOR}+ is required. Install/upgrade Node (recommended ${RECOMMENDED_NODE_MAJOR} LTS) and re-run."
+      fi
+    else
+      return 0
+    fi
+  else
+    if ! confirm "Node.js not found. Install Node ${RECOMMENDED_NODE_MAJOR} LTS via NodeSource now?"; then
+      die "Node.js ${MIN_NODE_MAJOR}+ is required. Install Node (recommended ${RECOMMENDED_NODE_MAJOR} LTS) and re-run."
+    fi
   fi
 
-  log "Installing Node.js 18+ (NodeSource)…"
-  curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+  log "Installing Node.js ${RECOMMENDED_NODE_MAJOR} LTS (NodeSource)…"
+  curl -fsSL "https://deb.nodesource.com/setup_${RECOMMENDED_NODE_MAJOR}.x" | bash -
   apt-get install -y nodejs
 
   log "Node installed: $(node -v)"
