@@ -603,16 +603,15 @@ const HeatmapPanel = ({ config, statuses, uiScheme }) => {
                           <div className={`absolute -inset-10 ${colorClass} blur-2xl`} />
 
                           <div className="relative p-3 md:p-4 h-full">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="text-[10px] uppercase tracking-[0.2em] text-white/55 font-semibold">
-                                  Room
-                                </div>
-                                <div className="mt-1 text-sm md:text-base font-extrabold text-white truncate">
-                                  {t.room.name}
-                                </div>
+                            <div>
+                              <div className="text-[10px] uppercase tracking-[0.2em] text-white/55 font-semibold">
+                                Room
                               </div>
-                              <div className="shrink-0 flex items-center gap-1">
+                              <div className="mt-1 text-sm md:text-base font-extrabold text-white truncate">
+                                {t.room.name}
+                              </div>
+
+                              <div className="mt-2 flex flex-wrap items-center justify-end gap-1">
                                 {[
                                   { key: 'temperature', label: 'T', value: t.metrics?.temperature, active: mode === 'temperature' },
                                   { key: 'humidity', label: 'H', value: t.metrics?.humidity, active: mode === 'humidity' },
