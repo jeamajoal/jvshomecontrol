@@ -21,8 +21,6 @@ A GAR server can:
 
 ## garsSetup link
 
-Add your setup guide link here:
+Setup guide:
 
-- `garsSetup`: <INSERT_GITHUB_OR_DOCS_URL_HERE>
-
-If you tell me the exact URL you want, I can wire it into all relevant docs.
+- `garsSetup`: https://greghesp.github.io/assistant-relay/docs/getting-started/installation/
