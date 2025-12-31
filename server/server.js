@@ -110,6 +110,10 @@ const MAX_INGESTED_EVENTS = (() => {
 })();
 
 const EVENTS_INGEST_TOKEN = String(process.env.EVENTS_INGEST_TOKEN || '').trim();
+const EVENTS_PERSIST_JSONL = (() => {
+    const raw = String(process.env.EVENTS_PERSIST_JSONL || '').trim().toLowerCase();
+    return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+})();
 let ingestedEvents = [];
 
 function pruneIngestedEvents() {
@@ -1432,6 +1436,7 @@ app.post('/api/events', (req, res) => {
 
     let acceptedCount = 0;
     let rejectedCount = 0;
+    const acceptedEvents = [];
 
     for (const payload of events) {
         if (!shouldAcceptIngestedEvent(payload)) {
@@ -1446,18 +1451,30 @@ app.post('/api/events', (req, res) => {
         };
 
         ingestedEvents.push(event);
+        acceptedEvents.push(event);
         acceptedCount += 1;
 
-        // Best-effort append for debugging (optional; requires write access to server/data)
+        // Optional disk persistence for debugging (disabled by default).
+        if (EVENTS_PERSIST_JSONL) {
+            try {
+                ensureDataDirs();
+                fs.appendFileSync(path.join(DATA_DIR, 'events.jsonl'), JSON.stringify(event) + '\n');
+            } catch {
+                // ignore
+            }
+        }
+    }
+
+    pruneIngestedEvents();
+
+    if (acceptedEvents.length) {
         try {
-            ensureDataDirs();
-            fs.appendFileSync(path.join(DATA_DIR, 'events.jsonl'), JSON.stringify(event) + '\n');
+            io.emit('events_ingested', { events: acceptedEvents });
         } catch {
             // ignore
         }
     }
 
-    pruneIngestedEvents();
     return res.status(acceptedCount ? 200 : 202).json({
         accepted: acceptedCount > 0,
         acceptedCount,

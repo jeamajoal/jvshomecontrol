@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { io } from 'socket.io-client';
 import EnvironmentPanel from './components/EnvironmentPanel';
 import HeatmapPanel from './components/HeatmapPanel';
 import InteractionPanel from './components/InteractionPanel';
@@ -10,10 +9,7 @@ import { Activity, Maximize, Minimize } from 'lucide-react';
 
 import { getUiScheme } from './uiScheme';
 
-// Connect to the same host that served the page, but on port 3000
-const API_HOST = `http://${window.location.hostname}:3000`;
-const socket = io(API_HOST);
-
+import { socket } from './socket';
 
 function App() {
   const [sensors, setSensors] = useState({});
@@ -22,7 +18,7 @@ function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [loadError, setLoadError] = useState(null);
-  const [page, setPage] = useState(0); // 0=Main, 1=Environment, 2=Forecast, 3=Actions, 4=Config, 5=About
+  const [page, setPage] = useState(0); // 0=Main, 1=MAP, 2=Forecast, 3=Interact, 4=Config, 5=About
 
   const colorSchemeId = String(config?.ui?.colorScheme || 'electric-blue');
   const uiScheme = getUiScheme(colorSchemeId);
@@ -35,7 +31,7 @@ function App() {
     }
   }, [uiScheme.rgb]);
 
-  const pageLabel = page === 0 ? 'Main' : page === 1 ? 'Environment' : page === 2 ? 'Forecast' : page === 3 ? 'Actions' : page === 4 ? 'Config' : 'About';
+  const pageLabel = page === 0 ? 'Main' : page === 1 ? 'MAP' : page === 2 ? 'Forecast' : page === 3 ? 'Interact' : page === 4 ? 'Config' : 'About';
 
   useEffect(() => {
     // Initial fetch
@@ -115,7 +111,7 @@ function App() {
                 page === 1 ? uiScheme.tabActive : 'text-white/50 hover:bg-white/5 hover:text-white/70'
               }`}
             >
-              Environment
+              MAP
             </button>
             <button
               type="button"
@@ -133,7 +129,7 @@ function App() {
                 page === 3 ? uiScheme.tabActive : 'text-white/50 hover:bg-white/5 hover:text-white/70'
               }`}
             >
-              Actions
+              Interact
             </button>
             <button
               type="button"
