@@ -22,7 +22,7 @@ const AboutPanel = () => {
                   alt="JVS Automate"
                   className="w-full h-auto object-contain"
                 />
-                <div className="mt-4 text-sm md:text-base font-extrabold text-white/90 text-center">JVS Automate</div>
+                <div className="mt-4 text-sm md:text-base font-extrabold text-white/90 text-center">JVS Automation</div>
                 <div className="mt-1 text-xs md:text-sm text-white/60 text-center">jvsautomate.com</div>
               </div>
             </div>

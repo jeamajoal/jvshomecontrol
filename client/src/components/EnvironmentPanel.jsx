@@ -13,6 +13,8 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 
+import { getUiScheme } from '../uiScheme';
+
 const API_HOST = `http://${window.location.hostname}:3000`;
 
 const asNumber = (value) => {
@@ -176,7 +178,7 @@ const useFitScale = () => {
   return { viewportRef, contentRef, scale };
 };
 
-const MetricCard = ({ title, value, sub, icon: IconComponent, accentClassName, valueClassName }) => {
+const MetricCard = ({ title, value, sub, icon: IconComponent, accentClassName, valueClassName, uiScheme }) => {
   return (
     <div className={`glass-panel p-4 md:p-5 border ${accentClassName}`}>
       <div className="flex items-center justify-between gap-4">
@@ -194,7 +196,7 @@ const MetricCard = ({ title, value, sub, icon: IconComponent, accentClassName, v
 
         <div className="shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center">
           {React.createElement(IconComponent, {
-            className: 'w-6 h-6 md:w-7 md:h-7 text-neon-blue',
+            className: `w-6 h-6 md:w-7 md:h-7 ${uiScheme?.metricIcon || 'text-neon-blue'}`,
           })}
         </div>
       </div>
@@ -202,9 +204,9 @@ const MetricCard = ({ title, value, sub, icon: IconComponent, accentClassName, v
   );
 };
 
-const SwitchButton = ({ label, isOn, disabled, onToggle, busy }) => {
+const SwitchButton = ({ label, isOn, disabled, onToggle, busy, uiScheme }) => {
   const stateClass = isOn
-    ? 'bg-neon-blue/15 border-neon-blue/40 text-neon-blue animate-glow-blue'
+    ? `${uiScheme?.selectedCard || 'bg-neon-blue/15 border-neon-blue/40'} ${uiScheme?.selectedText || 'text-neon-blue'} ${uiScheme?.headerGlow || 'animate-glow-blue'}`
     : 'bg-white/5 border-white/10 text-white/70';
 
   return (
@@ -233,9 +235,9 @@ const SwitchButton = ({ label, isOn, disabled, onToggle, busy }) => {
 
         <div className="shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center">
           {busy ? (
-            <Loader2 className="w-6 h-6 md:w-7 md:h-7 animate-spin text-neon-blue" />
+            <Loader2 className={`w-6 h-6 md:w-7 md:h-7 animate-spin ${uiScheme?.metricIcon || 'text-neon-blue'}`} />
           ) : (
-            <Power className={`w-6 h-6 md:w-7 md:h-7 ${isOn ? 'text-neon-blue' : 'text-white/60'}`} />
+            <Power className={`w-6 h-6 md:w-7 md:h-7 ${isOn ? (uiScheme?.selectedText || 'text-neon-blue') : 'text-white/60'}`} />
           )}
         </div>
       </div>
@@ -243,10 +245,10 @@ const SwitchButton = ({ label, isOn, disabled, onToggle, busy }) => {
   );
 };
 
-const ActionButton = ({ label, icon: IconComponent, disabled, busy, onClick, accent = 'blue' }) => {
+const ActionButton = ({ label, icon: IconComponent, disabled, busy, onClick, accent = 'blue', uiScheme }) => {
   const accentClass = accent === 'green'
     ? 'text-neon-green border-neon-green/30 bg-neon-green/10'
-    : 'text-neon-blue border-neon-blue/30 bg-neon-blue/10';
+    : (uiScheme?.actionButton || 'text-neon-blue border-neon-blue/30 bg-neon-blue/10');
 
   return (
     <button
@@ -376,7 +378,7 @@ async function sendDeviceCommand(deviceId, command, args = []) {
   }
 }
 
-const RoomPanel = ({ roomName, devices, connected, allowedControlIds }) => {
+const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }) => {
   const [busySwitches, setBusySwitches] = useState(() => new Set());
   const [busyActions, setBusyActions] = useState(() => new Set());
 
@@ -437,7 +439,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds }) => {
     devices.some((d) => d.status?.attributes?.motion);
 
   const headerGlow = metrics.motionActive
-    ? 'border-primary/40 animate-glow-blue'
+    ? `${uiScheme?.selectedCard || 'border-primary/40'} ${uiScheme?.headerGlow || 'animate-glow-blue'}`
     : 'border-white/10';
 
   return (
@@ -458,6 +460,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds }) => {
             sub={metrics.temperature === null ? 'No sensor' : 'Average'}
             icon={Thermometer}
             accentClassName="border-white/10"
+            uiScheme={uiScheme}
           />
           <MetricCard
             title="Humidity"
@@ -465,6 +468,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds }) => {
             sub={metrics.humidity === null ? 'No sensor' : 'Average'}
             icon={Droplets}
             accentClassName="border-white/10"
+            uiScheme={uiScheme}
           />
           <MetricCard
             title="Illuminance"
@@ -472,6 +476,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds }) => {
             sub={metrics.illuminance === null ? 'No sensor' : 'Average'}
             icon={Sun}
             accentClassName="border-white/10"
+            uiScheme={uiScheme}
           />
         </div>
       ) : null}
@@ -490,6 +495,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds }) => {
                 disabled={!connected}
                 busy={busySwitches.has(sw.id)}
                 onToggle={() => toggleSwitch(sw.id, sw.state)}
+                uiScheme={uiScheme}
               />
             ))}
           </div>
@@ -516,6 +522,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds }) => {
                       disabled={!connected}
                       busy={busyActions.has(`${d.id}:on`)}
                       onClick={() => runAction(d.id, 'on')}
+                      uiScheme={uiScheme}
                     />
                   ) : null}
                   {d.commands.includes('off') ? (
@@ -526,6 +533,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds }) => {
                       disabled={!connected}
                       busy={busyActions.has(`${d.id}:off`)}
                       onClick={() => runAction(d.id, 'off')}
+                      uiScheme={uiScheme}
                     />
                   ) : null}
                   {d.commands.includes('refresh') ? (
@@ -536,6 +544,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds }) => {
                       disabled={!connected}
                       busy={busyActions.has(`${d.id}:refresh`)}
                       onClick={() => runAction(d.id, 'refresh')}
+                      uiScheme={uiScheme}
                     />
                   ) : null}
                   {d.commands.includes('push') ? (
@@ -546,6 +555,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds }) => {
                       disabled={!connected}
                       busy={busyActions.has(`${d.id}:push`)}
                       onClick={() => runAction(d.id, 'push')}
+                      uiScheme={uiScheme}
                     />
                   ) : null}
                 </div>
@@ -562,7 +572,12 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds }) => {
   );
 };
 
-const EnvironmentPanel = ({ config, statuses, connected }) => {
+const EnvironmentPanel = ({ config, statuses, connected, uiScheme }) => {
+  const resolvedUiScheme = useMemo(
+    () => uiScheme || getUiScheme(config?.ui?.colorScheme),
+    [uiScheme, config?.ui?.colorScheme],
+  );
+
   const allowedControlIds = useMemo(() => {
     const ids = Array.isArray(config?.ui?.mainAllowedDeviceIds)
       ? config.ui.mainAllowedDeviceIds
@@ -665,6 +680,7 @@ const EnvironmentPanel = ({ config, statuses, connected }) => {
               sub={formatDate(now)}
               icon={Clock}
               accentClassName="border-white/10"
+              uiScheme={resolvedUiScheme}
             />
             <MetricCard
               title="Outside"
@@ -680,6 +696,7 @@ const EnvironmentPanel = ({ config, statuses, connected }) => {
               }
               icon={Thermometer}
               accentClassName="border-white/10"
+              uiScheme={resolvedUiScheme}
             />
             <MetricCard
               title="Forecast"
@@ -691,6 +708,7 @@ const EnvironmentPanel = ({ config, statuses, connected }) => {
               }
               icon={Cloud}
               accentClassName="border-white/10"
+              uiScheme={resolvedUiScheme}
             />
             <MetricCard
               title="Home"
@@ -699,10 +717,11 @@ const EnvironmentPanel = ({ config, statuses, connected }) => {
               icon={Activity}
               accentClassName={
                 connected
-                  ? (overall.motionActive ? 'border-primary/40 animate-glow-blue' : 'border-white/10')
+                  ? (overall.motionActive ? `${resolvedUiScheme.selectedCard} ${resolvedUiScheme.headerGlow}` : 'border-white/10')
                   : 'border-danger/30'
               }
               valueClassName={connected ? 'text-neon-green' : 'text-neon-red'}
+              uiScheme={resolvedUiScheme}
             />
           </div>
 
@@ -713,6 +732,7 @@ const EnvironmentPanel = ({ config, statuses, connected }) => {
               sub={asText(outsideDisplay.condition) || 'Outside'}
               icon={Thermometer}
               accentClassName="border-white/10"
+              uiScheme={resolvedUiScheme}
             />
             <MetricCard
               title="Wind"
@@ -720,6 +740,7 @@ const EnvironmentPanel = ({ config, statuses, connected }) => {
               sub={toCompass(outsideDisplay.windDir) || '—'}
               icon={Wind}
               accentClassName="border-white/10"
+              uiScheme={resolvedUiScheme}
             />
             <MetricCard
               title="Rain"
@@ -727,6 +748,7 @@ const EnvironmentPanel = ({ config, statuses, connected }) => {
               sub="Now"
               icon={CloudRain}
               accentClassName="border-white/10"
+              uiScheme={resolvedUiScheme}
             />
             <MetricCard
               title="Outside RH"
@@ -734,6 +756,7 @@ const EnvironmentPanel = ({ config, statuses, connected }) => {
               sub="Relative humidity"
               icon={Droplets}
               accentClassName="border-white/10"
+              uiScheme={resolvedUiScheme}
             />
           </div>
 
@@ -744,6 +767,7 @@ const EnvironmentPanel = ({ config, statuses, connected }) => {
               sub={overall.temperature === null ? 'No sensors' : 'Whole home average'}
               icon={Thermometer}
               accentClassName="border-white/10"
+              uiScheme={resolvedUiScheme}
             />
             <MetricCard
               title="Avg Humidity"
@@ -751,6 +775,7 @@ const EnvironmentPanel = ({ config, statuses, connected }) => {
               sub={overall.humidity === null ? 'No sensors' : 'Whole home average'}
               icon={Droplets}
               accentClassName="border-white/10"
+              uiScheme={resolvedUiScheme}
             />
             <MetricCard
               title="Avg Lux"
@@ -758,6 +783,7 @@ const EnvironmentPanel = ({ config, statuses, connected }) => {
               sub={overall.illuminance === null ? 'No sensors' : 'Whole home average'}
               icon={Sun}
               accentClassName="border-white/10"
+              uiScheme={resolvedUiScheme}
             />
           </div>
 
@@ -770,6 +796,7 @@ const EnvironmentPanel = ({ config, statuses, connected }) => {
                   devices={r.devices}
                   connected={connected}
                   allowedControlIds={allowedControlIds}
+                  uiScheme={resolvedUiScheme}
                 />
               ))
             ) : (

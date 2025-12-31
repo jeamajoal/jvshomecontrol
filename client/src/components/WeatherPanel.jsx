@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Cloud, CloudRain, Thermometer, Wind } from 'lucide-react';
 
+import { getUiScheme } from '../uiScheme';
+
 const API_HOST = `http://${window.location.hostname}:3000`;
 
 const asNumber = (value) => {
@@ -118,7 +120,7 @@ const DividerTitle = ({ title }) => (
   </div>
 );
 
-const MetricCard = ({ title, value, sub, icon: IconComponent }) => (
+const MetricCard = ({ title, value, sub, icon: IconComponent, uiScheme }) => (
   <div className="glass-panel p-4 md:p-5 border border-white/10">
     <div className="flex items-center justify-between gap-4">
       <div className="min-w-0">
@@ -132,13 +134,15 @@ const MetricCard = ({ title, value, sub, icon: IconComponent }) => (
       </div>
 
       <div className="shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center">
-        {React.createElement(IconComponent, { className: 'w-6 h-6 md:w-7 md:h-7 text-neon-blue' })}
+        {React.createElement(IconComponent, { className: `w-6 h-6 md:w-7 md:h-7 ${uiScheme?.metricIcon || 'text-neon-blue'}` })}
       </div>
     </div>
   </div>
 );
 
-const WeatherPanel = () => {
+const WeatherPanel = ({ uiScheme }) => {
+  const resolvedUiScheme = useMemo(() => uiScheme || getUiScheme(), [uiScheme]);
+
   const [weather, setWeather] = useState(null);
   const [error, setError] = useState(null);
 
@@ -205,24 +209,28 @@ const WeatherPanel = () => {
               value={current?.temperature !== null && current?.temperature !== undefined ? formatTemp(current.temperature) : '—'}
               sub={describeWeatherCode(current?.weatherCode) || (current?.time ? formatTime(current.time) : '—')}
               icon={Thermometer}
+              uiScheme={resolvedUiScheme}
             />
             <MetricCard
               title="Feels Like"
               value={current?.apparentTemperature !== null && current?.apparentTemperature !== undefined ? formatTemp(current.apparentTemperature) : '—'}
               sub={current?.humidity !== null && current?.humidity !== undefined ? `Humidity ${formatPercent(current.humidity)}` : '—'}
               icon={Cloud}
+              uiScheme={resolvedUiScheme}
             />
             <MetricCard
               title="Wind"
               value={current?.windSpeed !== null && current?.windSpeed !== undefined ? formatSpeed(current.windSpeed) : '—'}
               sub="Current"
               icon={Wind}
+              uiScheme={resolvedUiScheme}
             />
             <MetricCard
               title="Rain"
               value={current?.precipitation !== null && current?.precipitation !== undefined ? String(current.precipitation) : '—'}
               sub="Now"
               icon={CloudRain}
+              uiScheme={resolvedUiScheme}
             />
           </div>
 
@@ -234,24 +242,28 @@ const WeatherPanel = () => {
                 value={describeWeatherCode(today?.weatherCode) || '—'}
                 sub={today?.date ? formatDate(today.date) : null}
                 icon={Cloud}
+                uiScheme={resolvedUiScheme}
               />
               <MetricCard
                 title="High"
                 value={today?.temperatureMax !== null && today?.temperatureMax !== undefined ? formatTemp(today.temperatureMax) : '—'}
                 sub={todayLabel}
                 icon={Thermometer}
+                uiScheme={resolvedUiScheme}
               />
               <MetricCard
                 title="Low"
                 value={today?.temperatureMin !== null && today?.temperatureMin !== undefined ? formatTemp(today.temperatureMin) : '—'}
                 sub={todayLabel}
                 icon={Thermometer}
+                uiScheme={resolvedUiScheme}
               />
               <MetricCard
                 title="Precip %"
                 value={today?.precipitationProbabilityMax !== null && today?.precipitationProbabilityMax !== undefined ? formatPercent(today.precipitationProbabilityMax) : '—'}
                 sub="Max probability"
                 icon={CloudRain}
+                uiScheme={resolvedUiScheme}
               />
             </div>
           </div>

@@ -3,6 +3,8 @@ import { Edit3, X } from 'lucide-react';
 import GridLayout, { WidthProvider } from 'react-grid-layout/legacy';
 import Draggable from 'react-draggable';
 
+import { getUiScheme } from '../uiScheme';
+
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
@@ -114,8 +116,14 @@ async function saveLayoutPatch(payload) {
   }
 }
 
-const HeatmapPanel = ({ config, statuses }) => {
+const HeatmapPanel = ({ config, statuses, uiScheme }) => {
   const { viewportRef, contentRef, scale } = useFitScale();
+
+  const resolvedUiScheme = useMemo(
+    () => uiScheme || getUiScheme(config?.ui?.colorScheme),
+    [uiScheme, config?.ui?.colorScheme],
+  );
+
   const [mode, setMode] = useState('temperature');
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -438,7 +446,7 @@ const HeatmapPanel = ({ config, statuses }) => {
                   onClick={() => setMode('temperature')}
                   className={`rounded-xl border px-3 py-3 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${
                     mode === 'temperature'
-                      ? 'border-neon-blue/40 bg-neon-blue/10 text-neon-blue'
+                      ? `${resolvedUiScheme.selectedCard} ${resolvedUiScheme.selectedText}`
                       : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
                   }`}
                 >
@@ -449,7 +457,7 @@ const HeatmapPanel = ({ config, statuses }) => {
                   onClick={() => setMode('humidity')}
                   className={`rounded-xl border px-3 py-3 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${
                     mode === 'humidity'
-                      ? 'border-neon-blue/40 bg-neon-blue/10 text-neon-blue'
+                      ? `${resolvedUiScheme.selectedCard} ${resolvedUiScheme.selectedText}`
                       : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
                   }`}
                 >
@@ -460,7 +468,7 @@ const HeatmapPanel = ({ config, statuses }) => {
                   onClick={() => setMode('illuminance')}
                   className={`rounded-xl border px-3 py-3 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${
                     mode === 'illuminance'
-                      ? 'border-neon-blue/40 bg-neon-blue/10 text-neon-blue'
+                      ? `${resolvedUiScheme.selectedCard} ${resolvedUiScheme.selectedText}`
                       : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
                   }`}
                 >
@@ -474,7 +482,7 @@ const HeatmapPanel = ({ config, statuses }) => {
                   onClick={() => setEditMode((v) => !v)}
                   className={`w-full rounded-xl border px-3 py-3 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${
                     editMode
-                      ? 'border-neon-blue/40 bg-neon-blue/10 text-neon-blue'
+                      ? `${resolvedUiScheme.selectedCard} ${resolvedUiScheme.selectedText}`
                       : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
                   }`}
                 >
@@ -533,7 +541,7 @@ const HeatmapPanel = ({ config, statuses }) => {
                       return (
                         <div
                           key={t.room.id}
-                          className={`relative overflow-hidden rounded-2xl border bg-black/20 ${ringClass} ring-1 ${editMode ? 'border-neon-blue/30' : 'border-white/10'}`}
+                          className={`relative overflow-hidden rounded-2xl border bg-black/20 ${ringClass} ring-1 ${editMode ? resolvedUiScheme.editBorder : 'border-white/10'}`}
                         >
                           <div className={`absolute -inset-10 ${colorClass} blur-2xl`} />
 
@@ -573,7 +581,7 @@ const HeatmapPanel = ({ config, statuses }) => {
                         return (
                           <div
                             key={`label:${id}`}
-                            className={`relative overflow-hidden rounded-2xl border bg-black/20 ring-1 ${editMode ? 'border-neon-blue/30 ring-neon-blue/20' : 'border-white/10 ring-white/10'}`}
+                            className={`relative overflow-hidden rounded-2xl border bg-black/20 ring-1 ${editMode ? `${resolvedUiScheme.editBorder} ${resolvedUiScheme.editRing}` : 'border-white/10 ring-white/10'}`}
                           >
                             <div className="relative p-3 md:p-4 h-full">
                               <div className="text-sm md:text-base font-bold text-white/90 whitespace-pre-wrap break-words">

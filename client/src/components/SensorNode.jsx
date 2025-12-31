@@ -1,8 +1,12 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion as Motion } from 'framer-motion';
 import { AlertCircle, Lock, LockOpen, Flame, Wind, Battery, Zap } from 'lucide-react';
 
-const SensorNode = ({ label, state, type, metadata }) => {
+import { getUiScheme } from '../uiScheme';
+
+const SensorNode = ({ label, state, type, metadata, uiScheme }) => {
+    const resolvedUiScheme = uiScheme || getUiScheme();
+
     const getStatusColor = () => {
         switch (type) {
             case 'smoke':
@@ -12,7 +16,7 @@ const SensorNode = ({ label, state, type, metadata }) => {
                     : 'bg-green-500/10 text-green-500 border-green-500/20 hover:bg-green-500/20';
             case 'motion':
                 return state === 'open' // Active
-                    ? 'bg-blue-500/20 text-blue-400 border-blue-500/50 animate-glow-blue'
+                    ? `${resolvedUiScheme.selectedCard} ${resolvedUiScheme.selectedText} ${resolvedUiScheme.headerGlow}`
                     : 'bg-white/5 text-gray-600 border-white/5 hover:bg-white/10';
             default: // Entry/Window
                 if (state === 'open') return 'bg-orange-500/20 text-orange-400 border-orange-500/50 animate-glow-orange scale-105 z-10';
@@ -34,7 +38,7 @@ const SensorNode = ({ label, state, type, metadata }) => {
     };
 
     return (
-        <motion.div
+        <Motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             className={`
@@ -64,7 +68,7 @@ const SensorNode = ({ label, state, type, metadata }) => {
                     <Battery size={10} />
                 </div>
             )}
-        </motion.div>
+        </Motion.div>
     );
 };
 

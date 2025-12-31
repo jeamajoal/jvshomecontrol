@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Power, SlidersHorizontal } from 'lucide-react';
 
+import { getUiScheme } from '../uiScheme';
+
 const API_HOST = `http://${window.location.hostname}:3000`;
 
 const asNumber = (value) => {
@@ -63,9 +65,9 @@ async function sendDeviceCommand(deviceId, command, args = []) {
   }
 }
 
-const SwitchTile = ({ label, isOn, disabled, busy, onToggle }) => {
+const SwitchTile = ({ label, isOn, disabled, busy, onToggle, uiScheme }) => {
   const stateClass = isOn
-    ? 'bg-neon-blue/15 border-neon-blue/40 text-neon-blue animate-glow-blue'
+    ? `${uiScheme?.selectedCard || 'bg-neon-blue/15 border-neon-blue/40'} ${uiScheme?.selectedText || 'text-neon-blue'} ${uiScheme?.headerGlow || 'animate-glow-blue'}`
     : 'bg-white/5 border-white/10 text-white/70';
 
   return (
@@ -82,9 +84,9 @@ const SwitchTile = ({ label, isOn, disabled, busy, onToggle }) => {
         </div>
         <div className="shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center">
           {busy ? (
-            <Loader2 className="w-6 h-6 md:w-7 md:h-7 animate-spin text-neon-blue" />
+            <Loader2 className={`w-6 h-6 md:w-7 md:h-7 animate-spin ${uiScheme?.metricIcon || 'text-neon-blue'}`} />
           ) : (
-            <Power className={`w-6 h-6 md:w-7 md:h-7 ${isOn ? 'text-neon-blue' : 'text-white/60'}`} />
+            <Power className={`w-6 h-6 md:w-7 md:h-7 ${isOn ? (uiScheme?.selectedText || 'text-neon-blue') : 'text-white/60'}`} />
           )}
         </div>
       </div>
@@ -92,7 +94,7 @@ const SwitchTile = ({ label, isOn, disabled, busy, onToggle }) => {
   );
 };
 
-const LevelTile = ({ label, isOn, level, disabled, busy, onToggle, onSetLevel }) => {
+const LevelTile = ({ label, isOn, level, disabled, busy, onToggle, onSetLevel, uiScheme }) => {
   const levelNum = asNumber(level);
   const displayLevel = levelNum === null ? 0 : Math.max(0, Math.min(100, Math.round(levelNum)));
   const [draft, setDraft] = useState(displayLevel);
@@ -109,7 +111,7 @@ const LevelTile = ({ label, isOn, level, disabled, busy, onToggle, onSetLevel })
             {label}
           </div>
           <div className="mt-1 flex items-baseline gap-3">
-            <div className={`text-2xl md:text-3xl font-extrabold tracking-tight ${isOn ? 'text-neon-blue' : 'text-white/70'}`}>
+            <div className={`text-2xl md:text-3xl font-extrabold tracking-tight ${isOn ? (uiScheme?.selectedText || 'text-neon-blue') : 'text-white/70'}`}>
               {isOn ? 'ON' : 'OFF'}
             </div>
             <div className="text-sm text-white/55 font-bold">{displayLevel}%</div>
@@ -121,7 +123,7 @@ const LevelTile = ({ label, isOn, level, disabled, busy, onToggle, onSetLevel })
           disabled={disabled || busy}
           onClick={onToggle}
           className={`shrink-0 rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] ${
-            isOn ? 'text-neon-blue border-neon-blue/30 bg-neon-blue/10' : 'text-white/60 border-white/10 bg-white/5'
+            isOn ? (uiScheme?.actionButton || 'text-neon-blue border-neon-blue/30 bg-neon-blue/10') : 'text-white/60 border-white/10 bg-white/5'
           } ${(disabled || busy) ? 'opacity-50' : 'hover:bg-white/10'}`}
         >
           {busy ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Toggle'}
@@ -147,8 +149,13 @@ const LevelTile = ({ label, isOn, level, disabled, busy, onToggle, onSetLevel })
   );
 };
 
-const InteractionPanel = ({ config, statuses, connected }) => {
+const InteractionPanel = ({ config, statuses, connected, uiScheme }) => {
   const { viewportRef, contentRef, scale } = useFitScale();
+
+  const resolvedUiScheme = useMemo(
+    () => uiScheme || getUiScheme(config?.ui?.colorScheme),
+    [uiScheme, config?.ui?.colorScheme],
+  );
 
   const allowedControlIds = useMemo(() => {
     const ids = Array.isArray(config?.ui?.ctrlAllowedDeviceIds)
@@ -217,7 +224,7 @@ const InteractionPanel = ({ config, statuses, connected }) => {
                   // Best-effort: triggers polling refresh quickly
                   fetch(`${API_HOST}/api/status`).catch(() => undefined);
                 }}
-                className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] text-neon-blue border-neon-blue/30 bg-neon-blue/10 ${!connected ? 'opacity-50' : 'hover:bg-white/5'}`}
+                className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] ${resolvedUiScheme.actionButton} ${!connected ? 'opacity-50' : 'hover:bg-white/5'}`}
               >
                 <span className="inline-flex items-center gap-2">
                   <SlidersHorizontal className="w-4 h-4" />
@@ -286,6 +293,7 @@ const InteractionPanel = ({ config, statuses, connected }) => {
                                 const n = Math.max(0, Math.min(100, Math.round(Number(next))));
                                 return run(d.id, 'setLevel', [n]);
                               }}
+                              uiScheme={resolvedUiScheme}
                             />
                           );
                         }
@@ -304,6 +312,7 @@ const InteractionPanel = ({ config, statuses, connected }) => {
                                 if (canToggle) return run(d.id, 'toggle');
                                 return run(d.id, isOn ? 'off' : 'on');
                               }}
+                              uiScheme={resolvedUiScheme}
                             />
                           );
                         }
@@ -325,7 +334,7 @@ const InteractionPanel = ({ config, statuses, connected }) => {
                                   type="button"
                                   disabled={!connected || busy.has(`${d.id}:${cmd}`)}
                                   onClick={() => run(d.id, cmd)}
-                                  className={`rounded-xl border px-3 py-2 text-xs font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] text-neon-blue border-neon-blue/30 bg-neon-blue/10 ${(!connected || busy.has(`${d.id}:${cmd}`)) ? 'opacity-50' : 'hover:bg-white/5'}`}
+                                  className={`rounded-xl border px-3 py-2 text-xs font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] ${resolvedUiScheme.actionButton} ${(!connected || busy.has(`${d.id}:${cmd}`)) ? 'opacity-50' : 'hover:bg-white/5'}`}
                                 >
                                   {busy.has(`${d.id}:${cmd}`) ? <Loader2 className="w-4 h-4 animate-spin inline" /> : cmd}
                                 </button>

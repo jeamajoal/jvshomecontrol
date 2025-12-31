@@ -73,7 +73,7 @@ const DraggableSensor = ({ s, status, isEditing, onSensorStop, containerWidth, c
     );
 };
 
-const Room = ({ id, name, className, isEditing, onSensorStop, sensors, sensorStatuses }) => {
+const Room = ({ name, className, isEditing, onSensorStop, sensors, sensorStatuses }) => {
     const roomRef = useRef(null);
     const { width, height } = useResizeObserver(roomRef);
 

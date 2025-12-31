@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
 import { Settings, Plus, X, Trash2, Layout, ScanLine } from 'lucide-react';
 
-const AdminPanel = ({ config, isOpen, onClose }) => {
+import { getUiScheme } from '../uiScheme';
+
+const AdminPanel = ({ config, isOpen, onClose, uiScheme }) => {
     const [activeTab, setActiveTab] = useState('sensors');
+
+    const resolvedUiScheme = uiScheme || getUiScheme(config?.ui?.colorScheme);
 
     // Sensor Form State
     const [newSensor, setNewSensor] = useState({ id: '', roomId: '', label: '', type: 'entry', statusUri: '' });
@@ -66,13 +70,13 @@ const AdminPanel = ({ config, isOpen, onClose }) => {
                         <div className="flex bg-black/50 rounded p-1">
                             <button
                                 onClick={() => setActiveTab('sensors')}
-                                className={`px-4 py-1 rounded text-sm font-medium transition-colors ${activeTab === 'sensors' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'}`}
+                                className={`px-4 py-1 rounded text-sm font-medium transition-colors ${activeTab === 'sensors' ? resolvedUiScheme.tabActive : 'text-gray-400 hover:text-white'}`}
                             >
                                 Sensors
                             </button>
                             <button
                                 onClick={() => setActiveTab('rooms')}
-                                className={`px-4 py-1 rounded text-sm font-medium transition-colors ${activeTab === 'rooms' ? 'bg-primary text-white' : 'text-gray-400 hover:text-white'}`}
+                                className={`px-4 py-1 rounded text-sm font-medium transition-colors ${activeTab === 'rooms' ? resolvedUiScheme.tabActive : 'text-gray-400 hover:text-white'}`}
                             >
                                 Rooms
                             </button>
@@ -90,21 +94,21 @@ const AdminPanel = ({ config, isOpen, onClose }) => {
                         <div className="space-y-8">
                             {/* Add Sensor Form */}
                             <div className="bg-white/5 p-4 rounded-lg border border-white/10">
-                                <h3 className="text-md font-bold mb-4 flex items-center gap-2 text-neon-blue"><Plus size={16} /> Add Sensor</h3>
+                                <h3 className={`text-md font-bold mb-4 flex items-center gap-2 ${resolvedUiScheme.selectedText}`}><Plus size={16} /> Add Sensor</h3>
                                 <form onSubmit={handleAddSensor} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <input type="text" placeholder="ID (e.g., front_door)" required value={newSensor.id} onChange={e => setNewSensor({ ...newSensor, id: e.target.value })} className="bg-black/50 border border-white/10 rounded p-2 focus:border-primary outline-none" />
-                                    <input type="text" placeholder="Label (e.g., Front Door)" required value={newSensor.label} onChange={e => setNewSensor({ ...newSensor, label: e.target.value })} className="bg-black/50 border border-white/10 rounded p-2 focus:border-primary outline-none" />
-                                    <select required value={newSensor.roomId} onChange={e => setNewSensor({ ...newSensor, roomId: e.target.value })} className="bg-black/50 border border-white/10 rounded p-2 focus:border-primary outline-none">
+                                    <input type="text" placeholder="ID (e.g., front_door)" required value={newSensor.id} onChange={e => setNewSensor({ ...newSensor, id: e.target.value })} className={`bg-black/50 border border-white/10 rounded p-2 outline-none ${resolvedUiScheme.focusRing}`} />
+                                    <input type="text" placeholder="Label (e.g., Front Door)" required value={newSensor.label} onChange={e => setNewSensor({ ...newSensor, label: e.target.value })} className={`bg-black/50 border border-white/10 rounded p-2 outline-none ${resolvedUiScheme.focusRing}`} />
+                                    <select required value={newSensor.roomId} onChange={e => setNewSensor({ ...newSensor, roomId: e.target.value })} className={`bg-black/50 border border-white/10 rounded p-2 outline-none ${resolvedUiScheme.focusRing}`}>
                                         <option value="">Select Room...</option>
                                         {config.rooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                                     </select>
-                                    <select value={newSensor.type} onChange={e => setNewSensor({ ...newSensor, type: e.target.value })} className="bg-black/50 border border-white/10 rounded p-2 focus:border-primary outline-none">
+                                    <select value={newSensor.type} onChange={e => setNewSensor({ ...newSensor, type: e.target.value })} className={`bg-black/50 border border-white/10 rounded p-2 outline-none ${resolvedUiScheme.focusRing}`}>
                                         <option value="entry">Entry</option>
                                         <option value="window">Window</option>
                                         <option value="motion">Motion</option>
                                     </select>
-                                    <input type="url" placeholder="Status URI (for polling)" value={newSensor.statusUri} onChange={e => setNewSensor({ ...newSensor, statusUri: e.target.value })} className="bg-black/50 border border-white/10 rounded p-2 focus:border-primary outline-none col-span-2" />
-                                    <button type="submit" className="col-span-2 bg-primary hover:bg-blue-600 text-white py-2 rounded font-medium transition-colors">Add Sensor</button>
+                                    <input type="url" placeholder="Status URI (for polling)" value={newSensor.statusUri} onChange={e => setNewSensor({ ...newSensor, statusUri: e.target.value })} className={`bg-black/50 border border-white/10 rounded p-2 outline-none col-span-2 ${resolvedUiScheme.focusRing}`} />
+                                    <button type="submit" className={`col-span-2 border text-white py-2 rounded font-medium transition-colors hover:bg-white/5 ${resolvedUiScheme.actionButton}`}>Add Sensor</button>
                                 </form>
                             </div>
 
@@ -150,13 +154,13 @@ const AdminPanel = ({ config, isOpen, onClose }) => {
                             <div className="bg-white/5 p-4 rounded-lg border border-white/10">
                                 <h3 className="text-md font-bold mb-4 flex items-center gap-2 text-neon-green"><Layout size={16} /> Add Room</h3>
                                 <form onSubmit={handleAddRoom} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <input type="text" placeholder="ID (e.g., kitchen)" required value={newRoom.id} onChange={e => setNewRoom({ ...newRoom, id: e.target.value })} className="bg-black/50 border border-white/10 rounded p-2 focus:border-primary outline-none" />
-                                    <input type="text" placeholder="Name (e.g., Kitchen)" required value={newRoom.name} onChange={e => setNewRoom({ ...newRoom, name: e.target.value })} className="bg-black/50 border border-white/10 rounded p-2 focus:border-primary outline-none" />
-                                    <select value={newRoom.floor} onChange={e => setNewRoom({ ...newRoom, floor: e.target.value })} className="bg-black/50 border border-white/10 rounded p-2 focus:border-primary outline-none">
+                                    <input type="text" placeholder="ID (e.g., kitchen)" required value={newRoom.id} onChange={e => setNewRoom({ ...newRoom, id: e.target.value })} className={`bg-black/50 border border-white/10 rounded p-2 outline-none ${resolvedUiScheme.focusRing}`} />
+                                    <input type="text" placeholder="Name (e.g., Kitchen)" required value={newRoom.name} onChange={e => setNewRoom({ ...newRoom, name: e.target.value })} className={`bg-black/50 border border-white/10 rounded p-2 outline-none ${resolvedUiScheme.focusRing}`} />
+                                    <select value={newRoom.floor} onChange={e => setNewRoom({ ...newRoom, floor: e.target.value })} className={`bg-black/50 border border-white/10 rounded p-2 outline-none ${resolvedUiScheme.focusRing}`}>
                                         <option value="1">Level 1</option>
                                         <option value="2">Level 2</option>
                                     </select>
-                                    <input type="text" placeholder="Grid Area (e.g., span 2)" value={newRoom.gridArea} onChange={e => setNewRoom({ ...newRoom, gridArea: e.target.value })} className="bg-black/50 border border-white/10 rounded p-2 focus:border-primary outline-none" />
+                                    <input type="text" placeholder="Grid Area (e.g., span 2)" value={newRoom.gridArea} onChange={e => setNewRoom({ ...newRoom, gridArea: e.target.value })} className={`bg-black/50 border border-white/10 rounded p-2 outline-none ${resolvedUiScheme.focusRing}`} />
                                     <button type="submit" className="col-span-2 bg-success hover:bg-green-600 text-white py-2 rounded font-medium transition-colors">Add Room</button>
                                 </form>
                             </div>

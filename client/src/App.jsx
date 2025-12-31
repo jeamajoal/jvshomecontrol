@@ -8,42 +8,12 @@ import WeatherPanel from './components/WeatherPanel';
 import AboutPanel from './components/AboutPanel';
 import { Activity, Maximize, Minimize } from 'lucide-react';
 
+import { getUiScheme } from './uiScheme';
+
 // Connect to the same host that served the page, but on port 3000
 const API_HOST = `http://${window.location.hostname}:3000`;
 const socket = io(API_HOST);
 
-const UI_COLOR_SCHEMES = {
-  'electric-blue': {
-    tabActive: 'bg-neon-blue/10 text-neon-blue',
-    headerIcon: 'bg-neon-blue/20 border-neon-blue/50 text-neon-blue',
-    headerGlow: 'animate-glow-blue',
-  },
-  'classic-blue': {
-    tabActive: 'bg-primary/10 text-primary',
-    headerIcon: 'bg-primary/20 border-primary/50 text-primary',
-    headerGlow: 'animate-glow-blue',
-  },
-  emerald: {
-    tabActive: 'bg-success/10 text-success',
-    headerIcon: 'bg-success/20 border-success/50 text-success',
-    headerGlow: '',
-  },
-  amber: {
-    tabActive: 'bg-warning/10 text-warning',
-    headerIcon: 'bg-warning/20 border-warning/50 text-warning',
-    headerGlow: 'animate-glow-orange',
-  },
-  'neon-green': {
-    tabActive: 'bg-neon-green/10 text-neon-green',
-    headerIcon: 'bg-neon-green/20 border-neon-green/50 text-neon-green',
-    headerGlow: '',
-  },
-  'neon-red': {
-    tabActive: 'bg-neon-red/10 text-neon-red',
-    headerIcon: 'bg-neon-red/20 border-neon-red/50 text-neon-red',
-    headerGlow: 'animate-glow-red',
-  },
-};
 
 function App() {
   const [sensors, setSensors] = useState({});
@@ -55,7 +25,15 @@ function App() {
   const [page, setPage] = useState(0); // 0=Main, 1=Environment, 2=Forecast, 3=Actions, 4=Config, 5=About
 
   const colorSchemeId = String(config?.ui?.colorScheme || 'electric-blue');
-  const uiScheme = UI_COLOR_SCHEMES[colorSchemeId] || UI_COLOR_SCHEMES['electric-blue'];
+  const uiScheme = getUiScheme(colorSchemeId);
+
+  useEffect(() => {
+    try {
+      document.documentElement.style.setProperty('--accent-rgb', uiScheme.rgb);
+    } catch {
+      // ignore
+    }
+  }, [uiScheme.rgb]);
 
   const pageLabel = page === 0 ? 'Main' : page === 1 ? 'Environment' : page === 2 ? 'Forecast' : page === 3 ? 'Actions' : page === 4 ? 'Config' : 'About';
 
@@ -225,22 +203,22 @@ function App() {
             ) : null}
 
             {page === 0 ? (
-              <EnvironmentPanel config={config} statuses={sensors} connected={connected} />
+              <EnvironmentPanel config={config} statuses={sensors} connected={connected} uiScheme={uiScheme} />
             ) : null}
             {page === 1 ? (
-              <HeatmapPanel config={config} statuses={sensors} />
+              <HeatmapPanel config={config} statuses={sensors} uiScheme={uiScheme} />
             ) : null}
             {page === 2 ? (
-              <WeatherPanel />
+              <WeatherPanel uiScheme={uiScheme} />
             ) : null}
             {page === 3 ? (
-              <InteractionPanel config={config} statuses={sensors} connected={connected} />
+              <InteractionPanel config={config} statuses={sensors} connected={connected} uiScheme={uiScheme} />
             ) : null}
             {page === 4 ? (
-              <ConfigPanel config={config} statuses={sensors} connected={connected} />
+              <ConfigPanel config={config} statuses={sensors} connected={connected} uiScheme={uiScheme} />
             ) : null}
             {page === 5 ? (
-              <AboutPanel />
+              <AboutPanel uiScheme={uiScheme} />
             ) : null}
           </>
         )}
