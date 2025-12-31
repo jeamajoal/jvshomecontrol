@@ -2,6 +2,8 @@
 
 JVSHomeControl is a local-first home dashboard (React + Vite) backed by a Node/Express server with Socket.IO realtime updates.
 
+It’s built around the idea that **Hubitat is the local brain**, and this project is the fast, kiosk-friendly UI on top.
+
 At a high level:
 
 - The **server** polls Hubitat Maker API, normalizes devices into `rooms` + `sensors`, persists UI layout/mapping, and broadcasts updates.

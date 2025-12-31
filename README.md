@@ -1,8 +1,23 @@
 # JVSHomeControl
 
-Local home automation dashboard (client) + Node/Express backend (server) with realtime updates via Socket.IO.
+Local-first home automation dashboard (UI + backend) designed for a wall tablet / kiosk.
 
-Core idea: Hubitat is the local “brain”, and this panel provides a fast, kiosk-friendly UI on top of it — with optional integration paths for Google Home devices via a relay.
+## At a glance
+
+- **What is this?** A Hubitat-backed control panel: UI (React) + backend (Node/Express) with realtime updates.
+- **Who wrote it?** Jeremy Henderson (this repo is a personal/home project).
+- **Why?** To get a fast, always-on “single pane of glass” that stays usable even when cloud integrations are flaky.
+
+## What it does
+
+- Pulls devices from **Hubitat Maker API**, normalizes them into `rooms` + `sensors`, and keeps state refreshed.
+- Renders a kiosk-friendly dashboard:
+	- Home (environment summary)
+	- Climate (heatmap for temperature/humidity/illuminance)
+	- Weather (built-in Open‑Meteo)
+	- Activity + basic controls
+- Supports a common “bridge” pattern for cheap Google-linked devices:
+	- Google Assistant Relay (GAR) + a Hubitat virtual switch driver → control Google devices *through Hubitat* → controllable by this panel.
 
 ## Start here
 
@@ -43,6 +58,18 @@ npm start
 ```
 
 Browse to `http(s)://<host>:3000/`.
+
+## What you’ll need to build something similar
+
+- **Hubitat hub** (tested/targeted: C‑8) with **Maker API** enabled
+- A machine to run the server (mini PC, Raspberry Pi, home server)
+- A device to display the UI (wall tablet/kiosk) on your LAN
+- Optional (for Google-only devices): a **Google Assistant Relay** server + a **Hubitat virtual switch driver** that calls it
+
+If you’re trying to replicate the full “Google Home → Hubitat → panel” path, start with:
+
+- Components overview: [docs/02-Components.md](docs/02-Components.md)
+- GAR setup link: [docs/05-Google-Assistant-Relay.md](docs/05-Google-Assistant-Relay.md)
 
 ## Optional: local development (two processes)
 
