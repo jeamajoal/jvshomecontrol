@@ -3,6 +3,9 @@ import { DoorOpen, Footprints, Volume2, VolumeX } from 'lucide-react';
 
 import { socket } from '../socket';
 
+const SOUND_COOLDOWN_PER_SENSOR_MS = 12000;
+const SOUND_COOLDOWN_GLOBAL_MS = 1500;
+
 const asText = (value) => {
   if (value === null || value === undefined) return null;
   const s = String(value).trim();
@@ -11,10 +14,19 @@ const asText = (value) => {
 
 const getAlertSoundUrls = (config) => {
   const sounds = config?.ui?.alertSounds && typeof config.ui.alertSounds === 'object' ? config.ui.alertSounds : {};
+
+  const normalize = (s) => {
+    const v = asText(s);
+    if (!v) return null;
+    // Allow bare filenames like "dooropen.mp3" by treating them as "/sounds/<file>".
+    if (/^(https?:)?\//i.test(v)) return v;
+    return `/sounds/${v.replace(/^\.\/?/, '')}`;
+  };
+
   return {
-    motion: asText(sounds.motion),
-    doorOpen: asText(sounds.doorOpen),
-    doorClose: asText(sounds.doorClose),
+    motion: normalize(sounds.motion),
+    doorOpen: normalize(sounds.doorOpen),
+    doorClose: normalize(sounds.doorClose),
   };
 };
 
@@ -242,8 +254,8 @@ const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
       const sinceGlobal = nowMs - last.globalAt;
 
       // Rate limits: avoid spam if device bounces or status refresh repeats.
-      if (sinceKey < 5000) continue;
-      if (sinceGlobal < 600) continue;
+      if (sinceKey < SOUND_COOLDOWN_PER_SENSOR_MS) continue;
+      if (sinceGlobal < SOUND_COOLDOWN_GLOBAL_MS) continue;
 
       last.perSensor.set(perKey, nowMs);
       last.globalAt = nowMs;
@@ -300,8 +312,8 @@ const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
         const sinceKey = nowMs - lastAt;
         const sinceGlobal = nowMs - last.globalAt;
 
-        if (sinceKey < 3500) continue;
-        if (sinceGlobal < 400) continue;
+        if (sinceKey < SOUND_COOLDOWN_PER_SENSOR_MS) continue;
+        if (sinceGlobal < SOUND_COOLDOWN_GLOBAL_MS) continue;
 
         last.perSensor.set(perKey, nowMs);
         last.globalAt = nowMs;
