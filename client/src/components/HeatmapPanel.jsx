@@ -128,6 +128,26 @@ async function saveLayoutPatch(payload) {
 const HeatmapPanel = ({ config, statuses, uiScheme }) => {
   const { viewportRef, contentRef, scale } = useFitScale();
 
+  const [isMdUp, setIsMdUp] = useState(() => {
+    try {
+      return window.matchMedia('(min-width: 768px)').matches;
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      const mq = window.matchMedia('(min-width: 768px)');
+      const apply = () => setIsMdUp(!!mq.matches);
+      apply();
+      mq.addEventListener('change', apply);
+      return () => mq.removeEventListener('change', apply);
+    } catch {
+      return () => undefined;
+    }
+  }, []);
+
   const resolvedUiScheme = useMemo(
     () => uiScheme || getUiScheme(config?.ui?.colorScheme),
     [uiScheme, config?.ui?.colorScheme],
@@ -485,11 +505,30 @@ const HeatmapPanel = ({ config, statuses, uiScheme }) => {
         <div ref={contentRef} className="w-full">
           <div className="flex flex-col md:flex-row gap-3 md:gap-4">
             <aside className="glass-panel border border-white/10 p-3 md:p-4 w-full md:w-48 md:shrink-0">
-              <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
-                Heatmap
-              </div>
-              <div className="mt-1 text-base md:text-lg font-extrabold tracking-wide text-white">
-                {modeLabel}
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+                    Heatmap
+                  </div>
+                  <div className="mt-1 text-base md:text-lg font-extrabold tracking-wide text-white truncate">
+                    {modeLabel}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setEditMode((v) => !v)}
+                  className={`md:hidden rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${
+                    editMode
+                      ? `${resolvedUiScheme.selectedCard} ${resolvedUiScheme.selectedText}`
+                      : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    {editMode ? <X className="w-4 h-4" /> : <Edit3 className="w-4 h-4" />}
+                    {editMode ? 'Done' : 'Edit'}
+                  </span>
+                </button>
               </div>
               {saveError ? (
                 <div className="mt-2 text-[11px] text-neon-red break-words">
@@ -497,11 +536,11 @@ const HeatmapPanel = ({ config, statuses, uiScheme }) => {
                 </div>
               ) : null}
 
-              <div className="mt-3 grid grid-cols-1 gap-2">
+              <div className="mt-3 grid grid-cols-3 md:grid-cols-1 gap-2">
                 <button
                   type="button"
                   onClick={() => setMode('temperature')}
-                  className={`rounded-xl border px-3 py-3 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${
+                  className={`rounded-xl border px-3 py-2 md:py-3 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${
                     mode === 'temperature'
                       ? `${resolvedUiScheme.selectedCard} ${resolvedUiScheme.selectedText}`
                       : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
@@ -512,7 +551,7 @@ const HeatmapPanel = ({ config, statuses, uiScheme }) => {
                 <button
                   type="button"
                   onClick={() => setMode('humidity')}
-                  className={`rounded-xl border px-3 py-3 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${
+                  className={`rounded-xl border px-3 py-2 md:py-3 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${
                     mode === 'humidity'
                       ? `${resolvedUiScheme.selectedCard} ${resolvedUiScheme.selectedText}`
                       : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
@@ -523,7 +562,7 @@ const HeatmapPanel = ({ config, statuses, uiScheme }) => {
                 <button
                   type="button"
                   onClick={() => setMode('illuminance')}
-                  className={`rounded-xl border px-3 py-3 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${
+                  className={`rounded-xl border px-3 py-2 md:py-3 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${
                     mode === 'illuminance'
                       ? `${resolvedUiScheme.selectedCard} ${resolvedUiScheme.selectedText}`
                       : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
@@ -533,7 +572,7 @@ const HeatmapPanel = ({ config, statuses, uiScheme }) => {
                 </button>
               </div>
 
-              <div className="mt-3">
+              <div className="mt-3 hidden md:block">
                 <button
                   type="button"
                   onClick={() => setEditMode((v) => !v)}
@@ -559,13 +598,13 @@ const HeatmapPanel = ({ config, statuses, uiScheme }) => {
 
             <div className="flex-1 min-w-0">
               <div className="glass-panel border border-white/10 overflow-hidden">
-                <div className="relative w-full h-[82vh] bg-black/30 p-3 md:p-4">
+                <div className="relative w-full h-[76vh] md:h-[82vh] bg-black/30 p-2 md:p-4">
                   <ReactGridLayout
                     className="layout jvs-heatmap-grid"
                     cols={GRID_COLS}
-                    rowHeight={GRID_ROW_HEIGHT}
+                    rowHeight={isMdUp ? GRID_ROW_HEIGHT : 44}
                     maxRows={GRID_MAX_ROWS}
-                    margin={[12, 12]}
+                    margin={isMdUp ? [12, 12] : [8, 8]}
                     containerPadding={[0, 0]}
                     compactType={null}
                     preventCollision

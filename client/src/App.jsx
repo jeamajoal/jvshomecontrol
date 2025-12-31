@@ -78,6 +78,24 @@ function App() {
     return () => mq.removeEventListener('change', apply);
   }, []);
 
+  useEffect(() => {
+    if (!isMobile) return;
+    if (!autoFullscreenArmed) return;
+
+    const onFirstGesture = () => {
+      ensureFullscreen();
+    };
+
+    window.addEventListener('pointerdown', onFirstGesture, { passive: true, once: true });
+    return () => {
+      try {
+        window.removeEventListener('pointerdown', onFirstGesture);
+      } catch {
+        // ignore
+      }
+    };
+  }, [isMobile, autoFullscreenArmed]);
+
   const ensureFullscreen = () => {
     if (!isMobile) return;
     if (!autoFullscreenArmed) return;
@@ -118,72 +136,25 @@ function App() {
           </div>
         </div>
 
-        {/* Desktop tabs */}
-        <div className="hidden md:block absolute left-1/2 -translate-x-1/2 max-w-[70vw] md:max-w-none">
-          <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-black/20 p-1 overflow-x-auto whitespace-nowrap">
-            <button
-              type="button"
-              onClick={() => setPage(0)}
-              className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${
-                page === 0 ? uiScheme.tabActive : 'text-white/50 hover:bg-white/5 hover:text-white/70'
-              }`}
-            >
-              Home
-            </button>
-            <button
-              type="button"
-              onClick={() => setPage(1)}
-              className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${
-                page === 1 ? uiScheme.tabActive : 'text-white/50 hover:bg-white/5 hover:text-white/70'
-              }`}
-            >
-              Climate
-            </button>
-            <button
-              type="button"
-              onClick={() => setPage(2)}
-              className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${
-                page === 2 ? uiScheme.tabActive : 'text-white/50 hover:bg-white/5 hover:text-white/70'
-              }`}
-            >
-              Weather
-            </button>
-            <button
-              type="button"
-              onClick={() => setPage(3)}
-              className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${
-                page === 3 ? uiScheme.tabActive : 'text-white/50 hover:bg-white/5 hover:text-white/70'
-              }`}
-            >
-              Activity
-            </button>
-            <button
-              type="button"
-              onClick={() => setPage(4)}
-              className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${
-                page === 4 ? uiScheme.tabActive : 'text-white/50 hover:bg-white/5 hover:text-white/70'
-              }`}
-            >
-              Controls
-            </button>
-            <button
-              type="button"
-              onClick={() => setPage(5)}
-              className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${
-                page === 5 ? uiScheme.tabActive : 'text-white/50 hover:bg-white/5 hover:text-white/70'
-              }`}
-            >
-              Settings
-            </button>
-            <button
-              type="button"
-              onClick={() => setPage(6)}
-              className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${
-                page === 6 ? uiScheme.tabActive : 'text-white/50 hover:bg-white/5 hover:text-white/70'
-              }`}
-            >
-              Info
-            </button>
+        {/* Desktop menu (compact) */}
+        <div className="hidden md:block absolute left-1/2 -translate-x-1/2">
+          <div className="rounded-xl border border-white/10 bg-black/20 px-2 py-1">
+            <div className="flex items-center gap-2">
+              <div className={`h-2.5 w-2.5 rounded-full ${uiScheme.swatch} opacity-80`} />
+              <select
+                value={page}
+                onChange={(e) => setPage(Number(e.target.value))}
+                className={`rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/85 ${uiScheme.focusRing}`}
+              >
+                <option value={0}>Home</option>
+                <option value={1}>Climate</option>
+                <option value={2}>Weather</option>
+                <option value={3}>Activity</option>
+                <option value={4}>Controls</option>
+                <option value={5}>Settings</option>
+                <option value={6}>Info</option>
+              </select>
+            </div>
           </div>
         </div>
 
