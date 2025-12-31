@@ -59,60 +59,53 @@ ensure_repo() {
   mkdir -p "${APP_DIR}"
   chown -R "${APP_USER}:${APP_GROUP}" "${APP_DIR}"
 
-# Optional weather overrides
-# OPEN_METEO_LAT=...
-# OPEN_METEO_LON=...
-EOF
+  # Preserve user-specific files across updates (the update uses git clean).
+  local cfg cert_dir
+  cfg="${APP_DIR}/${CONFIG_FILE_REL}"
+  cert_dir="${APP_DIR}/${CERT_DIR_REL}"
 
-  chmod 600 "${ENV_FILE}"
-}
+  local cfg_backup cert_backup_dir
+  cfg_backup=""
+  cert_backup_dir=""
 
-ensure_service() {
-  # Always write the service file so installs can move directories safely.
-  # Back up any existing service file first.
-  if [[ -f "${SERVICE_FILE}" ]]; then
+  if [[ -f "${cfg}" ]]; then
     local stamp
     stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-    local backup
-    backup="${SERVICE_FILE}.${stamp}.bak"
-    log "Backing up existing service file to: ${backup}"
-    cp -a "${SERVICE_FILE}" "${backup}"
+    cfg_backup="/tmp/jvshomecontrol.config.${stamp}.json"
+    log "Backing up existing config.json to ${cfg_backup}…"
+    cp -a "${cfg}" "${cfg_backup}"
   fi
 
-  log "Writing systemd service: ${SERVICE_FILE}"
-  cat >"${SERVICE_FILE}" <<EOF
-[Unit]
-Description=JVS Home Control Server
-After=network-online.target
-Wants=network-online.target
+  if [[ -d "${cert_dir}" ]]; then
+    local stamp
+    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    cert_backup_dir="/tmp/jvshomecontrol.certs.${stamp}"
+    log "Backing up existing certs dir to ${cert_backup_dir}…"
+    mkdir -p "${cert_backup_dir}"
+    cp -a "${cert_dir}/." "${cert_backup_dir}/" || true
+  fi
 
-[Service]
-Type=simple
-User=${APP_USER}
-Group=${APP_GROUP}
-WorkingDirectory=${APP_DIR}/server
-EnvironmentFile=${ENV_FILE}
-ExecStart=/usr/bin/node ${APP_DIR}/server/server.js
-Restart=on-failure
-RestartSec=5
+  if [[ -d "${APP_DIR}/.git" ]]; then
+    log "Updating existing repo in ${APP_DIR}…"
+    sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git fetch origin main && git checkout -f main && git reset --hard origin/main && git clean -fd"
+  else
+    log "Cloning repo into ${APP_DIR}…"
+    sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git clone '${REPO_URL}' ."
+  fi
 
-# Hardening (safe defaults; remove if they break your environment)
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=${APP_DIR}/server/data
+  if [[ -n "${cfg_backup}" && -f "${cfg_backup}" ]]; then
+    log "Restoring config.json to ${cfg}…"
+    mkdir -p "$(dirname "${cfg}")"
+    cp -a "${cfg_backup}" "${cfg}"
+    chown "${APP_USER}:${APP_GROUP}" "${cfg}" || true
+  fi
 
-[Install]
-WantedBy=multi-user.target
-EOF
-
-  log "Reloading systemd…"
-  systemctl daemon-reload
-
-  log "Enabling and starting service…"
-  systemctl enable jvshomecontrol
-  systemctl restart jvshomecontrol
+  if [[ -n "${cert_backup_dir}" && -d "${cert_backup_dir}" ]]; then
+    log "Restoring certs dir to ${cert_dir}…"
+    mkdir -p "${cert_dir}"
+    cp -a "${cert_backup_dir}/." "${cert_dir}/" || true
+    chown -R "${APP_USER}:${APP_GROUP}" "${cert_dir}" || true
+  fi
 }
 
 main() {
