@@ -191,8 +191,22 @@ ensure_https_setup() {
   key_path="${cert_dir}/localhost.key"
 
   if [[ -f "${cert_path}" && -f "${key_path}" ]]; then
-    log "HTTPS cert already present: ${cert_path}"
-    return 0
+    if [[ ! -t 0 ]]; then
+      log "HTTPS cert already present: ${cert_path}"
+      return 0
+    fi
+
+    if ! confirm "HTTPS certificate already exists. Recreate it (overwrite)?"; then
+      log "Keeping existing HTTPS certificate: ${cert_path}"
+      return 0
+    fi
+
+    local stamp
+    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    log "Backing up existing cert/key…"
+    cp -a "${cert_path}" "${cert_path}.${stamp}.bak" || true
+    cp -a "${key_path}" "${key_path}.${stamp}.bak" || true
+    rm -f "${cert_path}" "${key_path}" || true
   fi
 
   if [[ ! -t 0 ]]; then

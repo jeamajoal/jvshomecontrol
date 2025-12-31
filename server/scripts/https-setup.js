@@ -94,8 +94,9 @@ async function main() {
   const certDir = path.dirname(paths.certPath);
   fs.mkdirSync(certDir, { recursive: true });
 
-  const suggestedHostname = String(process.env.HTTPS_CERT_HOSTNAME || '').trim() || os.hostname() || 'localhost';
-  const hostname = await promptText('Hostname (or IP) to include in the HTTPS certificate', suggestedHostname);
+  const envHostname = String(process.env.HTTPS_CERT_HOSTNAME || '').trim();
+  const suggestedHostname = envHostname || os.hostname() || 'localhost';
+  const hostname = envHostname || await promptText('Hostname (or IP) to include in the HTTPS certificate', suggestedHostname);
 
   const altNames = [
     { type: 2, value: 'localhost' },
