@@ -48,6 +48,15 @@ Set these environment variables before starting the server:
 
 If these are not set, the server will still start, but Hubitat polling/commands are disabled.
 
+**If you decide to use HTTPS:**
+
+- Make sure `HUBITAT_HOST` uses the correct scheme (`https://...` if your Hubitat is HTTPS).
+- After changing environment variables, **restart the service** (see examples below).
+
+If Hubitat uses a self-signed cert and you set `HUBITAT_HOST=https://...`, also set:
+
+- `HUBITAT_TLS_INSECURE=1`
+
 ### Dashboard device allowlists
 
 For safety, the UI only renders controls for devices in explicit allowlists, and the server only accepts commands for devices allowed by either list.
@@ -160,6 +169,12 @@ HUBITAT_HOST=http://192.168.1.50
 HUBITAT_APP_ID=30
 HUBITAT_ACCESS_TOKEN=REPLACE_ME
 
+# Optional: run this server over HTTPS (will use an existing cert automatically; will offer to create one if missing)
+# HTTPS=1
+
+# Optional: if HUBITAT_HOST is https:// and Hubitat uses a self-signed cert
+# HUBITAT_TLS_INSECURE=1
+
 # Optional weather overrides
 # OPEN_METEO_LAT=...
 # OPEN_METEO_LON=...
@@ -208,6 +223,9 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable --now jvshomecontrol
 sudo systemctl status jvshomecontrol --no-pager
+
+# If you change env vars later (ex: switch http -> https), restart the service:
+# sudo systemctl restart jvshomecontrol
 ```
 
 Logs:
