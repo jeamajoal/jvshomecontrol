@@ -28,6 +28,30 @@ async function saveColorScheme(colorScheme) {
   return res.json().catch(() => ({}));
 }
 
+async function fetchSoundFiles() {
+  const res = await fetch(`${API_HOST}/api/sounds`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Sounds fetch failed (${res.status})`);
+  }
+  const data = await res.json().catch(() => ({}));
+  const files = Array.isArray(data?.files) ? data.files : [];
+  return files.map((v) => String(v)).filter(Boolean);
+}
+
+async function saveAlertSounds(alertSounds) {
+  const res = await fetch(`${API_HOST}/api/ui/alert-sounds`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ alertSounds: alertSounds || {} }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Alert sounds save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 const UI_COLOR_SCHEMES = {
   'electric-blue': {
     actionButton: 'text-neon-blue border-neon-blue/30 bg-neon-blue/10',
@@ -135,12 +159,24 @@ const ConfigPanel = ({ config, statuses, connected }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
+  const [soundFiles, setSoundFiles] = useState([]);
+  const [soundFilesError, setSoundFilesError] = useState(null);
+
   const [eventsOpen, setEventsOpen] = useState(false);
   const [recentEvents, setRecentEvents] = useState([]);
   const [eventsError, setEventsError] = useState(null);
 
   const colorSchemeId = String(config?.ui?.colorScheme || 'electric-blue');
   const scheme = UI_COLOR_SCHEMES[colorSchemeId] || UI_COLOR_SCHEMES['electric-blue'];
+
+  const alertSounds = useMemo(() => {
+    const raw = (config?.ui?.alertSounds && typeof config.ui.alertSounds === 'object') ? config.ui.alertSounds : {};
+    return {
+      motion: typeof raw.motion === 'string' ? raw.motion : '',
+      doorOpen: typeof raw.doorOpen === 'string' ? raw.doorOpen : '',
+      doorClose: typeof raw.doorClose === 'string' ? raw.doorClose : '',
+    };
+  }, [config?.ui?.alertSounds]);
 
   const [newRoomName, setNewRoomName] = useState('');
   const [labelDrafts, setLabelDrafts] = useState(() => ({}));
@@ -253,6 +289,23 @@ const ConfigPanel = ({ config, statuses, connected }) => {
       socket.off('events_ingested', onIngest);
     };
   }, [eventsOpen]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        setSoundFilesError(null);
+        const files = await fetchSoundFiles();
+        if (!cancelled) setSoundFiles(files);
+      } catch (e) {
+        if (!cancelled) setSoundFilesError(e?.message || String(e));
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const setAllowed = async (deviceId, list, nextAllowed) => {
     setError(null);
@@ -419,6 +472,73 @@ const ConfigPanel = ({ config, statuses, connected }) => {
                 </div>
               ))}
             </div>
+          </div>
+
+          <div className="mt-4 glass-panel border border-white/10 p-4 md:p-5">
+            <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+              Sounds
+            </div>
+            <div className="mt-1 text-xl md:text-2xl font-extrabold tracking-tight text-white">
+              Activity Alerts
+            </div>
+            <div className="mt-1 text-xs text-white/45">
+              Pick which server-hosted sound file plays for each event.
+            </div>
+
+            {soundFilesError ? (
+              <div className="mt-2 text-[11px] text-neon-red break-words">Sounds unavailable: {soundFilesError}</div>
+            ) : null}
+
+            {error ? (
+              <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {error}</div>
+            ) : null}
+
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+              {[
+                { key: 'motion', label: 'Motion' },
+                { key: 'doorOpen', label: 'Door Open' },
+                { key: 'doorClose', label: 'Door Close' },
+              ].map(({ key, label }) => (
+                <label key={key} className="block">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">{label}</div>
+                  <select
+                    value={alertSounds[key] || ''}
+                    disabled={!connected || busy}
+                    onChange={async (e) => {
+                      const value = String(e.target.value || '');
+                      const next = {
+                        ...alertSounds,
+                        [key]: value,
+                      };
+
+                      setError(null);
+                      setBusy(true);
+                      try {
+                        await saveAlertSounds({
+                          motion: next.motion || null,
+                          doorOpen: next.doorOpen || null,
+                          doorClose: next.doorClose || null,
+                        });
+                      } catch (err) {
+                        setError(err?.message || String(err));
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                  >
+                    <option value="">Built-in</option>
+                    {soundFiles.map((f) => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+
+            {!connected ? (
+              <div className="mt-3 text-xs text-white/45">Server offline: editing disabled.</div>
+            ) : null}
           </div>
 
           <div className="mt-4 glass-panel border border-white/10 p-4 md:p-5">

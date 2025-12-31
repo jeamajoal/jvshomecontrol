@@ -14,6 +14,7 @@ const PORT = 3000;
 const DATA_DIR = path.join(__dirname, 'data');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+const SOUNDS_DIR = path.join(DATA_DIR, 'sounds');
 const MAX_BACKUP_FILES = (() => {
     const raw = process.env.BACKUP_MAX_FILES;
     const parsed = raw ? Number(raw) : 200;
@@ -76,6 +77,10 @@ app.use(bodyParser.json());
 if (HAS_BUILT_CLIENT) {
     app.use(express.static(CLIENT_DIST_DIR));
 }
+
+// Serve custom alert sounds from the server-managed sounds directory.
+// Files placed in server/data/sounds will be reachable at /sounds/<file>.
+app.use('/sounds', express.static(SOUNDS_DIR));
 
 // State
 let persistedConfig = { weather: settings.weather, rooms: [], sensors: [] }; // Stored in server/data/config.json
@@ -279,6 +284,7 @@ function isUiDeviceAllowedForControl(deviceId) {
 function ensureDataDirs() {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
     if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR);
+    if (!fs.existsSync(SOUNDS_DIR)) fs.mkdirSync(SOUNDS_DIR);
 }
 
 function stableStringify(value) {
@@ -386,12 +392,24 @@ function normalizePersistedConfig(raw) {
     const rawScheme = String(uiRaw.colorScheme || '').trim();
     const colorScheme = UI_COLOR_SCHEMES.includes(rawScheme) ? rawScheme : 'electric-blue';
 
+    const soundsRaw = (uiRaw.alertSounds && typeof uiRaw.alertSounds === 'object') ? uiRaw.alertSounds : {};
+    const asFile = (v) => {
+        const s = String(v ?? '').trim();
+        return s.length ? s : null;
+    };
+
     out.ui = {
         // Keep legacy key for older clients (harmless), but prefer the new split keys.
         allowedDeviceIds: legacyAllowed.map((v) => String(v || '').trim()).filter(Boolean),
         ctrlAllowedDeviceIds: ctrlAllowed.map((v) => String(v || '').trim()).filter(Boolean),
         mainAllowedDeviceIds: mainAllowed.map((v) => String(v || '').trim()).filter(Boolean),
         colorScheme,
+        // Back-compat: always include alertSounds, even if unset.
+        alertSounds: {
+            motion: asFile(soundsRaw.motion),
+            doorOpen: asFile(soundsRaw.doorOpen),
+            doorClose: asFile(soundsRaw.doorClose),
+        },
     };
 
     return out;
@@ -415,7 +433,13 @@ function loadPersistedConfig() {
     try {
         if (fs.existsSync(CONFIG_FILE)) {
             const raw = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+            const hadAlertSounds = Boolean(raw?.ui && typeof raw.ui === 'object' && raw.ui.alertSounds && typeof raw.ui.alertSounds === 'object');
             persistedConfig = normalizePersistedConfig(raw);
+            // If we added new fields for back-compat, write them back once.
+            if (!hadAlertSounds) {
+                lastPersistedSerialized = stableStringify(raw);
+                persistConfigToDiskIfChanged('migrate-ui-alert-sounds', { force: true });
+            }
         } else {
             persistedConfig = normalizePersistedConfig({ weather: settings.weather, rooms: [], sensors: [] });
         }
@@ -929,6 +953,7 @@ async function syncHubitatData() {
                 // Back-compat
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
+                alertSounds: persistedConfig?.ui?.alertSounds,
             },
         };
         sensorStatuses = newStatuses;
@@ -1046,6 +1071,22 @@ app.get('/api/config', (req, res) => {
     });
 });
 app.get('/api/status', (req, res) => res.json(sensorStatuses));
+
+app.get('/api/sounds', (req, res) => {
+    try {
+        ensureDataDirs();
+        const exts = new Set(['.mp3', '.wav', '.ogg']);
+        const files = fs.readdirSync(SOUNDS_DIR, { withFileTypes: true })
+            .filter((d) => d.isFile())
+            .map((d) => d.name)
+            .filter((name) => exts.has(path.extname(name).toLowerCase()))
+            .sort((a, b) => a.localeCompare(b));
+
+        res.json({ ok: true, files });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err?.message || String(err) });
+    }
+});
 
 function slugifyId(input) {
     return String(input || '')
@@ -1369,6 +1410,70 @@ app.put('/api/ui/color-scheme', (req, res) => {
         ui: {
             ...(config?.ui || {}),
             colorScheme: persistedConfig?.ui?.colorScheme,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update UI alert sounds from the kiosk.
+// Expected payload: { alertSounds: { motion, doorOpen, doorClose } }
+app.put('/api/ui/alert-sounds', (req, res) => {
+    const incoming = req.body?.alertSounds;
+    if (!incoming || typeof incoming !== 'object') {
+        return res.status(400).json({ error: 'Missing alertSounds' });
+    }
+
+    const clean = (v) => {
+        if (v === null || v === undefined) return null;
+        const s = String(v).trim();
+        return s.length ? s : null;
+    };
+
+    // Validate selections against files actually present on the server.
+    ensureDataDirs();
+    const exts = new Set(['.mp3', '.wav', '.ogg']);
+    const available = new Set(
+        fs.readdirSync(SOUNDS_DIR, { withFileTypes: true })
+            .filter((d) => d.isFile())
+            .map((d) => d.name)
+            .filter((name) => exts.has(path.extname(name).toLowerCase()))
+    );
+
+    const next = {
+        motion: clean(incoming.motion),
+        doorOpen: clean(incoming.doorOpen),
+        doorClose: clean(incoming.doorClose),
+    };
+
+    for (const [k, v] of Object.entries(next)) {
+        if (!v) continue;
+        if (!available.has(v)) {
+            return res.status(400).json({
+                error: 'Unknown sound file',
+                field: k,
+                value: v,
+                available: Array.from(available).sort((a, b) => a.localeCompare(b)),
+            });
+        }
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            alertSounds: next,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-alert-sounds');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            alertSounds: persistedConfig?.ui?.alertSounds,
         },
     };
     io.emit('config_update', config);

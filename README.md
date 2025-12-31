@@ -138,9 +138,9 @@ The Activity page can play custom sounds for motion/door events. Add URLs under 
 {
   "ui": {
     "alertSounds": {
-      "motion": "/sounds/footsteps.mp3",
-      "doorOpen": "/sounds/door-open.mp3",
-      "doorClose": "/sounds/door-close.mp3"
+      "motion": "sneakywalking.mp3",
+      "doorOpen": "dooropen.mp3",
+      "doorClose": "doorclose.mp3"
     }
   }
 }
@@ -148,9 +148,8 @@ The Activity page can play custom sounds for motion/door events. Add URLs under 
 
 Notes:
 
-- Recommended: put files in `client/public/sounds/` (they will be served as `/sounds/<file>` after you build the client).
-- You can also set values to a bare filename like `dooropen.mp3` and it will resolve to `/sounds/dooropen.mp3`.
-- URLs must be reachable by the browser (same-origin recommended) and permit fetch/CORS if hosted elsewhere.
+- Put files in `server/data/sounds/` (they will be served as `/sounds/<file>` by the backend).
+- Values are selected by filename; the UI resolves them to `/sounds/<file>`.
 - Sounds load when you enable alerts (tap the volume icon). If loading fails, the app falls back to built-in tones.
 
 3) Create an environment file for secrets/settings:
