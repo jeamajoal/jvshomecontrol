@@ -251,7 +251,7 @@ const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
         </button>
       </div>
 
-      <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+      <div className="mt-4 max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
         {rooms.length ? (
           rooms.map((r) => {
             const motionActive = r.devices.filter((d) => d.motion === 'active').length;
@@ -268,7 +268,7 @@ const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
                 aria-label={String(r.room?.name || r.room?.id)}
                 title={String(r.room?.name || r.room?.id)}
               >
-                <div className="text-xs md:text-sm font-extrabold tracking-wide text-white/80 truncate">
+                <div className="text-base md:text-lg font-extrabold tracking-wide text-white/85 truncate text-center">
                   {String(r.room?.name || r.room?.id)}
                 </div>
                 <div className="w-full flex items-center justify-center gap-6 py-4">
