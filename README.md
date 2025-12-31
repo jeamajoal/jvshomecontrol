@@ -22,6 +22,10 @@ Core idea: Hubitat is the local “brain”, and this panel provides a fast, kio
 - `server/` — Express + Socket.IO backend
 - `server/data/config.json` — persisted, installation-specific config (rooms/sensors mapping + layout + UI settings)
 
+## Built-in Weather
+
+Weather is built in via **Open‑Meteo** (fetched/cached by the backend and shown in the Weather page).
+
 ## Quick start (standard install)
 
 This project is typically run as **one service** on **port 3000** (backend + built frontend served together).

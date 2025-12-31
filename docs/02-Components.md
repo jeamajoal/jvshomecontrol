@@ -53,3 +53,12 @@ This project sits on top of Hubitat as a UI:
 - Displays metrics (temperature/humidity/illuminance) in the Climate heatmap
 - Allows safe device control via allowlists
 - Provides a mobile-friendly kiosk UI
+
+## Built-in Weather (Open‑Meteo)
+
+The server includes a built-in Weather integration using **Open‑Meteo**.
+
+- The backend fetches and caches weather data.
+- The UI consumes it via the backend endpoint (so clients don’t need direct internet API calls).
+
+See: `GET /api/weather` in the server and the Weather panel in the UI.

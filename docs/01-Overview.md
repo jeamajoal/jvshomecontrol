@@ -5,6 +5,7 @@ JVSHomeControl is a local-first home dashboard (React + Vite) backed by a Node/E
 At a high level:
 
 - The **server** polls Hubitat Maker API, normalizes devices into `rooms` + `sensors`, persists UI layout/mapping, and broadcasts updates.
+- The **server** also provides built-in **Weather** via Open‑Meteo (cached by the backend and exposed to the UI).
 - The **client** renders pages like Home (Environment), Climate (heatmap), Weather, Activity, and Controls.
 
 ## What this project is good for
