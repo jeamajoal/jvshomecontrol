@@ -36,6 +36,18 @@ async function promptYesNo(question, defaultYes = true) {
   }
 }
 
+async function promptText(question, defaultValue = '') {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const suffix = defaultValue ? ` (default: ${defaultValue}) ` : ' ';
+  try {
+    const answer = await new Promise((resolve) => rl.question(`${question}${suffix}`, resolve));
+    const raw = String(answer || '').trim();
+    return raw || String(defaultValue || '').trim();
+  } finally {
+    rl.close();
+  }
+}
+
 function printTrustWarning({ certPath }) {
   console.log('');
   console.log('HTTPS: self-signed certificate created.');
@@ -82,12 +94,19 @@ async function main() {
   const certDir = path.dirname(paths.certPath);
   fs.mkdirSync(certDir, { recursive: true });
 
-  const hostname = String(process.env.HTTPS_CERT_HOSTNAME || '').trim() || os.hostname() || 'localhost';
+  const suggestedHostname = String(process.env.HTTPS_CERT_HOSTNAME || '').trim() || os.hostname() || 'localhost';
+  const hostname = await promptText('Hostname (or IP) to include in the HTTPS certificate', suggestedHostname);
+
   const altNames = [
     { type: 2, value: 'localhost' },
     { type: 2, value: hostname },
     { type: 7, ip: '127.0.0.1' },
   ];
+
+  // If the user entered an IPv4 literal, also add it as an IP SAN.
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)) {
+    altNames.push({ type: 7, ip: hostname });
+  }
 
   const attrs = [{ name: 'commonName', value: hostname }];
   const pems = selfsigned.generate(attrs, {

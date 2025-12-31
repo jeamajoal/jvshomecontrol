@@ -206,8 +206,14 @@ ensure_https_setup() {
     return 0
   fi
 
-  log "Creating self-signed HTTPS certificate in ${cert_dir}…"
-  sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}/server' && HTTPS=1 node scripts/https-setup.js"
+  local default_host
+  default_host="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo localhost)"
+  local cert_host
+  read -r -p "Hostname (or IP) to include in the HTTPS certificate [${default_host}]: " cert_host
+  cert_host="${cert_host:-${default_host}}"
+
+  log "Creating self-signed HTTPS certificate in ${cert_dir} for '${cert_host}'…"
+  sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}/server' && HTTPS=1 HTTPS_CERT_HOSTNAME='${cert_host}' node scripts/https-setup.js"
 }
 
 ensure_env_file() {
