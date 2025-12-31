@@ -1,43 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 const API_HOST = `http://${window.location.hostname}:3000`;
-
-const useFitScale = () => {
-  const viewportRef = useRef(null);
-  const contentRef = useRef(null);
-  const [scale, setScale] = useState(1);
-
-  useEffect(() => {
-    const viewportEl = viewportRef.current;
-    const contentEl = contentRef.current;
-    if (!viewportEl || !contentEl) return;
-
-    const compute = () => {
-      const SAFE_GUTTER_PX = 12;
-      const vw = Math.max((viewportEl.clientWidth || 1) - SAFE_GUTTER_PX, 1);
-      const vh = Math.max((viewportEl.clientHeight || 1) - SAFE_GUTTER_PX, 1);
-      const cw = Math.max(contentEl.scrollWidth, contentEl.clientWidth, 1);
-      const ch = Math.max(contentEl.scrollHeight, contentEl.clientHeight, 1);
-
-      const raw = Math.min(vw / cw, vh / ch) * 0.99;
-      const next = Math.min(raw, 1.15);
-      setScale((prev) => (Math.abs(prev - next) < 0.01 ? prev : next));
-    };
-
-    compute();
-    const ro = new ResizeObserver(compute);
-    ro.observe(viewportEl);
-    ro.observe(contentEl);
-    window.addEventListener('resize', compute);
-
-    return () => {
-      window.removeEventListener('resize', compute);
-      ro.disconnect();
-    };
-  }, []);
-
-  return { viewportRef, contentRef, scale };
-};
 
 async function saveAllowlists(payload) {
   const res = await fetch(`${API_HOST}/api/ui/allowed-device-ids`, {
@@ -114,8 +77,6 @@ async function deleteLabel(labelId) {
 }
 
 const ConfigPanel = ({ config, statuses, connected }) => {
-  const { viewportRef, contentRef, scale } = useFitScale();
-
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -214,16 +175,9 @@ const ConfigPanel = ({ config, statuses, connected }) => {
   };
 
   return (
-    <div ref={viewportRef} className="w-full h-full overflow-hidden p-2 md:p-3">
-      <div
-        className="w-full h-full"
-        style={{
-          transform: `scale(${scale})`,
-          transformOrigin: 'top left',
-        }}
-      >
-        <div ref={contentRef} className="w-full">
-          <div className="glass-panel border border-white/10 p-4 md:p-5">
+    <div className="w-full h-full overflow-auto p-2 md:p-3">
+      <div className="w-full">
+        <div className="glass-panel border border-white/10 p-4 md:p-5">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
               Config
             </div>
@@ -474,7 +428,6 @@ const ConfigPanel = ({ config, statuses, connected }) => {
               )}
             </div>
           </div>
-        </div>
       </div>
     </div>
   );

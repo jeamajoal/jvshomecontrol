@@ -75,6 +75,8 @@ let config = { rooms: [], sensors: [], ui: { allowedDeviceIds: [] } }; // The me
 let sensorStatuses = {};
 
 let lastConfigWriteAtMs = 0;
+let pendingPersistTimeout = null;
+let pendingPersistLabel = null;
 
 // Cached last Hubitat payload for debugging/inspection
 let lastHubitatDevices = [];
@@ -415,17 +417,38 @@ function loadPersistedConfig() {
     }
 }
 
-function persistConfigToDiskIfChanged(label) {
+function schedulePersist(label) {
+    pendingPersistLabel = label || pendingPersistLabel || 'write';
+    if (pendingPersistTimeout) return;
+
+    const now = Date.now();
+    const elapsed = now - lastConfigWriteAtMs;
+    const delayMs = elapsed >= 500 ? 0 : (500 - elapsed) + 25;
+
+    pendingPersistTimeout = setTimeout(() => {
+        pendingPersistTimeout = null;
+        const lbl = pendingPersistLabel || 'write';
+        pendingPersistLabel = null;
+        // Force a write attempt now that we're past the throttle window.
+        persistConfigToDiskIfChanged(lbl, { force: true });
+    }, delayMs);
+}
+
+function persistConfigToDiskIfChanged(label, { force = false } = {}) {
     try {
         ensureDataDirs();
         const nextSerialized = stableStringify(persistedConfig);
         if (nextSerialized === lastPersistedSerialized) return false;
 
-        // Prevent a tight write-loop if something is hammering /api/config
+        // Prevent a tight write-loop if something is hammering config updates,
+        // but do NOT drop changes: schedule a trailing write instead.
         const now = Date.now();
-        if (now - lastConfigWriteAtMs < 500) return false;
-        lastConfigWriteAtMs = now;
+        if (!force && now - lastConfigWriteAtMs < 500) {
+            schedulePersist(label);
+            return false;
+        }
 
+        lastConfigWriteAtMs = now;
         backupFileSync(CONFIG_FILE, label || 'write');
         fs.writeFileSync(CONFIG_FILE, nextSerialized);
         lastPersistedSerialized = nextSerialized;
@@ -587,6 +610,40 @@ async function syncHubitatData() {
         const existingSensors = Array.isArray(persistedConfig?.sensors) ? persistedConfig.sensors : [];
 
         const norm = (s) => String(s || '').trim().toLowerCase();
+
+        const discoveredRoomNames = new Set();
+        const discoveredRoomIds = new Set();
+        for (const dev of devices) {
+            const roomName = dev?.room || 'Unassigned';
+            const roomNameNorm = norm(roomName);
+            if (!roomNameNorm) continue;
+            discoveredRoomNames.add(roomNameNorm);
+            discoveredRoomIds.add(String(roomName).toLowerCase().replace(/[^a-z0-9]/g, '_'));
+        }
+
+        // Migration: rooms that exist only in config.json (not discovered from Hubitat)
+        // are considered "manual" so they appear in the Config UI for optional removal.
+        // This helps older setups where rooms were added by editing config.json.
+        let migratedAnyRooms = false;
+        for (const r of existingRooms) {
+            if (!r || typeof r !== 'object') continue;
+            if (r.manual === true) continue;
+            const id = String(r.id || '').trim();
+            const nameNorm = norm(r.name || r.id);
+            const isDiscovered = (id && discoveredRoomIds.has(id)) || (nameNorm && discoveredRoomNames.has(nameNorm));
+            if (!isDiscovered) {
+                r.manual = true;
+                migratedAnyRooms = true;
+            }
+        }
+        if (migratedAnyRooms) {
+            persistedConfig = normalizePersistedConfig({
+                ...persistedConfig,
+                rooms: existingRooms,
+            });
+            persistConfigToDiskIfChanged('migrate-rooms-manual');
+        }
+
         const roomByName = new Map(existingRooms.map(r => [norm(r?.name), r]));
         const roomById = new Map(existingRooms.map(r => [String(r?.id), r]));
         const sensorById = new Map(existingSensors.map(s => [String(s?.id), s]));
