@@ -4,6 +4,7 @@ import HeatmapPanel from './components/HeatmapPanel';
 import InteractionPanel from './components/InteractionPanel';
 import ConfigPanel from './components/ConfigPanel';
 import WeatherPanel from './components/WeatherPanel';
+import ActivityPanel from './components/ActivityPanel';
 import AboutPanel from './components/AboutPanel';
 import { Activity, Maximize, Minimize } from 'lucide-react';
 
@@ -20,7 +21,7 @@ function App() {
   const [autoFullscreenArmed, setAutoFullscreenArmed] = useState(true);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [loadError, setLoadError] = useState(null);
-  const [page, setPage] = useState(0); // 0=Main, 1=MAP, 2=Forecast, 3=Interact, 4=Config, 5=About
+  const [page, setPage] = useState(0); // 0=Main, 1=MAP, 2=Forecast, 3=Activity, 4=Interact, 5=Config, 6=About
 
   const colorSchemeId = String(config?.ui?.colorScheme || 'electric-blue');
   const uiScheme = getUiScheme(colorSchemeId);
@@ -33,7 +34,7 @@ function App() {
     }
   }, [uiScheme.rgb]);
 
-  const pageLabel = page === 0 ? 'Main' : page === 1 ? 'MAP' : page === 2 ? 'Forecast' : page === 3 ? 'Interact' : page === 4 ? 'Config' : 'About';
+  const pageLabel = page === 0 ? 'Main' : page === 1 ? 'MAP' : page === 2 ? 'Forecast' : page === 3 ? 'Activity' : page === 4 ? 'Interact' : page === 5 ? 'Config' : 'About';
 
   useEffect(() => {
     // Initial fetch
@@ -154,7 +155,7 @@ function App() {
                 page === 3 ? uiScheme.tabActive : 'text-white/50 hover:bg-white/5 hover:text-white/70'
               }`}
             >
-              Interact
+              Activity
             </button>
             <button
               type="button"
@@ -163,13 +164,22 @@ function App() {
                 page === 4 ? uiScheme.tabActive : 'text-white/50 hover:bg-white/5 hover:text-white/70'
               }`}
             >
-              Config
+              Interact
             </button>
             <button
               type="button"
               onClick={() => setPage(5)}
               className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${
                 page === 5 ? uiScheme.tabActive : 'text-white/50 hover:bg-white/5 hover:text-white/70'
+              }`}
+            >
+              Config
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage(6)}
+              className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${
+                page === 6 ? uiScheme.tabActive : 'text-white/50 hover:bg-white/5 hover:text-white/70'
               }`}
             >
               About
@@ -214,9 +224,10 @@ function App() {
             <option value={0}>Main</option>
             <option value={1}>MAP</option>
             <option value={2}>Forecast</option>
-            <option value={3}>Interact</option>
-            <option value={4}>Config</option>
-            <option value={5}>About</option>
+            <option value={3}>Activity</option>
+            <option value={4}>Interact</option>
+            <option value={5}>Config</option>
+            <option value={6}>About</option>
           </select>
 
           {!isFullscreen ? (
@@ -273,12 +284,15 @@ function App() {
               <WeatherPanel uiScheme={uiScheme} />
             ) : null}
             {page === 3 ? (
-              <InteractionPanel config={config} statuses={sensors} connected={connected} uiScheme={uiScheme} />
+              <ActivityPanel config={config} statuses={sensors} connected={connected} uiScheme={uiScheme} />
             ) : null}
             {page === 4 ? (
-              <ConfigPanel config={config} statuses={sensors} connected={connected} uiScheme={uiScheme} />
+              <InteractionPanel config={config} statuses={sensors} connected={connected} uiScheme={uiScheme} />
             ) : null}
             {page === 5 ? (
+              <ConfigPanel config={config} statuses={sensors} connected={connected} uiScheme={uiScheme} />
+            ) : null}
+            {page === 6 ? (
               <AboutPanel uiScheme={uiScheme} />
             ) : null}
           </>
