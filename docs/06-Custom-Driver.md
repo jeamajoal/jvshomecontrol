@@ -29,3 +29,11 @@ Once the Google-linked device is represented as a Hubitat device, it becomes con
 4. Create a device: **Devices** → **Add Device** → **Virtual**.
 5. Set the device **Type** to **Virtual Web Request Switch**.
 6. Configure the device preferences (URLs/methods/headers/body) for your ON/OFF actions.
+
+## Optional: use the built-in import URL
+
+The driver metadata includes an `importUrl`, which can be used with Hubitat’s driver import flow (when available):
+
+- https://raw.githubusercontent.com/jeamajoal/jvshomecontrol/main/hubitat/driver/virtual-web-request-switch.groovy
+
+After install, confirm the device responds by toggling the switch in Hubitat and watching for the expected web request on your GAR server (or other endpoint).

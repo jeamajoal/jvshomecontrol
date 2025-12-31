@@ -17,7 +17,12 @@ Treat your Maker API `access_token` as a secret.
 This project can run the dashboard/API over **HTTPS** using a local certificate.
 
 - If a cert/key exist, the server will automatically use them.
-- If they do not exist, starting the server will offer to generate a **self-signed** cert.
+- If they do not exist, the server will run over HTTP and log a warning.
+
+To generate a self-signed certificate:
+
+- Run `cd server && node scripts/https-setup.js` in an interactive terminal
+- Or start via `npm start` (the server package runs the HTTPS helper as a `prestart` step)
 
 ### Trust the cert (important)
 

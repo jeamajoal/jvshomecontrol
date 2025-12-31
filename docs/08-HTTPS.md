@@ -5,7 +5,7 @@ The server can run as HTTP or HTTPS.
 ## Automatic behavior
 
 - If a certificate exists, the server will automatically use HTTPS.
-- If not, starting the server will offer to create a self-signed certificate.
+- If a certificate does not exist, the server will run as HTTP (even if HTTPS is requested) and log a warning.
 
 Note: If you start the server as a systemd service, it runs non-interactively, so you will not see an interactive prompt. In that case, run the helper once in a terminal to generate a cert:
 
@@ -13,6 +13,8 @@ Note: If you start the server as a systemd service, it runs non-interactively, s
 cd server
 node scripts/https-setup.js
 ```
+
+If you start the server via `npm start`, the server package runs the HTTPS helper as a `prestart` step. That helper will prompt only in an interactive terminal.
 
 Default certificate paths:
 

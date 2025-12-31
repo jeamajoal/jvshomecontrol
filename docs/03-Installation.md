@@ -22,7 +22,7 @@ Browse to `http(s)://<host>:3000/`.
 
 Prereqs:
 
-- Node.js 18+ (server uses built-in `fetch`)
+- Node.js 20+ (recommended: latest LTS; the Debian installer targets Node 22)
 
 Terminal 1 (server):
 
