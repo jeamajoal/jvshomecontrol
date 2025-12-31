@@ -51,7 +51,7 @@ install_prereqs() {
 
 ensure_user() {
   if id -u "${APP_USER}" >/dev/null 2>&1; then
-    log "User ${APP_USER} already exists."
+    log "User ${APP_USER} already exists; skipping user creation."
     return 0
   fi
 
@@ -87,7 +87,7 @@ install_and_build() {
 
 ensure_env_file() {
   if [[ -f "${ENV_FILE}" ]]; then
-    log "Env file exists: ${ENV_FILE}"
+    log "Env file exists: ${ENV_FILE} (will not overwrite)"
     return 0
   fi
 
@@ -118,11 +118,19 @@ EOF
 }
 
 ensure_service() {
+  # Always write the service file so installs can move directories safely.
+  # Back up any existing service file first.
   if [[ -f "${SERVICE_FILE}" ]]; then
-    log "Service file exists: ${SERVICE_FILE}"
-  else
-    log "Creating systemd service: ${SERVICE_FILE}"
-    cat >"${SERVICE_FILE}" <<EOF
+    local stamp
+    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    local backup
+    backup="${SERVICE_FILE}.${stamp}.bak"
+    log "Backing up existing service file to: ${backup}"
+    cp -a "${SERVICE_FILE}" "${backup}"
+  fi
+
+  log "Writing systemd service: ${SERVICE_FILE}"
+  cat >"${SERVICE_FILE}" <<EOF
 [Unit]
 Description=JVS Home Control Server
 After=network-online.target
@@ -148,13 +156,13 @@ ReadWritePaths=${APP_DIR}/server/data
 [Install]
 WantedBy=multi-user.target
 EOF
-  fi
 
   log "Reloading systemd…"
   systemctl daemon-reload
 
   log "Enabling and starting service…"
-  systemctl enable --now jvshomecontrol
+  systemctl enable jvshomecontrol
+  systemctl restart jvshomecontrol
 }
 
 main() {
