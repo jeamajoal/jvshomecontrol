@@ -123,6 +123,7 @@ const HeatmapPanel = ({ config, statuses }) => {
 
   const rooms = config?.rooms || [];
   const sensors = config?.sensors || [];
+  const labels = Array.isArray(config?.labels) ? config.labels : [];
 
   const roomTiles = useMemo(() => {
     const byRoomId = new Map();
@@ -255,14 +256,37 @@ const HeatmapPanel = ({ config, statuses }) => {
   }, []);
 
   const gridLayout = useMemo(() => {
-    return roomTiles.map((t) => {
+    const roomLayout = roomTiles.map((t) => {
       const x = clamp(t.layout.x, 0, GRID_COLS - 1);
       const w = clamp(t.layout.w, 1, GRID_COLS - x);
       const y = clamp(t.layout.y, 0, GRID_MAX_ROWS - 1);
       const h = clamp(t.layout.h, 1, GRID_MAX_ROWS - y);
       return { i: String(t.room.id), x, y, w, h };
     });
-  }, [roomTiles]);
+
+    // Labels use the same grid (drag/resize in edit mode)
+    const labelLayout = labels
+      .map((l) => {
+        const id = String(l?.id || '').trim();
+        if (!id) return null;
+        const layout = l?.layout || {};
+        const x = asNumber(layout.x);
+        const y = asLayoutY(layout.y);
+        const w = asNumber(layout.w);
+        const h = asNumber(layout.h);
+
+        return {
+          i: `label:${id}`,
+          x: clamp(x === null ? 0 : Math.max(0, Math.floor(x)), 0, GRID_COLS - 1),
+          y: clamp(y === null ? 0 : Math.max(0, Math.floor(y)), 0, GRID_MAX_ROWS - 1),
+          w: clamp(w === null ? 2 : Math.max(1, Math.floor(w)), 1, GRID_COLS),
+          h: clamp(h === null ? 1 : Math.max(1, Math.floor(h)), 1, GRID_MAX_ROWS),
+        };
+      })
+      .filter(Boolean);
+
+    return [...roomLayout, ...labelLayout];
+  }, [roomTiles, labels]);
 
   const saveRoomBox = async (roomId, box) => {
     setSaving(true);
@@ -273,6 +297,22 @@ const HeatmapPanel = ({ config, statuses }) => {
       const w = clamp(Math.floor(box.w), 1, GRID_COLS - x);
       const h = clamp(Math.floor(box.h), 1, GRID_MAX_ROWS - y);
       await saveLayoutPatch({ rooms: { [roomId]: { x, y, w, h } } });
+    } catch (e) {
+      setSaveError(e?.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveLabelBox = async (labelId, box) => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const x = clamp(Math.floor(box.x), 0, GRID_COLS - 1);
+      const y = clamp(Math.floor(box.y), 0, GRID_MAX_ROWS - 1);
+      const w = clamp(Math.floor(box.w), 1, GRID_COLS - x);
+      const h = clamp(Math.floor(box.h), 1, GRID_MAX_ROWS - y);
+      await saveLayoutPatch({ labels: { [labelId]: { x, y, w, h } } });
     } catch (e) {
       setSaveError(e?.message || 'Save failed');
     } finally {
@@ -476,11 +516,21 @@ const HeatmapPanel = ({ config, statuses }) => {
                     layout={gridLayout}
                     onDragStop={(nextLayout, _oldItem, newItem) => {
                       const box = nextLayout.find((l) => l.i === newItem.i);
-                      if (box) saveRoomBox(newItem.i, box);
+                      if (!box) return;
+                      if (String(newItem.i).startsWith('label:')) {
+                        const id = String(newItem.i).slice('label:'.length);
+                        return saveLabelBox(id, box);
+                      }
+                      return saveRoomBox(newItem.i, box);
                     }}
                     onResizeStop={(nextLayout, _oldItem, newItem) => {
                       const box = nextLayout.find((l) => l.i === newItem.i);
-                      if (box) saveRoomBox(newItem.i, box);
+                      if (!box) return;
+                      if (String(newItem.i).startsWith('label:')) {
+                        const id = String(newItem.i).slice('label:'.length);
+                        return saveLabelBox(id, box);
+                      }
+                      return saveRoomBox(newItem.i, box);
                     }}
                   >
                     {roomTiles.map((t) => {
@@ -518,6 +568,32 @@ const HeatmapPanel = ({ config, statuses }) => {
                         </div>
                       );
                     })}
+
+                    {labels
+                      .map((l) => {
+                        const id = String(l?.id || '').trim();
+                        if (!id) return null;
+                        const text = String(l?.text ?? '').trim();
+                        if (!text) return null;
+                        return (
+                          <div
+                            key={`label:${id}`}
+                            className={`relative overflow-hidden rounded-2xl border bg-black/20 ring-1 ${editMode ? 'border-neon-blue/30 ring-neon-blue/20' : 'border-white/10 ring-white/10'}`}
+                          >
+                            <div className="relative p-3 md:p-4 h-full">
+                              <div className="text-sm md:text-base font-bold text-white/90 whitespace-pre-wrap break-words">
+                                {text}
+                              </div>
+                              {editMode ? (
+                                <div className="absolute bottom-2 left-2 text-[10px] uppercase tracking-[0.2em] text-white/40 z-10">
+                                  {saving ? 'Saving…' : 'Label'}
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })
+                      .filter(Boolean)}
                   </ReactGridLayout>
                 </div>
               </div>

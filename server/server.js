@@ -335,6 +335,27 @@ function normalizePersistedConfig(raw) {
 
     out.rooms = Array.isArray(out.rooms) ? out.rooms : [];
     out.sensors = Array.isArray(out.sensors) ? out.sensors : [];
+    out.labels = Array.isArray(out.labels) ? out.labels : [];
+
+    out.labels = out.labels
+        .map((l) => {
+            if (!l || typeof l !== 'object') return null;
+            const id = String(l.id || '').trim();
+            if (!id) return null;
+            const text = String(l.text ?? '').toString();
+            const layout = (l.layout && typeof l.layout === 'object') ? l.layout : {};
+            return {
+                id,
+                text,
+                layout: {
+                    x: Number.isFinite(layout.x) ? layout.x : 0,
+                    y: Number.isFinite(layout.y) ? layout.y : 9999,
+                    w: Number.isFinite(layout.w) ? layout.w : 2,
+                    h: Number.isFinite(layout.h) ? layout.h : 1,
+                },
+            };
+        })
+        .filter(Boolean);
 
     const uiRaw = out.ui && typeof out.ui === 'object' ? out.ui : {};
     const legacyAllowed = Array.isArray(uiRaw.allowedDeviceIds)
@@ -604,6 +625,7 @@ async function syncHubitatData() {
                 newRoomsById.set(roomId, {
                     id: roomId,
                     name: keep?.name || roomName,
+                    manual: keep?.manual === true,
                     floor: keep?.floor ?? 1,
                     gridArea: keep?.gridArea,
                     opacity: keep?.opacity,
@@ -686,6 +708,7 @@ async function syncHubitatData() {
             mergedRooms.push({
                 id,
                 name: r?.name || id,
+                manual: r?.manual === true,
                 floor: r?.floor ?? 1,
                 gridArea: r?.gridArea,
                 opacity: r?.opacity,
@@ -713,6 +736,7 @@ async function syncHubitatData() {
         config = {
             rooms: mergedRooms,
             sensors: orderedSensors,
+            labels: Array.isArray(persistedConfig?.labels) ? persistedConfig.labels : [],
             ui: {
                 ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
@@ -748,6 +772,7 @@ async function syncHubitatData() {
             weather: persistedConfig.weather,
             rooms: persistedRooms,
             sensors: config.sensors,
+            labels: persistedConfig.labels,
         });
 
         io.emit('config_update', config);
@@ -834,6 +859,216 @@ app.get('/api/config', (req, res) => {
     });
 });
 app.get('/api/status', (req, res) => res.json(sensorStatuses));
+
+function slugifyId(input) {
+    return String(input || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 64);
+}
+
+function emitConfigUpdateSafe() {
+    try {
+        io.emit('config_update', config);
+    } catch {
+        // ignore
+    }
+}
+
+// Create/delete manual rooms (rooms not discovered via Maker API)
+app.post('/api/rooms', (req, res) => {
+    const name = String(req.body?.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Missing name' });
+
+    const baseId = slugifyId(name);
+    if (!baseId) return res.status(400).json({ error: 'Invalid name' });
+
+    const roomsArr = Array.isArray(persistedConfig?.rooms) ? persistedConfig.rooms : [];
+    const existingIds = new Set(roomsArr.map((r) => String(r?.id)));
+
+    let id = baseId;
+    let i = 2;
+    while (existingIds.has(id)) {
+        id = `${baseId}_${i}`;
+        i += 1;
+    }
+
+    const room = {
+        id,
+        name,
+        manual: true,
+        floor: 1,
+        layout: { x: 0, y: 9999, w: 2, h: 3 },
+    };
+
+    roomsArr.push(room);
+    persistedConfig.rooms = roomsArr;
+    persistConfigToDiskIfChanged('api-room-add');
+
+    if (HUBITAT_CONFIGURED) {
+        syncHubitatData();
+    } else {
+        config = {
+            rooms: persistedConfig.rooms,
+            sensors: Array.isArray(persistedConfig?.sensors) ? persistedConfig.sensors : [],
+            labels: Array.isArray(persistedConfig?.labels) ? persistedConfig.labels : [],
+            ui: {
+                ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
+                mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
+                allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            },
+        };
+        emitConfigUpdateSafe();
+    }
+
+    return res.json({ ok: true, room });
+});
+
+app.delete('/api/rooms/:id', (req, res) => {
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'Missing id' });
+
+    const roomsArr = Array.isArray(persistedConfig?.rooms) ? persistedConfig.rooms : [];
+    const room = roomsArr.find((r) => String(r?.id) === id);
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+    if (room.manual !== true) {
+        return res.status(409).json({
+            error: 'Not removable',
+            message: 'Only manual rooms can be deleted from the kiosk config.',
+        });
+    }
+
+    const sensorsArr = Array.isArray(persistedConfig?.sensors) ? persistedConfig.sensors : [];
+    const used = sensorsArr.some((s) => String(s?.roomId) === id);
+    if (used) {
+        return res.status(409).json({
+            error: 'Room in use',
+            message: 'Cannot delete a room that still has sensors assigned to it.',
+        });
+    }
+
+    persistedConfig.rooms = roomsArr.filter((r) => String(r?.id) !== id);
+    persistConfigToDiskIfChanged('api-room-delete');
+
+    if (HUBITAT_CONFIGURED) {
+        syncHubitatData();
+    } else {
+        config = {
+            rooms: persistedConfig.rooms,
+            sensors: Array.isArray(persistedConfig?.sensors) ? persistedConfig.sensors : [],
+            labels: Array.isArray(persistedConfig?.labels) ? persistedConfig.labels : [],
+            ui: {
+                ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
+                mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
+                allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            },
+        };
+        emitConfigUpdateSafe();
+    }
+
+    return res.json({ ok: true });
+});
+
+// Labels (freeform text boxes placed on the Heatmap grid)
+app.post('/api/labels', (req, res) => {
+    const text = String(req.body?.text ?? 'Label').trim() || 'Label';
+    const labelsArr = Array.isArray(persistedConfig?.labels) ? persistedConfig.labels : [];
+
+    const id = `lbl_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 6)}`;
+    const label = {
+        id,
+        text,
+        layout: { x: 0, y: 9999, w: 2, h: 1 },
+    };
+
+    labelsArr.push(label);
+    persistedConfig.labels = labelsArr;
+    persistConfigToDiskIfChanged('api-label-add');
+
+    if (HUBITAT_CONFIGURED) {
+        syncHubitatData();
+    } else {
+        config = {
+            rooms: Array.isArray(persistedConfig?.rooms) ? persistedConfig.rooms : [],
+            sensors: Array.isArray(persistedConfig?.sensors) ? persistedConfig.sensors : [],
+            labels: persistedConfig.labels,
+            ui: {
+                ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
+                mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
+                allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            },
+        };
+        emitConfigUpdateSafe();
+    }
+
+    return res.json({ ok: true, label });
+});
+
+app.put('/api/labels/:id', (req, res) => {
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'Missing id' });
+    const text = String(req.body?.text ?? '').trim();
+    if (!text) return res.status(400).json({ error: 'Missing text' });
+
+    const labelsArr = Array.isArray(persistedConfig?.labels) ? persistedConfig.labels : [];
+    const label = labelsArr.find((l) => String(l?.id) === id);
+    if (!label) return res.status(404).json({ error: 'Label not found' });
+    label.text = text;
+
+    persistedConfig.labels = labelsArr;
+    persistConfigToDiskIfChanged('api-label-update');
+
+    if (HUBITAT_CONFIGURED) {
+        syncHubitatData();
+    } else {
+        config = {
+            rooms: Array.isArray(persistedConfig?.rooms) ? persistedConfig.rooms : [],
+            sensors: Array.isArray(persistedConfig?.sensors) ? persistedConfig.sensors : [],
+            labels: persistedConfig.labels,
+            ui: {
+                ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
+                mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
+                allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            },
+        };
+        emitConfigUpdateSafe();
+    }
+
+    return res.json({ ok: true, label });
+});
+
+app.delete('/api/labels/:id', (req, res) => {
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'Missing id' });
+
+    const labelsArr = Array.isArray(persistedConfig?.labels) ? persistedConfig.labels : [];
+    const before = labelsArr.length;
+    const next = labelsArr.filter((l) => String(l?.id) !== id);
+    if (next.length === before) return res.status(404).json({ error: 'Label not found' });
+
+    persistedConfig.labels = next;
+    persistConfigToDiskIfChanged('api-label-delete');
+
+    if (HUBITAT_CONFIGURED) {
+        syncHubitatData();
+    } else {
+        config = {
+            rooms: Array.isArray(persistedConfig?.rooms) ? persistedConfig.rooms : [],
+            sensors: Array.isArray(persistedConfig?.sensors) ? persistedConfig.sensors : [],
+            labels: persistedConfig.labels,
+            ui: {
+                ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
+                mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
+                allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            },
+        };
+        emitConfigUpdateSafe();
+    }
+
+    return res.json({ ok: true });
+});
 
 // Update UI device allowlists from the kiosk.
 // Back-compat: accepts an array or { allowedDeviceIds: [] } to update the CTRL list.
@@ -1125,14 +1360,16 @@ app.post('/api/devices/:id/command', async (req, res) => {
 
 app.post('/api/layout', (req, res) => {
     // Back-compat endpoint: updates persistedConfig.rooms[].layout and persistedConfig.sensors[].position.
-    const { rooms, sensors } = req.body || {};
+    const { rooms, sensors, labels } = req.body || {};
 
     const roomsArr = Array.isArray(persistedConfig?.rooms) ? persistedConfig.rooms : [];
     const sensorsArr = Array.isArray(persistedConfig?.sensors) ? persistedConfig.sensors : [];
+    const labelsArr = Array.isArray(persistedConfig?.labels) ? persistedConfig.labels : [];
 
     const byRoomId = new Map(roomsArr.map(r => [String(r.id), r]));
     const byRoomName = new Map(roomsArr.map(r => [String(r.name || '').trim().toLowerCase(), r]));
     const bySensorId = new Map(sensorsArr.map(s => [String(s.id), s]));
+    const byLabelId = new Map(labelsArr.map(l => [String(l.id), l]));
 
     if (rooms && typeof rooms === 'object') {
         for (const key of Object.keys(rooms)) {
@@ -1164,12 +1401,43 @@ app.post('/api/layout', (req, res) => {
         }
     }
 
+    if (labels && typeof labels === 'object') {
+        for (const key of Object.keys(labels)) {
+            const patch = labels[key];
+            if (!patch || typeof patch !== 'object') continue;
+            const label = byLabelId.get(String(key));
+            if (!label) continue;
+            label.layout = {
+                ...(label.layout || {}),
+                x: Number.isFinite(patch.x) ? patch.x : (label.layout?.x ?? 0),
+                y: Number.isFinite(patch.y) ? patch.y : (label.layout?.y ?? 9999),
+                w: Number.isFinite(patch.w) ? patch.w : (label.layout?.w ?? 2),
+                h: Number.isFinite(patch.h) ? patch.h : (label.layout?.h ?? 1),
+            };
+        }
+    }
+
     persistedConfig.rooms = roomsArr;
     persistedConfig.sensors = sensorsArr;
+    persistedConfig.labels = labelsArr;
     persistConfigToDiskIfChanged('api-layout');
 
     // Re-sync runtime (positions + layouts affect UI)
-    syncHubitatData();
+    if (HUBITAT_CONFIGURED) {
+        syncHubitatData();
+    } else {
+        config = {
+            rooms: Array.isArray(persistedConfig?.rooms) ? persistedConfig.rooms : [],
+            sensors: Array.isArray(persistedConfig?.sensors) ? persistedConfig.sensors : [],
+            labels: Array.isArray(persistedConfig?.labels) ? persistedConfig.labels : [],
+            ui: {
+                ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
+                mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
+                allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            },
+        };
+        io.emit('config_update', config);
+    }
     res.json({ success: true });
 });
 
@@ -1185,8 +1453,27 @@ app.delete('/api/layout', (req, res) => {
             if (s && typeof s === 'object') delete s.position;
         }
     }
+    if (Array.isArray(persistedConfig?.labels)) {
+        for (const l of persistedConfig.labels) {
+            if (l && typeof l === 'object') delete l.layout;
+        }
+    }
     persistConfigToDiskIfChanged('api-layout-delete');
-    syncHubitatData();
+    if (HUBITAT_CONFIGURED) {
+        syncHubitatData();
+    } else {
+        config = {
+            rooms: Array.isArray(persistedConfig?.rooms) ? persistedConfig.rooms : [],
+            sensors: Array.isArray(persistedConfig?.sensors) ? persistedConfig.sensors : [],
+            labels: Array.isArray(persistedConfig?.labels) ? persistedConfig.labels : [],
+            ui: {
+                ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
+                mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
+                allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            },
+        };
+        io.emit('config_update', config);
+    }
     res.json({ success: true });
 });
 
