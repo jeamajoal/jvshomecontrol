@@ -356,35 +356,61 @@ const HeatmapPanel = ({ config, statuses }) => {
         }}
       >
         <div ref={contentRef} className="w-full">
-          <div className="glass-panel border border-white/10 p-4 md:p-5">
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
-                  Heatmap
+          <div className="flex gap-3 md:gap-4">
+            <aside className="glass-panel border border-white/10 p-3 md:p-4 w-40 md:w-48 shrink-0">
+              <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+                Heatmap
+              </div>
+              <div className="mt-1 text-base md:text-lg font-extrabold tracking-wide text-white">
+                {modeLabel}
+              </div>
+              {saveError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">
+                  Save failed: {saveError}
                 </div>
-                <div className="mt-1 text-xl md:text-2xl font-extrabold tracking-tight text-white">
-                  {modeLabel}
-                </div>
-                <div className="mt-1 text-xs text-white/45">
-                  Schematic view uses persisted room + sensor positions (no PNG required).
-                </div>
-                {editMode ? (
-                  <div className="mt-2 text-[11px] text-white/55">
-                    Drag rooms to place. Resize corners. Drag sensor dots.
-                  </div>
-                ) : null}
-                {saveError ? (
-                  <div className="mt-2 text-[11px] text-neon-red">
-                    Save failed: {saveError}
-                  </div>
-                ) : null}
+              ) : null}
+
+              <div className="mt-3 grid grid-cols-1 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMode('temperature')}
+                  className={`rounded-xl border px-3 py-3 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${
+                    mode === 'temperature'
+                      ? 'border-neon-blue/40 bg-neon-blue/10 text-neon-blue'
+                      : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
+                  }`}
+                >
+                  Temp
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode('humidity')}
+                  className={`rounded-xl border px-3 py-3 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${
+                    mode === 'humidity'
+                      ? 'border-neon-blue/40 bg-neon-blue/10 text-neon-blue'
+                      : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
+                  }`}
+                >
+                  Humidity
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode('illuminance')}
+                  className={`rounded-xl border px-3 py-3 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${
+                    mode === 'illuminance'
+                      ? 'border-neon-blue/40 bg-neon-blue/10 text-neon-blue'
+                      : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
+                  }`}
+                >
+                  Lux
+                </button>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="mt-3">
                 <button
                   type="button"
                   onClick={() => setEditMode((v) => !v)}
-                  className={`rounded-xl border px-3 py-3 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${
+                  className={`w-full rounded-xl border px-3 py-3 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${
                     editMode
                       ? 'border-neon-blue/40 bg-neon-blue/10 text-neon-blue'
                       : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
@@ -395,109 +421,77 @@ const HeatmapPanel = ({ config, statuses }) => {
                     {editMode ? 'Done' : 'Edit'}
                   </span>
                 </button>
-
-                <div className="shrink-0 w-11 h-11 md:w-12 md:h-12 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center">
-                  {React.createElement(modeIcon, { className: 'w-6 h-6 text-neon-blue' })}
-                </div>
               </div>
-            </div>
 
-            <div className="mt-4 grid grid-cols-3 gap-3">
-              <button
-                type="button"
-                onClick={() => setMode('temperature')}
-                className={`rounded-xl border px-3 py-3 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${
-                  mode === 'temperature'
-                    ? 'border-neon-blue/40 bg-neon-blue/10 text-neon-blue'
-                    : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
-                }`}
-              >
-                Temp
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode('humidity')}
-                className={`rounded-xl border px-3 py-3 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${
-                  mode === 'humidity'
-                    ? 'border-neon-blue/40 bg-neon-blue/10 text-neon-blue'
-                    : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
-                }`}
-              >
-                Humidity
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode('illuminance')}
-                className={`rounded-xl border px-3 py-3 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${
-                  mode === 'illuminance'
-                    ? 'border-neon-blue/40 bg-neon-blue/10 text-neon-blue'
-                    : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
-                }`}
-              >
-                Lux
-              </button>
-            </div>
-          </div>
+              {editMode ? (
+                <div className="mt-3 text-[11px] text-white/55">
+                  Drag rooms and sensor dots.
+                </div>
+              ) : null}
+            </aside>
 
-          <div className="mt-4 glass-panel border border-white/10 overflow-hidden">
-            <div className="relative w-full h-[70vh] bg-black/30 p-3 md:p-4">
-              <ReactGridLayout
-                className="layout"
-                cols={GRID_COLS}
-                rowHeight={GRID_ROW_HEIGHT}
-                maxRows={GRID_MAX_ROWS}
-                margin={[12, 12]}
-                containerPadding={[0, 0]}
-                compactType={null}
-                preventCollision
-                isDraggable={editMode}
-                isResizable={editMode}
-                layout={gridLayout}
-                onDragStop={(nextLayout, _oldItem, newItem) => {
-                  const box = nextLayout.find((l) => l.i === newItem.i);
-                  if (box) saveRoomBox(newItem.i, box);
-                }}
-                onResizeStop={(nextLayout, _oldItem, newItem) => {
-                  const box = nextLayout.find((l) => l.i === newItem.i);
-                  if (box) saveRoomBox(newItem.i, box);
-                }}
-              >
-                {roomTiles.map((t) => {
-                  const { colorClass, ringClass } = classify(t.value);
-                  return (
-                    <div
-                      key={t.room.id}
-                      className={`relative overflow-hidden rounded-2xl border bg-black/20 ${ringClass} ring-1 ${editMode ? 'border-neon-blue/30' : 'border-white/10'}`}
-                    >
-                      <div className={`absolute -inset-10 ${colorClass} blur-2xl`} />
+            <div className="flex-1 min-w-0">
+              <div className="glass-panel border border-white/10 overflow-hidden">
+                <div className="relative w-full h-[82vh] bg-black/30 p-3 md:p-4">
+                  <ReactGridLayout
+                    className="layout"
+                    cols={GRID_COLS}
+                    rowHeight={GRID_ROW_HEIGHT}
+                    maxRows={GRID_MAX_ROWS}
+                    margin={[12, 12]}
+                    containerPadding={[0, 0]}
+                    compactType={null}
+                    preventCollision
+                    isDraggable={editMode}
+                    isResizable={editMode}
+                    layout={gridLayout}
+                    onDragStop={(nextLayout, _oldItem, newItem) => {
+                      const box = nextLayout.find((l) => l.i === newItem.i);
+                      if (box) saveRoomBox(newItem.i, box);
+                    }}
+                    onResizeStop={(nextLayout, _oldItem, newItem) => {
+                      const box = nextLayout.find((l) => l.i === newItem.i);
+                      if (box) saveRoomBox(newItem.i, box);
+                    }}
+                  >
+                    {roomTiles.map((t) => {
+                      const { colorClass, ringClass } = classify(t.value);
+                      return (
+                        <div
+                          key={t.room.id}
+                          className={`relative overflow-hidden rounded-2xl border bg-black/20 ${ringClass} ring-1 ${editMode ? 'border-neon-blue/30' : 'border-white/10'}`}
+                        >
+                          <div className={`absolute -inset-10 ${colorClass} blur-2xl`} />
 
-                      <div className="relative p-3 md:p-4 h-full">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="text-[10px] uppercase tracking-[0.2em] text-white/55 font-semibold">
-                              Room
+                          <div className="relative p-3 md:p-4 h-full">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-[10px] uppercase tracking-[0.2em] text-white/55 font-semibold">
+                                  Room
+                                </div>
+                                <div className="mt-1 text-sm md:text-base font-extrabold text-white truncate">
+                                  {t.room.name}
+                                </div>
+                              </div>
+                              <div className="shrink-0 px-2 py-1 rounded-lg border border-white/10 bg-black/40 text-[10px] font-bold uppercase tracking-[0.16em] text-white/80">
+                                {t.value === null ? '—' : formatValue(t.value)}
+                              </div>
                             </div>
-                            <div className="mt-1 text-sm md:text-base font-extrabold text-white truncate">
-                              {t.room.name}
-                            </div>
-                          </div>
-                          <div className="shrink-0 px-2 py-1 rounded-lg border border-white/10 bg-black/40 text-[10px] font-bold uppercase tracking-[0.16em] text-white/80">
-                            {t.value === null ? '—' : formatValue(t.value)}
+
+                            <RoomSensors roomId={t.room.id} sensors={t.sensors} />
+
+                            {editMode ? (
+                              <div className="absolute bottom-2 right-2 text-[10px] uppercase tracking-[0.2em] text-white/40">
+                                {saving ? 'Saving…' : `${t.layout.x},${t.layout.y} ${t.layout.w}x${t.layout.h}`}
+                              </div>
+                            ) : null}
                           </div>
                         </div>
-
-                        <RoomSensors roomId={t.room.id} sensors={t.sensors} />
-
-                        {editMode ? (
-                          <div className="absolute bottom-2 right-2 text-[10px] uppercase tracking-[0.2em] text-white/40">
-                            {saving ? 'Saving…' : `${t.layout.x},${t.layout.y} ${t.layout.w}x${t.layout.h}`}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
-              </ReactGridLayout>
+                      );
+                    })}
+                  </ReactGridLayout>
+                </div>
+              </div>
             </div>
           </div>
         </div>

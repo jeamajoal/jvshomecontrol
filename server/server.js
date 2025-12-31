@@ -986,8 +986,15 @@ app.post('/api/devices/:id/command', async (req, res) => {
             return res.status(400).json({ error: 'Missing command' });
         }
 
-        const argsPath = Array.isArray(args) && args.length
-            ? `/${args.map(a => encodeURIComponent(String(a))).join('/')}`
+        const cleanedArgs = Array.isArray(args)
+            ? args
+                .filter((a) => a !== null && a !== undefined)
+                .filter((a) => typeof a === 'string' || typeof a === 'number')
+                .filter((a) => (typeof a !== 'number') || Number.isFinite(a))
+            : [];
+
+        const argsPath = cleanedArgs.length
+            ? `/${cleanedArgs.map(a => encodeURIComponent(String(a))).join('/')}`
             : '';
 
         const url = `${HUBITAT_API_BASE}/devices/${encodeURIComponent(deviceId)}/command/${encodeURIComponent(command)}${argsPath}?access_token=${encodeURIComponent(HUBITAT_ACCESS_TOKEN)}`;

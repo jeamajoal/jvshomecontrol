@@ -3,6 +3,7 @@ import { io } from 'socket.io-client';
 import EnvironmentPanel from './components/EnvironmentPanel';
 import HeatmapPanel from './components/HeatmapPanel';
 import InteractionPanel from './components/InteractionPanel';
+import ConfigPanel from './components/ConfigPanel';
 import { Activity, Maximize, Minimize } from 'lucide-react';
 
 // Connect to the same host that served the page, but on port 3000
@@ -16,9 +17,9 @@ function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [loadError, setLoadError] = useState(null);
-  const [page, setPage] = useState(0); // 0=Dashboard, 1=Heatmap, 2=Interactions
+  const [page, setPage] = useState(0); // 0=Dashboard, 1=Heatmap, 2=Interactions, 3=Config
 
-  const pageLabel = page === 0 ? 'Environment Panel' : page === 1 ? 'Heatmap' : 'Interactions';
+  const pageLabel = page === 0 ? 'Environment Panel' : page === 1 ? 'Heatmap' : page === 2 ? 'Interactions' : 'Config';
 
   useEffect(() => {
     // Initial fetch
@@ -109,6 +110,15 @@ function App() {
             >
               Ctrl
             </button>
+            <button
+              type="button"
+              onClick={() => setPage(3)}
+              className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${
+                page === 3 ? 'bg-neon-blue/10 text-neon-blue' : 'text-white/50 hover:bg-white/5 hover:text-white/70'
+              }`}
+            >
+              Config
+            </button>
           </div>
 
           <div className="flex items-center gap-2">
@@ -164,6 +174,9 @@ function App() {
             ) : null}
             {page === 2 ? (
               <InteractionPanel config={config} statuses={sensors} connected={connected} />
+            ) : null}
+            {page === 3 ? (
+              <ConfigPanel config={config} statuses={sensors} connected={connected} />
             ) : null}
           </>
         )}
