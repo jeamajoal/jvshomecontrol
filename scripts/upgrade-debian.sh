@@ -31,9 +31,16 @@ ensure_repo_exists() {
   fi
 }
 
+stop_service() {
+  log "Stopping systemd service (to freeze config writes): ${SERVICE_NAME}…"
+  systemctl stop "${SERVICE_NAME}" || true
+}
+
 update_repo() {
   log "Updating repo in ${APP_DIR}…"
-  sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git fetch origin && git checkout main && git pull --ff-only origin main"
+  # The app may create/modify files inside the repo (e.g., config.json) and users may have local edits.
+  # For upgrades, we intentionally discard local repo changes after backing up config.json.
+  sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git fetch origin main && git checkout -f main && git reset --hard origin/main && git clean -fd"
 }
 
 backup_config() {
@@ -95,6 +102,7 @@ restart_service() {
 main() {
   require_root
   ensure_repo_exists
+  stop_service
   local cfg_backup
   cfg_backup="$(backup_config || true)"
   update_repo

@@ -85,7 +85,9 @@ ensure_repo() {
 
   if [[ -d "${APP_DIR}/.git" ]]; then
     log "Updating existing repo in ${APP_DIR}…"
-    sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git fetch origin && git checkout main && git pull --ff-only origin main"
+    # The app may create/modify files inside the repo (e.g., config.json) and users may have local edits.
+    # For upgrades/updates, we intentionally discard local repo changes after backing up config.json.
+    sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git fetch origin main && git checkout -f main && git reset --hard origin/main && git clean -fd"
   else
     log "Cloning repo into ${APP_DIR}…"
     sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git clone '${REPO_URL}' ."
