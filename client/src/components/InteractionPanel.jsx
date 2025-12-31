@@ -151,9 +151,11 @@ const InteractionPanel = ({ config, statuses, connected }) => {
   const { viewportRef, contentRef, scale } = useFitScale();
 
   const allowedControlIds = useMemo(() => {
-    const ids = Array.isArray(config?.ui?.allowedDeviceIds) ? config.ui.allowedDeviceIds : [];
+    const ids = Array.isArray(config?.ui?.ctrlAllowedDeviceIds)
+      ? config.ui.ctrlAllowedDeviceIds
+      : (Array.isArray(config?.ui?.allowedDeviceIds) ? config.ui.allowedDeviceIds : []);
     return new Set(ids.map((v) => String(v)));
-  }, [config?.ui?.allowedDeviceIds]);
+  }, [config?.ui?.ctrlAllowedDeviceIds, config?.ui?.allowedDeviceIds]);
 
   const rooms = useMemo(() => {
     const byRoomId = new Map();
@@ -275,9 +277,9 @@ const InteractionPanel = ({ config, statuses, connected }) => {
                               disabled={!connected}
                               busy={busy.has(`${d.id}:toggle`) || busy.has(`${d.id}:setLevel`) || busy.has(`${d.id}:on`) || busy.has(`${d.id}:off`)}
                               onToggle={() => {
-                                if (canToggle) return run(d.id, 'toggle');
                                 if (isOn && canOff) return run(d.id, 'off');
                                 if (!isOn && canOn) return run(d.id, 'on');
+                                if (canToggle) return run(d.id, 'toggle');
                                 return run(d.id, isOn ? 'off' : 'on');
                               }}
                               onSetLevel={(next) => {
@@ -297,9 +299,9 @@ const InteractionPanel = ({ config, statuses, connected }) => {
                               disabled={!connected}
                               busy={busy.has(`${d.id}:on`) || busy.has(`${d.id}:off`) || busy.has(`${d.id}:toggle`)}
                               onToggle={() => {
-                                if (canToggle) return run(d.id, 'toggle');
                                 if (isOn && canOff) return run(d.id, 'off');
                                 if (!isOn && canOn) return run(d.id, 'on');
+                                if (canToggle) return run(d.id, 'toggle');
                                 return run(d.id, isOn ? 'off' : 'on');
                               }}
                             />
@@ -307,7 +309,7 @@ const InteractionPanel = ({ config, statuses, connected }) => {
                         }
 
                         // Fallback: show safe action buttons if present
-                        const allow = new Set(['refresh', 'push', 'on', 'off', 'toggle']);
+                        const allow = new Set(['refresh', 'push', 'on', 'off']);
                         const actions = d.commands.filter((c) => allow.has(c));
                         if (!actions.length) return null;
 

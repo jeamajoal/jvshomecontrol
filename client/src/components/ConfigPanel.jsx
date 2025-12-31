@@ -39,11 +39,11 @@ const useFitScale = () => {
   return { viewportRef, contentRef, scale };
 };
 
-async function saveAllowedDeviceIds(allowedDeviceIds) {
+async function saveAllowlists(payload) {
   const res = await fetch(`${API_HOST}/api/ui/allowed-device-ids`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ allowedDeviceIds }),
+    body: JSON.stringify(payload || {}),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -58,12 +58,22 @@ const ConfigPanel = ({ config, statuses, connected }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  const allowedControlIds = useMemo(() => {
-    const ids = Array.isArray(config?.ui?.allowedDeviceIds) ? config.ui.allowedDeviceIds : [];
+  const mainAllowedIds = useMemo(() => {
+    const ids = Array.isArray(config?.ui?.mainAllowedDeviceIds)
+      ? config.ui.mainAllowedDeviceIds
+      : [];
     return new Set(ids.map((v) => String(v)));
-  }, [config?.ui?.allowedDeviceIds]);
+  }, [config?.ui?.mainAllowedDeviceIds]);
 
-  const allowlistLocked = Boolean(config?.ui?.allowlistLocked);
+  const ctrlAllowedIds = useMemo(() => {
+    const ids = Array.isArray(config?.ui?.ctrlAllowedDeviceIds)
+      ? config.ui.ctrlAllowedDeviceIds
+      : (Array.isArray(config?.ui?.allowedDeviceIds) ? config.ui.allowedDeviceIds : []);
+    return new Set(ids.map((v) => String(v)));
+  }, [config?.ui?.ctrlAllowedDeviceIds, config?.ui?.allowedDeviceIds]);
+
+  const mainLocked = Boolean(config?.ui?.mainAllowlistLocked);
+  const ctrlLocked = Boolean(config?.ui?.ctrlAllowlistLocked);
 
   const allSwitchLikeDevices = useMemo(() => {
     const devices = (config?.sensors || [])
@@ -87,14 +97,20 @@ const ConfigPanel = ({ config, statuses, connected }) => {
     return devices;
   }, [config?.sensors, statuses]);
 
-  const setAllowed = async (deviceId, nextAllowed) => {
+  const setAllowed = async (deviceId, list, nextAllowed) => {
     setError(null);
     setBusy(true);
     try {
-      const next = new Set(Array.from(allowedControlIds));
-      if (nextAllowed) next.add(String(deviceId));
-      else next.delete(String(deviceId));
-      await saveAllowedDeviceIds(Array.from(next));
+      const nextMain = new Set(Array.from(mainAllowedIds));
+      const nextCtrl = new Set(Array.from(ctrlAllowedIds));
+      const target = list === 'main' ? nextMain : nextCtrl;
+      if (nextAllowed) target.add(String(deviceId));
+      else target.delete(String(deviceId));
+
+      const payload = {};
+      if (!mainLocked) payload.mainAllowedDeviceIds = Array.from(nextMain);
+      if (!ctrlLocked) payload.ctrlAllowedDeviceIds = Array.from(nextCtrl);
+      await saveAllowlists(payload);
     } catch (e) {
       setError(e?.message || String(e));
     } finally {
@@ -117,15 +133,20 @@ const ConfigPanel = ({ config, statuses, connected }) => {
               Config
             </div>
             <div className="mt-1 text-xl md:text-2xl font-extrabold tracking-tight text-white">
-              Dashboard Allowlist
+              Device Visibility
             </div>
             <div className="mt-1 text-xs text-white/45">
-              Tap to include/exclude devices from dashboard controls.
+              Choose where each device appears: Main (Dash) and/or Ctrl (room controls).
             </div>
 
-            {allowlistLocked ? (
+            {mainLocked ? (
               <div className="mt-2 text-[11px] text-neon-red">
-                Locked by server env var UI_ALLOWED_DEVICE_IDS.
+                Main list locked by server env var UI_ALLOWED_MAIN_DEVICE_IDS.
+              </div>
+            ) : null}
+            {ctrlLocked ? (
+              <div className="mt-2 text-[11px] text-neon-red">
+                Ctrl list locked by server env var UI_ALLOWED_CTRL_DEVICE_IDS (or legacy UI_ALLOWED_DEVICE_IDS).
               </div>
             ) : null}
             {error ? (
@@ -135,31 +156,46 @@ const ConfigPanel = ({ config, statuses, connected }) => {
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
               {allSwitchLikeDevices.length ? (
                 allSwitchLikeDevices.map((d) => {
-                  const isAllowed = allowedControlIds.has(String(d.id));
+                  const isMain = mainAllowedIds.has(String(d.id));
+                  const isCtrl = ctrlAllowedIds.has(String(d.id));
                   return (
-                    <button
+                    <div
                       key={d.id}
-                      type="button"
-                      disabled={!connected || busy || allowlistLocked}
-                      onClick={() => setAllowed(d.id, !isAllowed)}
-                      className={`rounded-2xl border p-4 transition-colors active:scale-[0.99] ${
-                        isAllowed
-                          ? 'bg-neon-blue/10 border-neon-blue/30 text-neon-blue'
-                          : 'bg-white/5 border-white/10 text-white/70'
-                      } ${(!connected || busy || allowlistLocked) ? 'opacity-50' : ''}`}
+                      className={`rounded-2xl border p-4 bg-white/5 border-white/10 ${!connected ? 'opacity-50' : ''}`}
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0 text-left">
-                          <div className="text-[11px] uppercase tracking-[0.2em] font-semibold truncate">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="text-[11px] uppercase tracking-[0.2em] font-semibold text-white/80 truncate">
                             {d.label}
                           </div>
                           <div className="mt-1 text-xs text-white/45 truncate">ID: {d.id}</div>
                         </div>
-                        <div className="shrink-0 text-[11px] font-extrabold tracking-[0.2em] uppercase">
-                          {isAllowed ? 'Allowed' : 'Hidden'}
+
+                        <div className="shrink-0 flex items-center gap-4">
+                          <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
+                            <input
+                              type="checkbox"
+                              className="h-5 w-5 accent-neon-blue"
+                              disabled={!connected || busy || mainLocked}
+                              checked={isMain}
+                              onChange={(e) => setAllowed(d.id, 'main', e.target.checked)}
+                            />
+                            Main
+                          </label>
+
+                          <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
+                            <input
+                              type="checkbox"
+                              className="h-5 w-5 accent-neon-blue"
+                              disabled={!connected || busy || ctrlLocked}
+                              checked={isCtrl}
+                              onChange={(e) => setAllowed(d.id, 'ctrl', e.target.checked)}
+                            />
+                            Ctrl
+                          </label>
                         </div>
                       </div>
-                    </button>
+                    </div>
                   );
                 })
               ) : (

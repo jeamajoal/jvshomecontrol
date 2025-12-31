@@ -383,7 +383,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds }) => {
   const metrics = useMemo(() => computeRoomMetrics(devices, allowedControlIds), [devices, allowedControlIds]);
 
   const supportedActions = useMemo(() => {
-    const allow = new Set(['on', 'off', 'toggle', 'refresh', 'push']);
+    const allow = new Set(['on', 'off', 'refresh', 'push']);
     return devices
       .map((d) => ({
         id: d.id,
@@ -420,19 +420,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds }) => {
     const key = `${deviceId}:${command}`;
     setBusyActions((prev) => new Set(prev).add(key));
     try {
-      if (command === 'toggle') {
-        const device = supportedActions.find((d) => d.id === deviceId);
-        const current = device?.attrs?.switch;
-        if (current === 'on') {
-          await sendDeviceCommand(deviceId, 'off');
-        } else if (current === 'off') {
-          await sendDeviceCommand(deviceId, 'on');
-        } else {
-          await sendDeviceCommand(deviceId, 'toggle');
-        }
-      } else {
-        await sendDeviceCommand(deviceId, command);
-      }
+      await sendDeviceCommand(deviceId, command);
     } finally {
       setBusyActions((prev) => {
         const next = new Set(prev);
@@ -576,9 +564,11 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds }) => {
 
 const EnvironmentPanel = ({ config, statuses, connected }) => {
   const allowedControlIds = useMemo(() => {
-    const ids = Array.isArray(config?.ui?.allowedDeviceIds) ? config.ui.allowedDeviceIds : [];
+    const ids = Array.isArray(config?.ui?.mainAllowedDeviceIds)
+      ? config.ui.mainAllowedDeviceIds
+      : (Array.isArray(config?.ui?.allowedDeviceIds) ? config.ui.allowedDeviceIds : []);
     return new Set(ids.map((v) => String(v)));
-  }, [config?.ui?.allowedDeviceIds]);
+  }, [config?.ui?.mainAllowedDeviceIds, config?.ui?.allowedDeviceIds]);
 
   const rooms = useMemo(() => buildRooms(config, statuses), [config, statuses]);
   const now = useClock(1000);

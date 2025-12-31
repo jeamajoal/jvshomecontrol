@@ -189,10 +189,19 @@ function normalizePostedEventsBody(body) {
     return [];
 }
 
-// --- UI DEVICE ALLOWLIST ---
-// Controls (switch toggles, commands) are restricted to an explicit allowlist.
-// Sources (priority): env var UI_ALLOWED_DEVICE_IDS > server/data/config.json (ui.allowedDeviceIds)
-// Default: deny (no controls) when allowlist is empty.
+// --- UI DEVICE ALLOWLISTS ---
+// Controls (switch toggles, commands) are restricted to explicit allowlists.
+// There are two independent lists:
+// - Main dashboard controls (Environment page)
+// - Ctrl dashboard controls (Interactions page)
+//
+// Sources (priority): env vars > server/data/config.json
+// - UI_ALLOWED_CTRL_DEVICE_IDS (comma-separated) [recommended]
+// - UI_ALLOWED_MAIN_DEVICE_IDS (comma-separated)
+// Back-compat:
+// - UI_ALLOWED_DEVICE_IDS is treated as CTRL allowlist.
+//
+// Default: deny (no controls) when a list is empty.
 function parseCommaList(raw) {
     return String(raw || '')
         .split(',')
@@ -200,30 +209,52 @@ function parseCommaList(raw) {
         .filter(Boolean);
 }
 
-function getUiAllowlistInfo() {
-    const envList = parseCommaList(process.env.UI_ALLOWED_DEVICE_IDS);
-    if (envList.length) {
-        return { ids: envList, source: 'env', locked: true };
-    }
+function getUiAllowlistsInfo() {
+    const envCtrl = parseCommaList(process.env.UI_ALLOWED_CTRL_DEVICE_IDS);
+    const envMain = parseCommaList(process.env.UI_ALLOWED_MAIN_DEVICE_IDS);
 
-    const fromConfig = persistedConfig?.ui?.allowedDeviceIds;
-    if (Array.isArray(fromConfig) && fromConfig.length) {
-        return {
-            ids: fromConfig.map((v) => String(v || '').trim()).filter(Boolean),
-            source: 'config',
+    // Back-compat: old single env var maps to CTRL
+    const envLegacy = parseCommaList(process.env.UI_ALLOWED_DEVICE_IDS);
+    const envCtrlMerged = envCtrl.length ? envCtrl : envLegacy;
+
+    const cfg = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+    const cfgCtrl = Array.isArray(cfg.ctrlAllowedDeviceIds) ? cfg.ctrlAllowedDeviceIds : (Array.isArray(cfg.allowedDeviceIds) ? cfg.allowedDeviceIds : []);
+    const cfgMain = Array.isArray(cfg.mainAllowedDeviceIds) ? cfg.mainAllowedDeviceIds : [];
+
+    const ctrl = envCtrlMerged.length
+        ? { ids: envCtrlMerged, source: 'env', locked: true }
+        : {
+            ids: cfgCtrl.map((v) => String(v || '').trim()).filter(Boolean),
+            source: cfgCtrl.length ? 'config' : 'empty',
             locked: false,
         };
-    }
 
-    return { ids: [], source: 'empty', locked: false };
+    const main = envMain.length
+        ? { ids: envMain, source: 'env', locked: true }
+        : {
+            ids: cfgMain.map((v) => String(v || '').trim()).filter(Boolean),
+            source: cfgMain.length ? 'config' : 'empty',
+            locked: false,
+        };
+
+    return { ctrl, main };
 }
 
-function getUiAllowedDeviceIds() {
-    return getUiAllowlistInfo().ids;
+function getUiCtrlAllowedDeviceIds() {
+    return getUiAllowlistsInfo().ctrl.ids;
+}
+
+function getUiMainAllowedDeviceIds() {
+    return getUiAllowlistsInfo().main.ids;
+}
+
+function getUiAllowedDeviceIdsUnion() {
+    const { ctrl, main } = getUiAllowlistsInfo();
+    return Array.from(new Set([...(ctrl.ids || []), ...(main.ids || [])]));
 }
 
 function isUiDeviceAllowedForControl(deviceId) {
-    const allowed = getUiAllowedDeviceIds();
+    const allowed = getUiAllowedDeviceIdsUnion();
     if (!allowed.length) return false;
     return allowed.includes(String(deviceId));
 }
@@ -306,10 +337,21 @@ function normalizePersistedConfig(raw) {
     out.sensors = Array.isArray(out.sensors) ? out.sensors : [];
 
     const uiRaw = out.ui && typeof out.ui === 'object' ? out.ui : {};
+    const legacyAllowed = Array.isArray(uiRaw.allowedDeviceIds)
+        ? uiRaw.allowedDeviceIds
+        : [];
+    const ctrlAllowed = Array.isArray(uiRaw.ctrlAllowedDeviceIds)
+        ? uiRaw.ctrlAllowedDeviceIds
+        : legacyAllowed;
+    const mainAllowed = Array.isArray(uiRaw.mainAllowedDeviceIds)
+        ? uiRaw.mainAllowedDeviceIds
+        : [];
+
     out.ui = {
-        allowedDeviceIds: Array.isArray(uiRaw.allowedDeviceIds)
-            ? uiRaw.allowedDeviceIds.map((v) => String(v || '').trim()).filter(Boolean)
-            : [],
+        // Keep legacy key for older clients (harmless), but prefer the new split keys.
+        allowedDeviceIds: legacyAllowed.map((v) => String(v || '').trim()).filter(Boolean),
+        ctrlAllowedDeviceIds: ctrlAllowed.map((v) => String(v || '').trim()).filter(Boolean),
+        mainAllowedDeviceIds: mainAllowed.map((v) => String(v || '').trim()).filter(Boolean),
     };
 
     return out;
@@ -668,7 +710,16 @@ async function syncHubitatData() {
             if (!orderedSensors.some(s => String(s.id) === String(next.id))) orderedSensors.push(next);
         }
 
-        config = { rooms: mergedRooms, sensors: orderedSensors, ui: { allowedDeviceIds: getUiAllowedDeviceIds() } };
+        config = {
+            rooms: mergedRooms,
+            sensors: orderedSensors,
+            ui: {
+                ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
+                mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
+                // Back-compat
+                allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            },
+        };
         sensorStatuses = newStatuses;
 
         // Persisted config becomes source of truth for layout + mapping.
@@ -765,65 +816,101 @@ app.get('/api/config', (req, res) => {
     // Persist the latest discovered mapping/layout into config.json.
     // This makes config.json the stable source of truth.
     persistConfigToDiskIfChanged('api-config');
-    const allowlist = getUiAllowlistInfo();
+    const allowlists = getUiAllowlistsInfo();
     res.json({
         ...config,
         ui: {
             ...(config?.ui || {}),
-            allowedDeviceIds: allowlist.ids,
-            allowlistSource: allowlist.source,
-            allowlistLocked: allowlist.locked,
+            ctrlAllowedDeviceIds: allowlists.ctrl.ids,
+            mainAllowedDeviceIds: allowlists.main.ids,
+            // Back-compat for older clients
+            allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+
+            ctrlAllowlistSource: allowlists.ctrl.source,
+            ctrlAllowlistLocked: allowlists.ctrl.locked,
+            mainAllowlistSource: allowlists.main.source,
+            mainAllowlistLocked: allowlists.main.locked,
         },
     });
 });
 app.get('/api/status', (req, res) => res.json(sensorStatuses));
 
-// Update UI device allowlist from the kiosk.
-// NOTE: If UI_ALLOWED_DEVICE_IDS is set in env, it takes priority and locks UI edits.
+// Update UI device allowlists from the kiosk.
+// Back-compat: accepts an array or { allowedDeviceIds: [] } to update the CTRL list.
 app.put('/api/ui/allowed-device-ids', (req, res) => {
-    const current = getUiAllowlistInfo();
-    if (current.locked) {
-        return res.status(409).json({
-            error: 'Allowlist locked',
-            message: 'UI_ALLOWED_DEVICE_IDS is set in the environment, so the kiosk cannot edit the allowlist. Remove UI_ALLOWED_DEVICE_IDS to enable UI editing.',
-        });
-    }
-
     const body = req.body;
-    const incoming = Array.isArray(body)
+    const allowlists = getUiAllowlistsInfo();
+
+    const legacyCtrl = Array.isArray(body)
         ? body
         : (body && typeof body === 'object' ? body.allowedDeviceIds : null);
 
-    if (!Array.isArray(incoming)) {
-        return res.status(400).json({ error: 'Expected an array (or { allowedDeviceIds: [] })' });
+    const incomingCtrl = (body && typeof body === 'object' && Array.isArray(body.ctrlAllowedDeviceIds))
+        ? body.ctrlAllowedDeviceIds
+        : legacyCtrl;
+    const incomingMain = (body && typeof body === 'object' && Array.isArray(body.mainAllowedDeviceIds))
+        ? body.mainAllowedDeviceIds
+        : null;
+
+    if (!Array.isArray(incomingCtrl) && !Array.isArray(incomingMain)) {
+        return res.status(400).json({
+            error:
+                'Expected an array (legacy ctrl list) or { ctrlAllowedDeviceIds: [], mainAllowedDeviceIds: [] }',
+        });
     }
 
-    const nextIds = incoming.map((v) => String(v || '').trim()).filter(Boolean);
+    if (Array.isArray(incomingCtrl) && allowlists.ctrl.locked) {
+        return res.status(409).json({
+            error: 'Ctrl allowlist locked',
+            message:
+                'UI_ALLOWED_CTRL_DEVICE_IDS (or legacy UI_ALLOWED_DEVICE_IDS) is set in the environment, so the kiosk cannot edit the Ctrl allowlist. Remove it to enable UI editing.',
+        });
+    }
+
+    if (Array.isArray(incomingMain) && allowlists.main.locked) {
+        return res.status(409).json({
+            error: 'Main allowlist locked',
+            message:
+                'UI_ALLOWED_MAIN_DEVICE_IDS is set in the environment, so the kiosk cannot edit the Main allowlist. Remove it to enable UI editing.',
+        });
+    }
+
+    const normalizeIds = (arr) => arr.map((v) => String(v || '').trim()).filter(Boolean);
+    const nextCtrlIds = Array.isArray(incomingCtrl) ? normalizeIds(incomingCtrl) : null;
+    const nextMainIds = Array.isArray(incomingMain) ? normalizeIds(incomingMain) : null;
 
     persistedConfig = normalizePersistedConfig({
-        ...persistedConfig,
-        ui: { allowedDeviceIds: nextIds },
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            ...(nextCtrlIds ? { ctrlAllowedDeviceIds: nextCtrlIds, allowedDeviceIds: nextCtrlIds } : {}),
+            ...(nextMainIds ? { mainAllowedDeviceIds: nextMainIds } : {}),
+        },
     });
 
     persistConfigToDiskIfChanged('api-ui');
 
-    const next = getUiAllowlistInfo();
+    const nextAllowlists = getUiAllowlistsInfo();
     config = {
         ...config,
         ui: {
             ...(config?.ui || {}),
-            allowedDeviceIds: next.ids,
-            allowlistSource: next.source,
-            allowlistLocked: next.locked,
+            ctrlAllowedDeviceIds: nextAllowlists.ctrl.ids,
+            mainAllowedDeviceIds: nextAllowlists.main.ids,
+            allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            ctrlAllowlistSource: nextAllowlists.ctrl.source,
+            ctrlAllowlistLocked: nextAllowlists.ctrl.locked,
+            mainAllowlistSource: nextAllowlists.main.source,
+            mainAllowlistLocked: nextAllowlists.main.locked,
         },
     };
     io.emit('config_update', config);
 
     return res.json({
         ok: true,
-        allowedDeviceIds: next.ids,
-        allowlistSource: next.source,
-        allowlistLocked: next.locked,
+        ui: {
+            ...(config?.ui || {}),
+        },
     });
 });
 
@@ -978,12 +1065,31 @@ app.post('/api/devices/:id/command', async (req, res) => {
         if (!isUiDeviceAllowedForControl(deviceId)) {
             return res.status(403).json({
                 error: 'Device not allowed',
-                message: 'This device is not in the UI allowlist. Set UI_ALLOWED_DEVICE_IDS (or ui.allowedDeviceIds in server/data/config.json).',
+                message: 'This device is not in the UI allowlists. Set UI_ALLOWED_MAIN_DEVICE_IDS and/or UI_ALLOWED_CTRL_DEVICE_IDS (or ui.mainAllowedDeviceIds / ui.ctrlAllowedDeviceIds in server/data/config.json).',
             });
         }
         const { command, args = [] } = req.body || {};
         if (!command || typeof command !== 'string') {
             return res.status(400).json({ error: 'Missing command' });
+        }
+
+        // MakerAPI can throw internal NullPointerException (sendDeviceCommandSecondary)
+        // when the device doesn't support the command (or device id is invalid).
+        // Validate against the last cached status to prevent sending unsupported commands.
+        const status = sensorStatuses?.[String(deviceId)] || sensorStatuses?.[Number(deviceId)] || null;
+        const knownCommands = Array.isArray(status?.commands) ? status.commands.map(String) : null;
+        const attrs = status?.attributes && typeof status.attributes === 'object' ? status.attributes : {};
+        if (knownCommands && knownCommands.length && !knownCommands.includes(command)) {
+            // Special-case: some devices may omit on/off but still expose switch attr; allow on/off anyway.
+            const hasSwitchAttr = typeof attrs.switch === 'string';
+            const isOnOff = command === 'on' || command === 'off';
+            if (!(hasSwitchAttr && isOnOff)) {
+                return res.status(400).json({
+                    error: 'Unsupported command',
+                    message: `Device ${deviceId} does not report support for command '${command}'.`,
+                    supportedCommands: knownCommands,
+                });
+            }
         }
 
         const cleanedArgs = Array.isArray(args)
@@ -997,7 +1103,10 @@ app.post('/api/devices/:id/command', async (req, res) => {
             ? `/${cleanedArgs.map(a => encodeURIComponent(String(a))).join('/')}`
             : '';
 
-        const url = `${HUBITAT_API_BASE}/devices/${encodeURIComponent(deviceId)}/command/${encodeURIComponent(command)}${argsPath}?access_token=${encodeURIComponent(HUBITAT_ACCESS_TOKEN)}`;
+        // Maker API command pattern:
+        //   /devices/<DEVICE_ID>/<COMMAND>/<SECONDARY?>?access_token=...
+        // Do NOT include an extra "/command/" path segment.
+        const url = `${HUBITAT_API_BASE}/devices/${encodeURIComponent(deviceId)}/${encodeURIComponent(command)}${argsPath}?access_token=${encodeURIComponent(HUBITAT_ACCESS_TOKEN)}`;
 
         const hubRes = await fetch(url, { method: 'GET' });
         if (!hubRes.ok) {
