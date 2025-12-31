@@ -19,7 +19,7 @@ const useFitScale = () => {
     if (!viewportEl || !contentEl) return;
 
     const compute = () => {
-      const SAFE_GUTTER_PX = 40;
+      const SAFE_GUTTER_PX = 16;
       const vw = Math.max((viewportEl.clientWidth || 1) - SAFE_GUTTER_PX, 1);
       const vh = Math.max((viewportEl.clientHeight || 1) - SAFE_GUTTER_PX, 1);
       const cw = Math.max(contentEl.scrollWidth, contentEl.clientWidth, 1);
@@ -55,6 +55,19 @@ async function sendDeviceCommand(deviceId, command, args = []) {
     const text = await res.text().catch(() => '');
     throw new Error(text || `Command failed (${res.status})`);
   }
+}
+
+async function saveAllowedDeviceIds(allowedDeviceIds) {
+  const res = await fetch(`${API_HOST}/api/ui/allowed-device-ids`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ allowedDeviceIds }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Allowlist save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
 }
 
 const SwitchTile = ({ label, isOn, disabled, busy, onToggle }) => {
@@ -144,10 +157,53 @@ const LevelTile = ({ label, isOn, level, disabled, busy, onToggle, onSetLevel })
 const InteractionPanel = ({ config, statuses, connected }) => {
   const { viewportRef, contentRef, scale } = useFitScale();
 
+  const [allowlistBusy, setAllowlistBusy] = useState(false);
+  const [allowlistError, setAllowlistError] = useState(null);
+
   const allowedControlIds = useMemo(() => {
     const ids = Array.isArray(config?.ui?.allowedDeviceIds) ? config.ui.allowedDeviceIds : [];
     return new Set(ids.map((v) => String(v)));
   }, [config?.ui?.allowedDeviceIds]);
+
+  const allowlistLocked = Boolean(config?.ui?.allowlistLocked);
+
+  const allSwitchLikeDevices = useMemo(() => {
+    const devices = (config?.sensors || [])
+      .map((d) => {
+        const st = statuses?.[d.id] || null;
+        const attrs = st?.attributes || {};
+        const commands = Array.isArray(st?.commands) ? st.commands : [];
+
+        const isSwitchAttr = typeof attrs.switch === 'string' && (attrs.switch === 'on' || attrs.switch === 'off');
+        const isSwitchCmd = commands.includes('on') || commands.includes('off') || commands.includes('toggle');
+        if (!isSwitchAttr && !isSwitchCmd) return null;
+
+        return {
+          id: String(d.id),
+          label: d.label || st?.label || String(d.id),
+        };
+      })
+      .filter(Boolean);
+
+    devices.sort((a, b) => String(a.label).localeCompare(String(b.label)));
+    return devices;
+  }, [config?.sensors, statuses]);
+
+  const setAllowed = async (deviceId, nextAllowed) => {
+    setAllowlistError(null);
+    setAllowlistBusy(true);
+    try {
+      const next = new Set(Array.from(allowedControlIds));
+      if (nextAllowed) next.add(String(deviceId));
+      else next.delete(String(deviceId));
+      await saveAllowedDeviceIds(Array.from(next));
+      // Server will broadcast config_update; no local state needed.
+    } catch (e) {
+      setAllowlistError(e?.message || String(e));
+    } finally {
+      setAllowlistBusy(false);
+    }
+  };
 
   const rooms = useMemo(() => {
     const byRoomId = new Map();
@@ -179,7 +235,7 @@ const InteractionPanel = ({ config, statuses, connected }) => {
   };
 
   return (
-    <div ref={viewportRef} className="w-full h-full overflow-hidden p-4 pr-6 md:p-6 md:pr-8">
+    <div ref={viewportRef} className="w-full h-full overflow-hidden p-4 md:p-6">
       <div
         className="w-full h-full"
         style={{
@@ -216,6 +272,64 @@ const InteractionPanel = ({ config, statuses, connected }) => {
                   Refresh
                 </span>
               </button>
+            </div>
+          </div>
+
+          <div className="mt-4 glass-panel border border-white/10 p-4 md:p-5">
+            <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+              Allowlist
+            </div>
+            <div className="mt-1 text-base md:text-lg font-extrabold tracking-wide text-white">
+              Allowed Controls (Dash + Ctrl)
+            </div>
+            <div className="mt-1 text-xs text-white/45">
+              Tap to include/exclude devices from all switch/command controls.
+            </div>
+
+            {allowlistLocked ? (
+              <div className="mt-2 text-[11px] text-neon-red">
+                Locked by server env var UI_ALLOWED_DEVICE_IDS.
+              </div>
+            ) : null}
+            {allowlistError ? (
+              <div className="mt-2 text-[11px] text-neon-red break-words">
+                Save failed: {allowlistError}
+              </div>
+            ) : null}
+
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+              {allSwitchLikeDevices.length ? (
+                allSwitchLikeDevices.map((d) => {
+                  const isAllowed = allowedControlIds.has(String(d.id));
+                  return (
+                    <button
+                      key={d.id}
+                      type="button"
+                      disabled={!connected || allowlistBusy || allowlistLocked}
+                      onClick={() => setAllowed(d.id, !isAllowed)}
+                      className={`rounded-2xl border p-4 transition-colors active:scale-[0.99] ${
+                        isAllowed
+                          ? 'bg-neon-blue/10 border-neon-blue/30 text-neon-blue'
+                          : 'bg-white/5 border-white/10 text-white/70'
+                      } ${(!connected || allowlistBusy || allowlistLocked) ? 'opacity-50' : ''}`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0 text-left">
+                          <div className="text-[11px] uppercase tracking-[0.2em] font-semibold truncate">
+                            {d.label}
+                          </div>
+                          <div className="mt-1 text-xs text-white/45 truncate">ID: {d.id}</div>
+                        </div>
+                        <div className="shrink-0 text-[11px] font-extrabold tracking-[0.2em] uppercase">
+                          {isAllowed ? 'Allowed' : 'Hidden'}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="text-sm text-white/45">No switch devices discovered.</div>
+              )}
             </div>
           </div>
 

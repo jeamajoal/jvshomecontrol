@@ -200,18 +200,26 @@ function parseCommaList(raw) {
         .filter(Boolean);
 }
 
-function getUiAllowedDeviceIds() {
+function getUiAllowlistInfo() {
     const envList = parseCommaList(process.env.UI_ALLOWED_DEVICE_IDS);
-    if (envList.length) return envList;
-
-    const fromConfig = persistedConfig?.ui?.allowedDeviceIds;
-    if (Array.isArray(fromConfig)) {
-        return fromConfig
-            .map((v) => String(v || '').trim())
-            .filter(Boolean);
+    if (envList.length) {
+        return { ids: envList, source: 'env', locked: true };
     }
 
-    return [];
+    const fromConfig = persistedConfig?.ui?.allowedDeviceIds;
+    if (Array.isArray(fromConfig) && fromConfig.length) {
+        return {
+            ids: fromConfig.map((v) => String(v || '').trim()).filter(Boolean),
+            source: 'config',
+            locked: false,
+        };
+    }
+
+    return { ids: [], source: 'empty', locked: false };
+}
+
+function getUiAllowedDeviceIds() {
+    return getUiAllowlistInfo().ids;
 }
 
 function isUiDeviceAllowedForControl(deviceId) {
@@ -296,6 +304,13 @@ function normalizePersistedConfig(raw) {
 
     out.rooms = Array.isArray(out.rooms) ? out.rooms : [];
     out.sensors = Array.isArray(out.sensors) ? out.sensors : [];
+
+    const uiRaw = out.ui && typeof out.ui === 'object' ? out.ui : {};
+    out.ui = {
+        allowedDeviceIds: Array.isArray(uiRaw.allowedDeviceIds)
+            ? uiRaw.allowedDeviceIds.map((v) => String(v || '').trim()).filter(Boolean)
+            : [],
+    };
 
     return out;
 }
@@ -750,15 +765,67 @@ app.get('/api/config', (req, res) => {
     // Persist the latest discovered mapping/layout into config.json.
     // This makes config.json the stable source of truth.
     persistConfigToDiskIfChanged('api-config');
+    const allowlist = getUiAllowlistInfo();
     res.json({
         ...config,
         ui: {
             ...(config?.ui || {}),
-            allowedDeviceIds: getUiAllowedDeviceIds(),
+            allowedDeviceIds: allowlist.ids,
+            allowlistSource: allowlist.source,
+            allowlistLocked: allowlist.locked,
         },
     });
 });
 app.get('/api/status', (req, res) => res.json(sensorStatuses));
+
+// Update UI device allowlist from the kiosk.
+// NOTE: If UI_ALLOWED_DEVICE_IDS is set in env, it takes priority and locks UI edits.
+app.put('/api/ui/allowed-device-ids', (req, res) => {
+    const current = getUiAllowlistInfo();
+    if (current.locked) {
+        return res.status(409).json({
+            error: 'Allowlist locked',
+            message: 'UI_ALLOWED_DEVICE_IDS is set in the environment, so the kiosk cannot edit the allowlist. Remove UI_ALLOWED_DEVICE_IDS to enable UI editing.',
+        });
+    }
+
+    const body = req.body;
+    const incoming = Array.isArray(body)
+        ? body
+        : (body && typeof body === 'object' ? body.allowedDeviceIds : null);
+
+    if (!Array.isArray(incoming)) {
+        return res.status(400).json({ error: 'Expected an array (or { allowedDeviceIds: [] })' });
+    }
+
+    const nextIds = incoming.map((v) => String(v || '').trim()).filter(Boolean);
+
+    persistedConfig = normalizePersistedConfig({
+        ...persistedConfig,
+        ui: { allowedDeviceIds: nextIds },
+    });
+
+    persistConfigToDiskIfChanged('api-ui');
+
+    const next = getUiAllowlistInfo();
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            allowedDeviceIds: next.ids,
+            allowlistSource: next.source,
+            allowlistLocked: next.locked,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({
+        ok: true,
+        allowedDeviceIds: next.ids,
+        allowlistSource: next.source,
+        allowlistLocked: next.locked,
+    });
+});
 
 // Debug/inspection endpoints (do not include access token)
 app.get('/api/hubitat/health', (req, res) => {
