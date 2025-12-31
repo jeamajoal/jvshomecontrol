@@ -348,6 +348,33 @@ const HeatmapPanel = ({ config, statuses }) => {
 
   return (
     <div ref={viewportRef} className="w-full h-full overflow-hidden p-4 md:p-6">
+      <style>{`
+        /* Make the react-grid-layout resize handle visible and touch-friendly in edit mode */
+        .jvs-heatmap-grid .react-resizable-handle {
+          width: 28px;
+          height: 28px;
+          z-index: 50;
+          opacity: 0.95;
+        }
+        .jvs-heatmap-grid .react-resizable-handle-se {
+          right: 6px;
+          bottom: 6px;
+          background: rgba(0, 0, 0, 0.45);
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          border-radius: 10px;
+        }
+        .jvs-heatmap-grid .react-resizable-handle-se:after {
+          /* Overwrite the default tiny corner marker */
+          content: '';
+          position: absolute;
+          right: 8px;
+          bottom: 8px;
+          width: 10px;
+          height: 10px;
+          border-right: 2px solid rgba(255, 255, 255, 0.65);
+          border-bottom: 2px solid rgba(255, 255, 255, 0.65);
+        }
+      `}</style>
       <div
         className="w-full h-full"
         style={{
@@ -425,7 +452,7 @@ const HeatmapPanel = ({ config, statuses }) => {
 
               {editMode ? (
                 <div className="mt-3 text-[11px] text-white/55">
-                  Drag rooms and sensor dots.
+                  Drag rooms and sensor dots. Resize rooms using the bottom-right corner.
                 </div>
               ) : null}
             </aside>
@@ -434,7 +461,7 @@ const HeatmapPanel = ({ config, statuses }) => {
               <div className="glass-panel border border-white/10 overflow-hidden">
                 <div className="relative w-full h-[82vh] bg-black/30 p-3 md:p-4">
                   <ReactGridLayout
-                    className="layout"
+                    className="layout jvs-heatmap-grid"
                     cols={GRID_COLS}
                     rowHeight={GRID_ROW_HEIGHT}
                     maxRows={GRID_MAX_ROWS}
@@ -444,6 +471,8 @@ const HeatmapPanel = ({ config, statuses }) => {
                     preventCollision
                     isDraggable={editMode}
                     isResizable={editMode}
+                    resizeHandles={['se']}
+                    draggableCancel=".react-resizable-handle"
                     layout={gridLayout}
                     onDragStop={(nextLayout, _oldItem, newItem) => {
                       const box = nextLayout.find((l) => l.i === newItem.i);
@@ -481,7 +510,7 @@ const HeatmapPanel = ({ config, statuses }) => {
                             <RoomSensors roomId={t.room.id} sensors={t.sensors} />
 
                             {editMode ? (
-                              <div className="absolute bottom-2 right-2 text-[10px] uppercase tracking-[0.2em] text-white/40">
+                              <div className="absolute bottom-2 left-2 text-[10px] uppercase tracking-[0.2em] text-white/40 z-10">
                                 {saving ? 'Saving…' : `${t.layout.x},${t.layout.y} ${t.layout.w}x${t.layout.h}`}
                               </div>
                             ) : null}
