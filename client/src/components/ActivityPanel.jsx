@@ -268,6 +268,9 @@ const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
                 aria-label={String(r.room?.name || r.room?.id)}
                 title={String(r.room?.name || r.room?.id)}
               >
+                <div className="text-xs md:text-sm font-extrabold tracking-wide text-white/80 truncate">
+                  {String(r.room?.name || r.room?.id)}
+                </div>
                 <div className="w-full flex items-center justify-center gap-6 py-4">
                   <Footprints
                     className={`w-8 h-8 ${motionActive ? `animate-pulse ${uiScheme?.selectedText || 'text-neon-blue'}` : 'text-white/25'}`}
