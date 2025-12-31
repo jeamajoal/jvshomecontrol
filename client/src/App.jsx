@@ -16,6 +16,8 @@ function App() {
   const [config, setConfig] = useState({ rooms: [], sensors: [] });
   const [connected, setConnected] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [autoFullscreenArmed, setAutoFullscreenArmed] = useState(true);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [page, setPage] = useState(0); // 0=Main, 1=MAP, 2=Forecast, 3=Interact, 4=Config, 5=About
@@ -67,6 +69,28 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const apply = () => setIsMobile(!!mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+
+  const ensureFullscreen = () => {
+    if (!isMobile) return;
+    if (!autoFullscreenArmed) return;
+    if (document.fullscreenElement) return;
+
+    try {
+      document.documentElement.requestFullscreen();
+      setAutoFullscreenArmed(false);
+    } catch {
+      // ignore (fullscreen may be blocked by browser)
+      setAutoFullscreenArmed(false);
+    }
+  };
+
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen();
@@ -93,7 +117,8 @@ function App() {
           </div>
         </div>
 
-        <div className="absolute left-1/2 -translate-x-1/2 max-w-[70vw] md:max-w-none">
+        {/* Desktop tabs */}
+        <div className="hidden md:block absolute left-1/2 -translate-x-1/2 max-w-[70vw] md:max-w-none">
           <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-black/20 p-1 overflow-x-auto whitespace-nowrap">
             <button
               type="button"
@@ -173,6 +198,46 @@ function App() {
           </button>
         </div>
       </header>
+
+      {/* Mobile dropdown nav */}
+      <div className="md:hidden flex-none px-3 pb-3 border-b border-white/5 bg-black/10">
+        <div className="flex items-center gap-2">
+          <label className="text-[10px] font-bold uppercase tracking-widest text-white/40">Menu</label>
+          <select
+            value={page}
+            onChange={(e) => {
+              ensureFullscreen();
+              setPage(Number(e.target.value));
+            }}
+            className="flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm font-semibold text-white/85"
+          >
+            <option value={0}>Main</option>
+            <option value={1}>MAP</option>
+            <option value={2}>Forecast</option>
+            <option value={3}>Interact</option>
+            <option value={4}>Config</option>
+            <option value={5}>About</option>
+          </select>
+
+          {!isFullscreen ? (
+            <button
+              type="button"
+              onClick={() => {
+                ensureFullscreen();
+                toggleFullscreen();
+              }}
+              className={`shrink-0 rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] ${uiScheme.actionButton}`}
+            >
+              Fullscreen
+            </button>
+          ) : null}
+        </div>
+        {!isFullscreen ? (
+          <div className="mt-1 text-[11px] text-white/45">
+            Fullscreen can’t be forced by the browser; tap once to enable.
+          </div>
+        ) : null}
+      </div>
 
       {/* Main Grid */}
       <main className="flex-1 min-h-0 w-full overflow-y-auto md:overflow-hidden relative bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-900 via-black to-black">
