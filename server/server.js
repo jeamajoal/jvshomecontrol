@@ -927,7 +927,10 @@ function normalizeOpenMeteoPayload(raw) {
     };
 }
 
-async function syncHubitatData() {
+let hubitatSyncInFlight = null;
+let hubitatSyncQueued = false;
+
+async function syncHubitatDataInner() {
     try {
         const devices = await fetchHubitatAllDevices();
 
@@ -1170,6 +1173,30 @@ async function syncHubitatData() {
         if (now - lastHubitatErrorLoggedAt > 30_000) {
             lastHubitatErrorLoggedAt = now;
             console.error("Hubitat polling error:", lastHubitatError);
+        }
+    }
+}
+
+// Ensure sync calls cannot overlap (polling + manual refresh + device command triggers).
+// Overlapping syncs can race and temporarily overwrite fresher state with older payloads.
+async function syncHubitatData() {
+    if (hubitatSyncInFlight) {
+        hubitatSyncQueued = true;
+        return hubitatSyncInFlight;
+    }
+
+    hubitatSyncInFlight = (async () => {
+        await syncHubitatDataInner();
+    })();
+
+    try {
+        return await hubitatSyncInFlight;
+    } finally {
+        hubitatSyncInFlight = null;
+        if (hubitatSyncQueued) {
+            hubitatSyncQueued = false;
+            // Fire-and-return (callers already awaited the in-flight sync above).
+            syncHubitatData();
         }
     }
 }
