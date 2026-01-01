@@ -7,7 +7,6 @@ import {
   Power,
   Loader2,
   Clock,
-  Cloud,
   Wind,
   CloudRain,
   SlidersHorizontal,
@@ -117,14 +116,6 @@ const formatDate = (date) => {
   } catch {
     return '—';
   }
-};
-
-const getSeason = (date) => {
-  const m = date.getMonth();
-  if (m === 11 || m === 0 || m === 1) return 'Winter';
-  if (m === 2 || m === 3 || m === 4) return 'Spring';
-  if (m === 5 || m === 6 || m === 7) return 'Summer';
-  return 'Fall';
 };
 
 const useClock = (intervalMs = 1000) => {
@@ -600,6 +591,8 @@ const EnvironmentPanel = ({ config, statuses, connected, uiScheme }) => {
 
   const [weather, setWeather] = useState(null);
   const [weatherError, setWeatherError] = useState(null);
+  const [hubitatMode, setHubitatMode] = useState(null);
+  const [hubitatModeError, setHubitatModeError] = useState(null);
 
   const overall = useMemo(() => {
     const allDevices = (rooms || []).flatMap((r) => r.devices);
@@ -610,8 +603,6 @@ const EnvironmentPanel = ({ config, statuses, connected, uiScheme }) => {
     const outsideDevices = pickOutsideDevices(rooms);
     return computeRoomMetrics(outsideDevices, allowedControlIds);
   }, [rooms, allowedControlIds]);
-
-  const season = useMemo(() => getSeason(now), [now]);
 
   useEffect(() => {
     let alive = true;
@@ -632,6 +623,33 @@ const EnvironmentPanel = ({ config, statuses, connected, uiScheme }) => {
 
     load();
     const id = setInterval(load, 5 * 60 * 1000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+
+    const load = async () => {
+      try {
+        const res = await fetch(`${API_HOST}/api/hubitat/modes`);
+        if (!res.ok) throw new Error(`modes ${res.status}`);
+        const data = await res.json();
+        if (!alive) return;
+        const active = data?.active || null;
+        setHubitatMode(active);
+        setHubitatModeError(null);
+      } catch (e) {
+        if (!alive) return;
+        setHubitatMode(null);
+        setHubitatModeError(e?.message || 'modes error');
+      }
+    };
+
+    load();
+    const id = setInterval(load, 60 * 1000);
     return () => {
       alive = false;
       clearInterval(id);
@@ -708,27 +726,31 @@ const EnvironmentPanel = ({ config, statuses, connected, uiScheme }) => {
               uiScheme={resolvedUiScheme}
             />
             <MetricCard
-              title="Forecast"
-              value={asText(outsideDisplay.todayCondition) || season}
+              title="Inside"
+              value={formatTemp(overall.temperature)}
               sub={
-                (outsideDisplay.todayHigh !== null || outsideDisplay.todayLow !== null)
-                  ? `H ${formatTemp(outsideDisplay.todayHigh)} • L ${formatTemp(outsideDisplay.todayLow)}${outsideDisplay.precipProb !== null ? ` • ${Math.round(Number(outsideDisplay.precipProb))}%` : ''}`
-                  : 'Open‑Meteo'
+                overall.temperature === null
+                  ? 'No sensors'
+                  : `RH ${overall.humidity === null ? '—' : formatPercent(overall.humidity)} • Lux ${overall.illuminance === null ? '—' : formatLux(overall.illuminance)}`
               }
-              icon={Cloud}
+              icon={Thermometer}
               accentClassName="border-white/10"
               uiScheme={resolvedUiScheme}
             />
             <MetricCard
               title="Home"
-              value={connected ? 'ONLINE' : 'OFFLINE'}
+              value={
+                !connected
+                  ? 'OFFLINE'
+                  : (asText(hubitatMode?.name) || asText(hubitatMode?.label) || asText(hubitatMode?.id) || '—')
+              }
               sub={
                 !connected
                   ? 'Disconnected'
                   : (
                     (overall.motionActive || overall.doorOpen)
                       ? `${overall.motionActive ? 'Motion active' : 'No motion'}${overall.doorOpen ? ` • Doors open: ${overall.doorOpenCount}` : ''}`
-                      : 'All clear'
+                      : (hubitatModeError ? `Mode unavailable (${hubitatModeError})` : 'All clear')
                   )
               }
               icon={Activity}
@@ -772,33 +794,6 @@ const EnvironmentPanel = ({ config, statuses, connected, uiScheme }) => {
               value={outsideDisplay.currentHumidity !== null ? formatPercent(outsideDisplay.currentHumidity) : '—'}
               sub="Relative humidity"
               icon={Droplets}
-              accentClassName="border-white/10"
-              uiScheme={resolvedUiScheme}
-            />
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
-            <MetricCard
-              title="Avg Temp"
-              value={formatTemp(overall.temperature)}
-              sub={overall.temperature === null ? 'No sensors' : 'Whole home average'}
-              icon={Thermometer}
-              accentClassName="border-white/10"
-              uiScheme={resolvedUiScheme}
-            />
-            <MetricCard
-              title="Avg Humidity"
-              value={overall.humidity === null ? '—' : formatPercent(overall.humidity)}
-              sub={overall.humidity === null ? 'No sensors' : 'Whole home average'}
-              icon={Droplets}
-              accentClassName="border-white/10"
-              uiScheme={resolvedUiScheme}
-            />
-            <MetricCard
-              title="Avg Lux"
-              value={overall.illuminance === null ? '—' : formatLux(overall.illuminance)}
-              sub={overall.illuminance === null ? 'No sensors' : 'Whole home average'}
-              icon={Sun}
               accentClassName="border-white/10"
               uiScheme={resolvedUiScheme}
             />

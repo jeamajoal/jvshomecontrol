@@ -164,6 +164,9 @@ const HUBITAT_API_BASE = HUBITAT_CONFIGURED ? `${HUBITAT_HOST}/apps/api/${HUBITA
 const HUBITAT_API_URL = HUBITAT_CONFIGURED
     ? `${HUBITAT_API_BASE}/devices/all?access_token=${encodeURIComponent(HUBITAT_ACCESS_TOKEN)}`
     : '';
+const HUBITAT_MODES_URL = HUBITAT_CONFIGURED
+    ? `${HUBITAT_API_BASE}/modes?access_token=${encodeURIComponent(HUBITAT_ACCESS_TOKEN)}`
+    : '';
 
 // Open-Meteo (free) weather
 // Config priority: env vars > server/data/config.json > defaults
@@ -1838,6 +1841,50 @@ app.get('/api/hubitat/health', (req, res) => {
         lastError: lastHubitatError,
         cachedCount: Array.isArray(lastHubitatDevices) ? lastHubitatDevices.length : 0,
     });
+});
+
+// Hubitat Maker API modes (proxy). Useful for displaying the currently active Mode.
+app.get('/api/hubitat/modes', async (req, res) => {
+    if (!HUBITAT_CONFIGURED) {
+        return res.status(409).json({ ok: false, error: 'Hubitat not configured' });
+    }
+
+    let hubitatRes;
+    try {
+        hubitatRes = await hubitatFetch(HUBITAT_MODES_URL);
+    } catch (err) {
+        const safeUrl = redactAccessToken(HUBITAT_MODES_URL);
+        return res.status(502).json({ ok: false, error: `Hubitat fetch failed: ${describeFetchError(err)} (url: ${safeUrl})` });
+    }
+
+    if (!hubitatRes.ok) {
+        const text = await hubitatRes.text().catch(() => '');
+        return res.status(502).json({ ok: false, error: `Hubitat API Error: ${hubitatRes.status} ${text}` });
+    }
+
+    const raw = await hubitatRes.text().catch(() => '');
+    if (!raw.trim()) {
+        return res.status(502).json({ ok: false, error: 'Hubitat API returned an empty response body' });
+    }
+
+    let modes;
+    try {
+        modes = JSON.parse(raw);
+    } catch (err) {
+        const contentType = hubitatRes.headers.get('content-type') || '';
+        const snippet = raw.slice(0, 300).replace(/\s+/g, ' ').trim();
+        return res.status(502).json({
+            ok: false,
+            error: `Hubitat API returned invalid JSON (content-type: ${contentType || 'unknown'}). Snippet: ${snippet}`,
+        });
+    }
+
+    if (!Array.isArray(modes)) {
+        return res.status(502).json({ ok: false, error: 'Hubitat API returned non-array payload' });
+    }
+
+    const active = modes.find((m) => m && typeof m === 'object' && m.active === true) || null;
+    return res.json({ ok: true, active, modes });
 });
 
 // Trigger an immediate refresh from Hubitat (useful when polling interval is long).
