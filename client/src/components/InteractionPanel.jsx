@@ -81,32 +81,60 @@ async function sendDeviceCommand(deviceId, command, args = []) {
   }
 }
 
-const SwitchTile = ({ label, isOn, disabled, busy, onToggle, uiScheme }) => {
-  const stateClass = isOn
-    ? `${uiScheme?.selectedCard || 'bg-neon-blue/15 border-neon-blue/40'} ${uiScheme?.selectedText || 'text-neon-blue'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
-    : 'bg-white/5 border-white/10 text-white/70';
+const SwitchTile = ({ label, disabled, busyOn, busyOff, busyToggle, canOn, canOff, canToggle, onOn, onOff, onToggle, uiScheme }) => {
+  const anyBusy = Boolean(busyOn || busyOff || busyToggle);
 
   return (
-    <button
-      type="button"
-      disabled={disabled || busy}
-      onClick={onToggle}
-      className={`w-full rounded-2xl border p-4 md:p-5 transition-colors active:scale-[0.99] ${stateClass} ${disabled ? 'opacity-50' : ''}`}
-    >
+    <div className={`w-full rounded-2xl border p-4 md:p-5 bg-white/5 border-white/10 ${disabled ? 'opacity-50' : ''}`}>
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0 text-left">
-          <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] font-semibold truncate">{label}</div>
-          <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight">{isOn ? 'ON' : 'OFF'}</div>
+          <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold truncate">{label}</div>
+          <div className="mt-1 text-xs text-white/45">Command only</div>
         </div>
         <div className="shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center">
-          {busy ? (
+          {anyBusy ? (
             <Loader2 className={`w-6 h-6 md:w-7 md:h-7 animate-spin ${uiScheme?.metricIcon || 'text-neon-blue'}`} />
           ) : (
-            <Power className={`w-6 h-6 md:w-7 md:h-7 ${isOn ? (uiScheme?.selectedText || 'text-neon-blue') : 'text-white/60'}`} />
+            <Power className="w-6 h-6 md:w-7 md:h-7 text-white/60" />
           )}
         </div>
       </div>
-    </button>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {canOn ? (
+          <button
+            type="button"
+            disabled={disabled || busyOn}
+            onClick={onOn}
+            className={`rounded-xl border px-3 py-2 text-xs font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] ${uiScheme?.actionButton || 'text-neon-blue border-neon-blue/30 bg-neon-blue/10'} ${(disabled || busyOn) ? 'opacity-50' : 'hover:bg-white/5'}`}
+          >
+            {busyOn ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'On'}
+          </button>
+        ) : null}
+
+        {canOff ? (
+          <button
+            type="button"
+            disabled={disabled || busyOff}
+            onClick={onOff}
+            className={`rounded-xl border px-3 py-2 text-xs font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] ${uiScheme?.actionButton || 'text-neon-blue border-neon-blue/30 bg-neon-blue/10'} ${(disabled || busyOff) ? 'opacity-50' : 'hover:bg-white/5'}`}
+          >
+            {busyOff ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Off'}
+          </button>
+        ) : null}
+
+        {!canOn && !canOff && canToggle ? (
+          <button
+            type="button"
+            disabled={disabled || busyToggle}
+            onClick={onToggle}
+            className={`rounded-xl border px-3 py-2 text-xs font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] ${uiScheme?.actionButton || 'text-neon-blue border-neon-blue/30 bg-neon-blue/10'} ${(disabled || busyToggle) ? 'opacity-50' : 'hover:bg-white/5'}`}
+          >
+            {busyToggle ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Toggle'}
+          </button>
+        ) : null}
+      </div>
+    </div>
   );
 };
 
@@ -276,11 +304,13 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                       {controllables.map((d) => {
                         const sw = asText(d.attrs.switch) || asText(d.state);
                         const level = d.attrs.level;
-                        const isSwitch = typeof sw === 'string' && (sw === 'on' || sw === 'off');
+                        const isSwitchAttr = typeof sw === 'string' && (sw === 'on' || sw === 'off');
                         const hasLevel = d.commands.includes('setLevel') || asNumber(level) !== null;
                         const canOn = d.commands.includes('on');
                         const canOff = d.commands.includes('off');
                         const canToggle = d.commands.includes('toggle');
+
+                        const isSwitch = isSwitchAttr || canOn || canOff || canToggle;
 
                         const isOn = sw === 'on';
 
@@ -313,15 +343,16 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                             <SwitchTile
                               key={d.id}
                               label={d.label}
-                              isOn={isOn}
                               disabled={!connected}
-                              busy={busy.has(`${d.id}:on`) || busy.has(`${d.id}:off`) || busy.has(`${d.id}:toggle`)}
-                              onToggle={() => {
-                                if (isOn && canOff) return run(d.id, 'off');
-                                if (!isOn && canOn) return run(d.id, 'on');
-                                if (canToggle) return run(d.id, 'toggle');
-                                return run(d.id, isOn ? 'off' : 'on');
-                              }}
+                              busyOn={busy.has(`${d.id}:on`)}
+                              busyOff={busy.has(`${d.id}:off`)}
+                              busyToggle={busy.has(`${d.id}:toggle`)}
+                              canOn={canOn}
+                              canOff={canOff}
+                              canToggle={canToggle}
+                              onOn={() => run(d.id, 'on')}
+                              onOff={() => run(d.id, 'off')}
+                              onToggle={() => run(d.id, 'toggle')}
                               uiScheme={resolvedUiScheme}
                             />
                           );
