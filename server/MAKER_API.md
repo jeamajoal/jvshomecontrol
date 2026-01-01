@@ -2,6 +2,16 @@
 
 This project uses Hubitat Maker API primarily via the **"list all devices"** endpoint configured in the server settings.
 
+## How updates work (polling + postURL)
+
+This project uses a hybrid approach:
+
+- The server does an initial **poll** on service start (when Hubitat is configured).
+- It continues polling on an interval (configurable).
+- If Maker `postURL` is configured to `POST /api/events`, incoming events are used to apply best-effort live updates to the server’s cached device state between polls.
+
+Polling remains the source of truth (it repairs missed callbacks and refreshes full device metadata).
+
 Maker API does **not** provide a dedicated "rooms" endpoint. Room names are typically exposed per-device (e.g., `dev.room` in the devices list), so rooms with **no devices** will not be discoverable via Maker API alone.
 
 ## Security note
@@ -45,6 +55,16 @@ If your `HUBITAT_HOST` is `https://...` and Hubitat uses a self-signed cert, set
 - `HUBITAT_TLS_INSECURE=1`
 
 This disables TLS verification for the Hubitat fetch calls from this server.
+
+### Poll interval
+
+Configure how often the server polls Maker API (milliseconds):
+
+- `HUBITAT_POLL_INTERVAL_MS` (default: `2000`)
+
+Example (poll once per minute):
+
+- `HUBITAT_POLL_INTERVAL_MS=60000`
 
 ## Endpoint patterns
 

@@ -85,6 +85,16 @@ If you change environment variables (for example switching `http://` to `https:/
 sudo systemctl restart jvshomecontrol
 ```
 
+### systemd environment (Debian installer)
+
+If you used the Debian installer, the systemd service reads environment variables from:
+
+- `/etc/jvshomecontrol.env`
+
+That’s where you should set Hubitat variables like `HUBITAT_HOST`, and optional tuning like the polling interval:
+
+- `HUBITAT_POLL_INTERVAL_MS=60000` (poll once per minute)
+
 ## Configuration files
 
 - Persisted config: `server/data/config.json`

@@ -8,7 +8,7 @@ Hubitat is the “local brain” and device hub.
 
 - Hubitat automations run locally.
 - Maker API exposes devices and commands over HTTP(S).
-- This project polls Maker API and also accepts Maker event callbacks at `POST /api/events`.
+- This project polls Maker API (startup + interval) and also accepts Maker event callbacks at `POST /api/events` to apply live state updates.
 
 See: [04-Hubitat.md](04-Hubitat.md) and [server/MAKER_API.md](../server/MAKER_API.md)
 

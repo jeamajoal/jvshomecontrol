@@ -142,7 +142,7 @@ const loadAudioBuffer = async (audioCtx, url) => {
   return decoded;
 };
 
-const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
+const ActivityPanel = ({ config, statuses, uiScheme }) => {
   const [alertsEnabled, setAlertsEnabled] = useState(false);
   const audioCtxRef = useRef(null);
   const soundRef = useRef({ urls: null, buffers: { motion: null, doorOpen: null, doorClose: null } });

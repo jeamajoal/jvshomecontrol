@@ -229,8 +229,8 @@ const InteractionPanel = ({ config, statuses, connected, uiScheme }) => {
                 type="button"
                 disabled={!connected}
                 onClick={() => {
-                  // Best-effort: triggers polling refresh quickly
-                  fetch(`${API_HOST}/api/status`).catch(() => undefined);
+                  // Best-effort: ask the backend to run an immediate Hubitat sync.
+                  fetch(`${API_HOST}/api/refresh`, { method: 'POST' }).catch(() => undefined);
                 }}
                 className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] ${resolvedUiScheme.actionButton} ${!connected ? 'opacity-50' : 'hover:bg-white/5'}`}
               >
@@ -326,7 +326,7 @@ const InteractionPanel = ({ config, statuses, connected, uiScheme }) => {
                         }
 
                         // Fallback: show safe action buttons if present
-                        const allow = new Set(['refresh', 'push', 'on', 'off']);
+                        const allow = new Set(['push', 'on', 'off']);
                         const actions = d.commands.filter((c) => allow.has(c));
                         if (!actions.length) return null;
 

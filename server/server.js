@@ -100,6 +100,16 @@ const HUBITAT_APP_ID = envTrim('HUBITAT_APP_ID');
 const HUBITAT_ACCESS_TOKEN = envTrim('HUBITAT_ACCESS_TOKEN');
 const HUBITAT_CONFIGURED = Boolean(HUBITAT_HOST && HUBITAT_APP_ID && HUBITAT_ACCESS_TOKEN);
 
+const HUBITAT_POLL_INTERVAL_MS = (() => {
+    const raw = String(process.env.HUBITAT_POLL_INTERVAL_MS || '').trim();
+    if (!raw) return 2000;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return 2000;
+    // Keep it sane: too-fast polling can overload Hubitat; too-slow can feel stale.
+    const clamped = Math.max(1000, Math.min(60 * 60 * 1000, Math.floor(parsed)));
+    return clamped;
+})();
+
 const HUBITAT_TLS_INSECURE = (() => {
     const raw = String(process.env.HUBITAT_TLS_INSECURE || '').trim().toLowerCase();
     return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
@@ -643,6 +653,27 @@ function persistConfigToDiskIfChanged(label, { force = false } = {}) {
 
 loadPersistedConfig();
 
+function rebuildRuntimeConfigFromPersisted() {
+    // Ensure the UI has something meaningful immediately on startup even if
+    // Hubitat polling is disabled or temporarily failing.
+    config = {
+        rooms: Array.isArray(persistedConfig?.rooms) ? persistedConfig.rooms : [],
+        sensors: Array.isArray(persistedConfig?.sensors) ? persistedConfig.sensors : [],
+        labels: Array.isArray(persistedConfig?.labels) ? persistedConfig.labels : [],
+        ui: {
+            ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
+            mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
+            // Back-compat
+            allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            colorScheme: persistedConfig?.ui?.colorScheme,
+            alertSounds: persistedConfig?.ui?.alertSounds,
+            climateTolerances: persistedConfig?.ui?.climateTolerances,
+        },
+    };
+}
+
+rebuildRuntimeConfigFromPersisted();
+
 // --- HUBITAT MAPPER ---
 
 function mapDeviceType(capabilities, typeName) {
@@ -1183,11 +1214,49 @@ async function fetchHubitatAllDevices() {
 
 
 if (HUBITAT_CONFIGURED) {
-    setInterval(syncHubitatData, 2000);
+    setInterval(syncHubitatData, HUBITAT_POLL_INTERVAL_MS);
     syncHubitatData();
 } else {
     lastHubitatError = 'Hubitat not configured. Set HUBITAT_HOST, HUBITAT_APP_ID, and HUBITAT_ACCESS_TOKEN to enable Hubitat polling.';
     console.warn(lastHubitatError);
+}
+
+function applyPostedEventToStatuses(payload) {
+    try {
+        const deviceId = payload?.deviceId ?? payload?.device_id ?? payload?.id;
+        const attrName = payload?.name ?? payload?.attribute;
+        const attrValue = payload?.value;
+        if (deviceId === undefined || deviceId === null) return false;
+        if (!attrName) return false;
+
+        const id = String(deviceId);
+        const existing = sensorStatuses?.[id];
+        if (!existing) return false;
+
+        const next = {
+            ...existing,
+            attributes: {
+                ...(existing.attributes || {}),
+                [String(attrName)]: attrValue,
+            },
+            lastUpdated: new Date().toISOString(),
+        };
+
+        // Recompute high-level state when possible.
+        try {
+            next.state = mapState({ attributes: next.attributes }, next.type);
+        } catch {
+            // ignore
+        }
+
+        // Preserve/refresh label if the payload includes it.
+        if (payload?.displayName) next.label = payload.displayName;
+
+        sensorStatuses = { ...(sensorStatuses || {}), [id]: next };
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 // --- API ---
@@ -1744,6 +1813,21 @@ app.get('/api/hubitat/health', (req, res) => {
     });
 });
 
+// Trigger an immediate refresh from Hubitat (useful when polling interval is long).
+// Returns the latest known hubitat error status after attempting a sync.
+app.post('/api/refresh', async (req, res) => {
+    if (!HUBITAT_CONFIGURED) {
+        return res.status(409).json({ ok: false, error: 'Hubitat not configured' });
+    }
+
+    try {
+        await syncHubitatData();
+        return res.json({ ok: !lastHubitatError, lastFetchAt: lastHubitatFetchAt, lastError: lastHubitatError });
+    } catch (err) {
+        return res.status(500).json({ ok: false, error: err?.message || String(err) });
+    }
+});
+
 // Force a live fetch from Hubitat Maker API
 app.get('/api/hubitat/devices/all', async (req, res) => {
     try {
@@ -1830,6 +1914,39 @@ app.post('/api/events', (req, res) => {
             io.emit('events_ingested', { events: acceptedEvents });
         } catch {
             // ignore
+        }
+
+        // Best-effort live updates: apply event payloads to the cached statuses.
+        // Polling remains the source of truth and will self-heal any missed events.
+        let appliedAny = false;
+        let hadUnknownDevice = false;
+        for (const evt of acceptedEvents) {
+            const payload = evt?.payload;
+            const deviceId = payload?.deviceId ?? payload?.device_id ?? payload?.id;
+            if (deviceId !== undefined && deviceId !== null) {
+                const id = String(deviceId);
+                if (!sensorStatuses?.[id]) hadUnknownDevice = true;
+            }
+            if (applyPostedEventToStatuses(payload)) appliedAny = true;
+        }
+
+        if (appliedAny) {
+            try {
+                io.emit('device_refresh', sensorStatuses);
+            } catch {
+                // ignore
+            }
+        }
+
+        // If we got an event for a device we don't have cached, trigger a refresh.
+        if (hadUnknownDevice && HUBITAT_CONFIGURED) {
+            setTimeout(() => {
+                try {
+                    syncHubitatData();
+                } catch {
+                    // ignore
+                }
+            }, 0);
         }
     }
 

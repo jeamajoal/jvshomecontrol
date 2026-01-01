@@ -6,7 +6,8 @@ It’s built around the idea that **Hubitat is the local brain**, and this proje
 
 At a high level:
 
-- The **server** polls Hubitat Maker API, normalizes devices into `rooms` + `sensors`, persists UI layout/mapping, and broadcasts updates.
+- The **server** polls Hubitat Maker API (initially on startup and then on an interval), normalizes devices into `rooms` + `sensors`, persists UI layout/mapping, and broadcasts updates.
+- If Maker API `postURL` is configured, the server also accepts callbacks to apply low-latency device state updates between polls.
 - The **server** also provides built-in **Weather** via Open‑Meteo (cached by the backend and exposed to the UI).
 - The **client** renders pages like Home (Environment), Climate (heatmap), Weather, Activity, and Controls.
 

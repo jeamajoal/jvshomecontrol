@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import EnvironmentPanel from './components/EnvironmentPanel';
 import HeatmapPanel from './components/HeatmapPanel';
 import InteractionPanel from './components/InteractionPanel';
@@ -37,24 +37,46 @@ function App() {
 
   const pageLabel = page === 0 ? 'Home' : page === 1 ? 'Climate' : page === 2 ? 'Weather' : page === 3 ? 'Activity' : page === 4 ? 'Controls' : page === 5 ? 'Settings' : 'Info';
 
-  useEffect(() => {
-    // Initial fetch
-    Promise.all([
-      fetch(`${API_HOST}/api/config`).then(res => res.json()),
-      fetch(`${API_HOST}/api/status`).then(res => res.json())
-    ]).then(([configData, statusData]) => {
+  const refreshNow = useCallback(async () => {
+    try {
+      const [configRes, statusRes] = await Promise.all([
+        fetch(`${API_HOST}/api/config`),
+        fetch(`${API_HOST}/api/status`),
+      ]);
+
+      if (!configRes.ok) {
+        const text = await configRes.text().catch(() => '');
+        throw new Error(text || `Config fetch failed (${configRes.status})`);
+      }
+      if (!statusRes.ok) {
+        const text = await statusRes.text().catch(() => '');
+        throw new Error(text || `Status fetch failed (${statusRes.status})`);
+      }
+
+      const configData = await configRes.json();
+      const statusData = await statusRes.json();
       setConfig(configData);
       setSensors(statusData);
-      setDataLoaded(true);
       setLoadError(null);
-    }).catch(err => {
+      return true;
+    } catch (err) {
       console.error(err);
       setLoadError(err?.message || String(err));
-      // Even on error, mark loaded so we don't show blank screen forever
+      return false;
+    } finally {
       setDataLoaded(true);
-    });
+    }
+  }, []);
 
-    socket.on('connect', () => setConnected(true));
+  useEffect(() => {
+    // Initial fetch
+    refreshNow().catch(() => undefined);
+
+    socket.on('connect', () => {
+      setConnected(true);
+      // Important on mobile (and especially with slower polling): refresh immediately on reconnect.
+      refreshNow().catch(() => undefined);
+    });
     socket.on('disconnect', () => setConnected(false));
     socket.on('config_update', (data) => setConfig(data));
     socket.on('device_refresh', (data) => setSensors(data));
@@ -69,7 +91,7 @@ function App() {
       socket.off('device_refresh');
       document.removeEventListener('fullscreenchange', handleFsChange);
     };
-  }, []);
+  }, [refreshNow]);
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 767px)');
@@ -78,6 +100,20 @@ function App() {
     mq.addEventListener('change', apply);
     return () => mq.removeEventListener('change', apply);
   }, []);
+
+  const ensureFullscreen = useCallback(() => {
+    if (!isMobile) return;
+    if (!autoFullscreenArmed) return;
+    if (document.fullscreenElement) return;
+
+    try {
+      document.documentElement.requestFullscreen();
+      setAutoFullscreenArmed(false);
+    } catch {
+      // ignore (fullscreen may be blocked by browser)
+      setAutoFullscreenArmed(false);
+    }
+  }, [isMobile, autoFullscreenArmed]);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -95,23 +131,10 @@ function App() {
         // ignore
       }
     };
-  }, [isMobile, autoFullscreenArmed]);
-
-  const ensureFullscreen = () => {
-    if (!isMobile) return;
-    if (!autoFullscreenArmed) return;
-    if (document.fullscreenElement) return;
-
-    try {
-      document.documentElement.requestFullscreen();
-      setAutoFullscreenArmed(false);
-    } catch {
-      // ignore (fullscreen may be blocked by browser)
-      setAutoFullscreenArmed(false);
-    }
-  };
+  }, [isMobile, autoFullscreenArmed, ensureFullscreen]);
 
   const toggleFullscreen = () => {
+    if (isMobile) setAutoFullscreenArmed(false);
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen();
     } else {
@@ -201,25 +224,7 @@ function App() {
             <option value={5}>Settings</option>
             <option value={6}>Info</option>
           </select>
-
-          {!isFullscreen ? (
-            <button
-              type="button"
-              onClick={() => {
-                ensureFullscreen();
-                toggleFullscreen();
-              }}
-              className={`shrink-0 rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] ${uiScheme.actionButton}`}
-            >
-              Fullscreen
-            </button>
-          ) : null}
         </div>
-        {!isFullscreen ? (
-          <div className="mt-1 text-[11px] text-white/45">
-            Fullscreen can’t be forced by the browser; tap once to enable.
-          </div>
-        ) : null}
       </div>
 
       {/* Main Grid */}

@@ -201,6 +201,10 @@ HUBITAT_HOST=http://192.168.1.50
 HUBITAT_APP_ID=30
 HUBITAT_ACCESS_TOKEN=REPLACE_ME
 
+# Optional: Poll interval for Maker API full refresh (milliseconds)
+# Default is 2000. Example: poll once per minute:
+# HUBITAT_POLL_INTERVAL_MS=60000
+
 # Optional: Dashboard device allowlists (comma-separated Hubitat device IDs)
 # UI_ALLOWED_MAIN_DEVICE_IDS=24,25
 # UI_ALLOWED_CTRL_DEVICE_IDS=24,25,26

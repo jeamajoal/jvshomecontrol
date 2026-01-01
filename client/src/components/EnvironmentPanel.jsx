@@ -411,7 +411,6 @@ async function sendDeviceCommand(deviceId, command, args = []) {
 }
 
 const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }) => {
-  const [busySwitches, setBusySwitches] = useState(() => new Set());
   const [busyActions, setBusyActions] = useState(() => new Set());
 
   const metrics = useMemo(() => computeRoomMetrics(devices, allowedControlIds), [devices, allowedControlIds]);
@@ -433,22 +432,6 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }
       }))
       .filter((d) => d.commands.length);
   }, [devices, allowedControlIds]);
-
-  const toggleSwitch = async (switchId, currentState) => {
-    const nextCommand = currentState === 'on' ? 'off' : 'on';
-
-    setBusySwitches((prev) => new Set(prev).add(switchId));
-    try {
-      await sendDeviceCommand(switchId, nextCommand);
-    } finally {
-      // Allow next poll/push to reconcile state; just clear the spinner.
-      setBusySwitches((prev) => {
-        const next = new Set(prev);
-        next.delete(switchId);
-        return next;
-      });
-    }
-  };
 
   const runAction = async (deviceId, command) => {
     const key = `${deviceId}:${command}`;

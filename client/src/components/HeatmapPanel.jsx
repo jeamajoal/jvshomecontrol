@@ -323,17 +323,6 @@ const HeatmapPanel = ({ config, statuses, uiScheme }) => {
     mode === 'humidity' ? 'Humidity' :
     'Illuminance';
 
-  const formatValue = (value) => {
-    if (mode === 'temperature') return formatTemp(value);
-    if (mode === 'humidity') return formatPercent(value);
-    return formatLux(value);
-  };
-
-  // Optional: ping backend to ensure data is alive (keeps consistent with other pages)
-  useEffect(() => {
-    fetch(`${API_HOST}/api/status`).catch(() => undefined);
-  }, []);
-
   const gridLayout = useMemo(() => {
     const roomLayout = roomTiles.map((t) => {
       const x = clamp(t.layout.x, 0, GRID_COLS - 1);
@@ -466,7 +455,7 @@ const HeatmapPanel = ({ config, statuses, uiScheme }) => {
   };
 
   return (
-    <div ref={viewportRef} className="w-full h-full overflow-auto p-4 md:p-6">
+    <div ref={viewportRef} className="w-full h-full overflow-auto md:overflow-hidden p-4 md:p-6">
       <style>{`
         /* Make the react-grid-layout resize handle visible and touch-friendly in edit mode */
         .jvs-heatmap-grid .react-resizable-handle {
@@ -596,8 +585,8 @@ const HeatmapPanel = ({ config, statuses, uiScheme }) => {
             </aside>
 
             <div className="flex-1 min-w-0">
-              <div className="glass-panel border border-white/10 overflow-hidden">
-                <div className="relative w-full h-[76vh] md:h-[82vh] bg-black/30 p-2 md:p-4">
+              <div className="glass-panel border border-white/10 overflow-x-auto overflow-y-hidden md:overflow-hidden touch-pan-x">
+                <div className="relative w-full min-w-[960px] md:min-w-0 h-[76vh] md:h-[82vh] bg-black/30 p-2 md:p-4">
                   <ReactGridLayout
                     className="layout jvs-heatmap-grid"
                     cols={GRID_COLS}
