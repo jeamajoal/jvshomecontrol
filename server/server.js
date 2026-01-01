@@ -509,6 +509,8 @@ function normalizePersistedConfig(raw) {
     const rawScheme = String(uiRaw.colorScheme || '').trim();
     const colorScheme = UI_COLOR_SCHEMES.includes(rawScheme) ? rawScheme : 'electric-blue';
 
+    const colorizeHomeValues = uiRaw.colorizeHomeValues === true;
+
     const soundsRaw = (uiRaw.alertSounds && typeof uiRaw.alertSounds === 'object') ? uiRaw.alertSounds : {};
     const climateRaw = (uiRaw.climateTolerances && typeof uiRaw.climateTolerances === 'object') ? uiRaw.climateTolerances : {};
     const asFile = (v) => {
@@ -555,6 +557,7 @@ function normalizePersistedConfig(raw) {
         ctrlAllowedDeviceIds: ctrlAllowed.map((v) => String(v || '').trim()).filter(Boolean),
         mainAllowedDeviceIds: mainAllowed.map((v) => String(v || '').trim()).filter(Boolean),
         colorScheme,
+        colorizeHomeValues,
         // Back-compat: always include alertSounds, even if unset.
         alertSounds: {
             motion: asFile(soundsRaw.motion),
@@ -588,11 +591,15 @@ function loadPersistedConfig() {
             const raw = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
             const hadAlertSounds = Boolean(raw?.ui && typeof raw.ui === 'object' && raw.ui.alertSounds && typeof raw.ui.alertSounds === 'object');
             const hadClimateTolerances = Boolean(raw?.ui && typeof raw.ui === 'object' && raw.ui.climateTolerances && typeof raw.ui.climateTolerances === 'object');
+            const hadColorizeHomeValues = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'colorizeHomeValues'));
             persistedConfig = normalizePersistedConfig(raw);
             // If we added new fields for back-compat, write them back once.
-            if (!hadAlertSounds || !hadClimateTolerances) {
+            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues) {
                 lastPersistedSerialized = stableStringify(raw);
-                persistConfigToDiskIfChanged(!hadAlertSounds ? 'migrate-ui-alert-sounds' : 'migrate-ui-climate-tolerances', { force: true });
+                const label = !hadAlertSounds
+                    ? 'migrate-ui-alert-sounds'
+                    : (!hadClimateTolerances ? 'migrate-ui-climate-tolerances' : 'migrate-ui-colorize-home-values');
+                persistConfigToDiskIfChanged(label, { force: true });
             }
         } else {
             persistedConfig = normalizePersistedConfig({ weather: settings.weather, rooms: [], sensors: [] });
@@ -669,6 +676,7 @@ function rebuildRuntimeConfigFromPersisted() {
             // Back-compat
             allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
             colorScheme: persistedConfig?.ui?.colorScheme,
+            colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
             alertSounds: persistedConfig?.ui?.alertSounds,
             climateTolerances: persistedConfig?.ui?.climateTolerances,
         },
@@ -1771,6 +1779,36 @@ app.put('/api/ui/color-scheme', (req, res) => {
         ui: {
             ...(config?.ui || {}),
             colorScheme: persistedConfig?.ui?.colorScheme,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update UI toggle for coloring Home values from the kiosk.
+// Expected payload: { colorizeHomeValues: boolean }
+app.put('/api/ui/colorize-home-values', (req, res) => {
+    const incoming = req.body?.colorizeHomeValues;
+    if (typeof incoming !== 'boolean') {
+        return res.status(400).json({ error: 'Missing colorizeHomeValues (boolean)' });
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            colorizeHomeValues: incoming,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-colorize-home-values');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
         },
     };
     io.emit('config_update', config);

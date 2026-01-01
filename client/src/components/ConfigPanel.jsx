@@ -66,6 +66,19 @@ async function saveClimateTolerances(climateTolerances) {
   return res.json().catch(() => ({}));
 }
 
+async function saveColorizeHomeValues(colorizeHomeValues) {
+  const res = await fetch(`${API_HOST}/api/ui/colorize-home-values`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ colorizeHomeValues: !!colorizeHomeValues }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Colorize Home values save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 const UI_COLOR_SCHEMES = {
   'electric-blue': {
     actionButton: 'text-neon-blue border-neon-blue/30 bg-neon-blue/10',
@@ -228,6 +241,9 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   }));
   const [climateDirty, setClimateDirty] = useState(false);
   const [climateError, setClimateError] = useState(null);
+  const [homeValueColorError, setHomeValueColorError] = useState(null);
+
+  const colorizeHomeValues = Boolean(config?.ui?.colorizeHomeValues);
 
   useEffect(() => {
     if (climateDirty) return;
@@ -567,6 +583,40 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
             </div>
             <div className="mt-1 text-xs text-white/45">
               Adjust the thresholds used for Climate colors (Temperature/Humidity/Illuminance).
+            </div>
+
+            <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3">
+              <label className="flex items-center justify-between gap-4 select-none">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                    Colorize Home values
+                  </div>
+                  <div className="mt-1 text-xs text-white/45">
+                    Use the Climate tolerance colors to glow the big numbers on Home.
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  className={`h-5 w-5 ${scheme.checkboxAccent}`}
+                  disabled={!connected || busy}
+                  checked={colorizeHomeValues}
+                  onChange={async (e) => {
+                    const next = !!e.target.checked;
+                    setHomeValueColorError(null);
+                    setBusy(true);
+                    try {
+                      await saveColorizeHomeValues(next);
+                    } catch (err) {
+                      setHomeValueColorError(err?.message || String(err));
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                />
+              </label>
+              {homeValueColorError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {homeValueColorError}</div>
+              ) : null}
             </div>
 
             {climateError ? (

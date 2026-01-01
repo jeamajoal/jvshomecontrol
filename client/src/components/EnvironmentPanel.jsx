@@ -372,6 +372,42 @@ const computeRoomMetrics = (devices, allowedControlIds) => {
   };
 };
 
+const getToleranceTextClass = (metric, value, climateTolerances) => {
+  const v = asNumber(value);
+  if (v === null) return '';
+
+  if (!climateTolerances || typeof climateTolerances !== 'object') return '';
+
+  if (metric === 'temperature') {
+    const { cold, comfy, warm } = climateTolerances.temperatureF || {};
+    if (Number.isFinite(cold) && v < cold) return 'text-neon-blue';
+    if (Number.isFinite(comfy) && v < comfy) return 'text-neon-green';
+    if (Number.isFinite(warm) && v < warm) return 'text-warning';
+    return 'text-neon-red';
+  }
+
+  if (metric === 'humidity') {
+    const { dry, comfy, humid } = climateTolerances.humidityPct || {};
+    if (Number.isFinite(dry) && v < dry) return 'text-neon-blue';
+    if (Number.isFinite(comfy) && v < comfy) return 'text-neon-green';
+    if (Number.isFinite(humid) && v < humid) return 'text-warning';
+    return 'text-neon-red';
+  }
+
+  // illuminance
+  const { dark, dim, bright } = climateTolerances.illuminanceLux || {};
+  if (Number.isFinite(dark) && v < dark) return 'text-neon-blue';
+  if (Number.isFinite(dim) && v < dim) return 'text-neon-green';
+  if (Number.isFinite(bright) && v < bright) return 'text-warning';
+  return 'text-neon-green';
+};
+
+const getColorizedValueClass = (metric, value, climateTolerances, enabled) => {
+  if (!enabled) return '';
+  const cls = getToleranceTextClass(metric, value, climateTolerances);
+  return cls ? `${cls} neon-text` : '';
+};
+
 async function sendDeviceCommand(deviceId, command, args = []) {
   const res = await fetch(`${API_HOST}/api/devices/${encodeURIComponent(deviceId)}/command`, {
     method: 'POST',
@@ -384,7 +420,7 @@ async function sendDeviceCommand(deviceId, command, args = []) {
   }
 }
 
-const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }) => {
+const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, colorizeHomeValues }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
 
   const metrics = useMemo(() => computeRoomMetrics(devices, allowedControlIds), [devices, allowedControlIds]);
@@ -455,6 +491,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }
             sub={metrics.temperature === null ? 'No sensor' : null}
             icon={Thermometer}
             accentClassName="border-white/10"
+            valueClassName={getColorizedValueClass('temperature', metrics.temperature, climateTolerances, colorizeHomeValues)}
             iconWrapClassName="bg-white/5"
             uiScheme={uiScheme}
           />
@@ -464,7 +501,11 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }
             sub={metrics.humidity === null ? 'No sensor' : null}
             icon={Droplets}
             accentClassName="border-white/10"
-            valueClassName={uiScheme?.selectedText || 'text-neon-blue'}
+            valueClassName={
+              colorizeHomeValues
+                ? getColorizedValueClass('humidity', metrics.humidity, climateTolerances, true)
+                : (uiScheme?.selectedText || 'text-neon-blue')
+            }
             iconWrapClassName={uiScheme?.headerIcon || 'bg-neon-blue/10 border-neon-blue/30'}
             uiScheme={uiScheme}
           />
@@ -474,7 +515,11 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }
             sub={metrics.illuminance === null ? 'No sensor' : null}
             icon={Sun}
             accentClassName="border-white/10"
-            valueClassName="text-neon-green"
+            valueClassName={
+              colorizeHomeValues
+                ? getColorizedValueClass('illuminance', metrics.illuminance, climateTolerances, true)
+                : 'text-neon-green'
+            }
             iconWrapClassName="bg-neon-green/10 border-neon-green/30"
             uiScheme={uiScheme}
           />
@@ -562,6 +607,36 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     () => uiScheme || getUiScheme(config?.ui?.colorScheme),
     [uiScheme, config?.ui?.colorScheme],
   );
+
+  const colorizeHomeValues = Boolean(config?.ui?.colorizeHomeValues);
+
+  const climateTolerances = useMemo(() => {
+    const raw = (config?.ui?.climateTolerances && typeof config.ui.climateTolerances === 'object')
+      ? config.ui.climateTolerances
+      : {};
+
+    const t = (raw.temperatureF && typeof raw.temperatureF === 'object') ? raw.temperatureF : {};
+    const h = (raw.humidityPct && typeof raw.humidityPct === 'object') ? raw.humidityPct : {};
+    const l = (raw.illuminanceLux && typeof raw.illuminanceLux === 'object') ? raw.illuminanceLux : {};
+
+    return {
+      temperatureF: {
+        cold: asNumber(t.cold) ?? 68,
+        comfy: asNumber(t.comfy) ?? 72,
+        warm: asNumber(t.warm) ?? 74,
+      },
+      humidityPct: {
+        dry: asNumber(h.dry) ?? 35,
+        comfy: asNumber(h.comfy) ?? 55,
+        humid: asNumber(h.humid) ?? 65,
+      },
+      illuminanceLux: {
+        dark: asNumber(l.dark) ?? 50,
+        dim: asNumber(l.dim) ?? 250,
+        bright: asNumber(l.bright) ?? 600,
+      },
+    };
+  }, [config?.ui?.climateTolerances]);
 
   const allowedControlIds = useMemo(() => getAllowedDeviceIdSet(config, 'main'), [config]);
   const rooms = useMemo(() => buildRoomsWithStatuses(config, statuses), [config, statuses]);
@@ -668,6 +743,10 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     };
   }, [weather]);
 
+  const outsideTempForValue = outsideDisplay.currentTemp !== null
+    ? outsideDisplay.currentTemp
+    : outsideSensors.temperature;
+
   return (
     <div ref={viewportRef} className="w-full h-full overflow-auto p-2 md:p-3">
       <div
@@ -689,7 +768,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
             />
             <MetricCard
               title="Outside"
-              value={outsideDisplay.currentTemp !== null ? formatTemp(outsideDisplay.currentTemp) : formatTemp(outsideSensors.temperature)}
+              value={formatTemp(outsideTempForValue)}
               sub={(
                 <div className="space-y-1">
                   <div className="text-white/55">
@@ -739,6 +818,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
               subClassName="mt-2 text-xs text-white/45"
               icon={Cloud}
               accentClassName="border-white/10"
+              valueClassName={getColorizedValueClass('temperature', outsideTempForValue, climateTolerances, colorizeHomeValues)}
               uiScheme={resolvedUiScheme}
             />
             <MetricCard
@@ -751,6 +831,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
               }
               icon={Thermometer}
               accentClassName="border-white/10"
+              valueClassName={getColorizedValueClass('temperature', overall.temperature, climateTolerances, colorizeHomeValues)}
               iconWrapClassName="bg-white/5"
               uiScheme={resolvedUiScheme}
             />
@@ -791,6 +872,8 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   connected={connected}
                   allowedControlIds={allowedControlIds}
                   uiScheme={resolvedUiScheme}
+                  climateTolerances={climateTolerances}
+                  colorizeHomeValues={colorizeHomeValues}
                 />
               ))
             ) : (
