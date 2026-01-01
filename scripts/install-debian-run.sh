@@ -205,6 +205,10 @@ HUBITAT_HOST=http://192.168.1.50
 HUBITAT_APP_ID=30
 HUBITAT_ACCESS_TOKEN=REPLACE_ME
 
+# Optional: If your HUBITAT_HOST uses https:// and Hubitat presents a self-signed
+# cert, set this to disable TLS verification for Hubitat requests.
+# HUBITAT_TLS_INSECURE=1
+
 # Optional: Poll interval for Maker API full refresh (milliseconds)
 # Default is 2000. Example: poll once per minute:
 # HUBITAT_POLL_INTERVAL_MS=60000
