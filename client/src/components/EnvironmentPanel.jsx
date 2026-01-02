@@ -835,6 +835,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
               title="Time"
               value={formatTime(now)}
               sub={formatDate(now)}
+              subClassName="mt-1 text-[13px] text-white/45 truncate"
               icon={Clock}
               accentClassName="border-white/10"
               uiScheme={resolvedUiScheme}
@@ -888,7 +889,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   </div>
                 </div>
               )}
-              subClassName="mt-2 text-xs text-white/45"
+              subClassName="mt-2 text-[13px] text-white/45"
               icon={Cloud}
               accentClassName="border-white/10"
               valueClassName={getColorizedValueClass('temperature', outsideTempForValue, climateTolerances, climateToleranceColors, colorizeHomeValues)}
@@ -902,6 +903,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   ? 'No sensors'
                   : `RH ${overall.humidity === null ? '—' : formatPercent(overall.humidity)} • Lux ${overall.illuminance === null ? '—' : formatLux(overall.illuminance)}`
               }
+              subClassName="mt-1 text-[13px] text-white/45 truncate"
               icon={Thermometer}
               accentClassName="border-white/10"
               valueClassName={getColorizedValueClass('temperature', overall.temperature, climateTolerances, climateToleranceColors, colorizeHomeValues)}
@@ -918,16 +920,13 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
               sub={
                 !connected
                   ? 'Disconnected'
-                  : (
-                    (overall.motionActive || overall.doorOpen)
-                      ? `${overall.motionActive ? 'Motion active' : 'No motion'}${overall.doorOpen ? ` • Doors open: ${overall.doorOpenCount}` : ''}`
-                      : (hubitatModeError ? `Mode unavailable (${hubitatModeError})` : 'All clear')
-                  )
+                  : (`Motion: ${overall.motionActiveCount || 0} • Doors: ${overall.doorOpenCount || 0}${hubitatModeError ? ` • Mode unavailable (${hubitatModeError})` : ''}`)
               }
+              subClassName="mt-1 text-[13px] text-white/45 truncate"
               icon={Activity}
               accentClassName={
                 connected
-                  ? ((overall.motionActive || overall.doorOpen) ? `${resolvedUiScheme.selectedCard} ${resolvedUiScheme.headerGlow}` : 'border-white/10')
+                  ? ((overall.motionActive || overall.doorOpen) ? `${resolvedUiScheme.selectedCard}` : 'border-white/10')
                   : 'border-danger/30'
               }
               valueClassName={connected ? 'text-neon-green' : 'text-neon-red'}
