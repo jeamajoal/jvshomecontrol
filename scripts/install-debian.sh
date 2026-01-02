@@ -169,7 +169,7 @@ ensure_user() {
   log "Creating system user ${APP_USER}…"
   useradd \
     --system \
-    --create-home \
+    --no-create-home \
     --home-dir "${APP_DIR}" \
     --shell /usr/sbin/nologin \
     "${APP_USER}"
@@ -209,6 +209,31 @@ ensure_repo() {
     log "Updating existing repo in ${APP_DIR}…"
     sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git fetch --prune origin && git checkout -B '${REPO_BRANCH}' 'origin/${REPO_BRANCH}' && git reset --hard 'origin/${REPO_BRANCH}' && git clean -fd"
   else
+    # If APP_DIR is not empty (common if it was previously used as a home dir and
+    # populated from /etc/skel), cloning into '.' will fail.
+    shopt -s dotglob nullglob
+    local entries
+    entries=("${APP_DIR}"/*)
+    shopt -u dotglob nullglob
+
+    if (( ${#entries[@]} > 0 )); then
+      local safe_to_remove
+      safe_to_remove=1
+      for p in "${entries[@]}"; do
+        case "$(basename "${p}")" in
+          .bashrc|.profile|.bash_logout) ;; # typical /etc/skel files
+          *) safe_to_remove=0; break ;;
+        esac
+      done
+
+      if (( safe_to_remove == 1 )); then
+        warn "${APP_DIR} contains only default shell dotfiles; removing them so git clone can proceed…"
+        rm -f "${APP_DIR}/.bashrc" "${APP_DIR}/.profile" "${APP_DIR}/.bash_logout" || true
+      else
+        die "Destination '${APP_DIR}' already exists and is not a git repo (.git missing) and is not empty. Move it aside or delete its contents, then re-run."
+      fi
+    fi
+
     log "Cloning repo into ${APP_DIR}…"
     sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git clone --branch '${REPO_BRANCH}' --single-branch '${REPO_URL}' ."
   fi
