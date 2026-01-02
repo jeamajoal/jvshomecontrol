@@ -816,17 +816,17 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               Device Visibility
             </div>
             <div className="mt-1 text-xs text-white/45">
-              Choose where each device appears: Main and/or Interact.
+              Choose where each device appears: Home and/or Controls.
             </div>
 
             {mainLocked ? (
               <div className="mt-2 text-[11px] text-neon-red">
-                Main list locked by server env var UI_ALLOWED_MAIN_DEVICE_IDS.
+                Home list locked by server env var UI_ALLOWED_MAIN_DEVICE_IDS.
               </div>
             ) : null}
             {ctrlLocked ? (
               <div className="mt-2 text-[11px] text-neon-red">
-                Interact list locked by server env var UI_ALLOWED_CTRL_DEVICE_IDS (or legacy UI_ALLOWED_DEVICE_IDS).
+                Controls list locked by server env var UI_ALLOWED_CTRL_DEVICE_IDS (or legacy UI_ALLOWED_DEVICE_IDS).
               </div>
             ) : null}
             {error ? (
@@ -864,7 +864,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                               checked={isMain}
                               onChange={(e) => setAllowed(d.id, 'main', e.target.checked)}
                             />
-                            Main
+                            Home
                           </label>
 
                           <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
@@ -875,7 +875,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                               checked={isCtrl}
                               onChange={(e) => setAllowed(d.id, 'ctrl', e.target.checked)}
                             />
-                            Interact
+                            Controls
                           </label>
                         </div>
                       </div>

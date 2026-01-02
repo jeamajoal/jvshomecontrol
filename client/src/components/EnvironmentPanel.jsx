@@ -745,7 +745,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     };
   }, [config?.ui?.sensorIndicatorColors]);
 
-  const allowedControlIds = useMemo(() => getAllowedDeviceIdSet(config, 'main'), [config]);
+  const allowedControlIds = useMemo(() => getAllowedDeviceIdSet(config, 'ctrl'), [config]);
   const rooms = useMemo(() => buildRoomsWithStatuses(config, statuses), [config, statuses]);
   const now = useClock(1000);
   const { viewportRef, contentRef, scale } = useFitScale();
