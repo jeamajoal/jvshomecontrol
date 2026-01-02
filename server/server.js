@@ -1615,13 +1615,14 @@ app.delete('/api/rooms/:id', (req, res) => {
     }
 
     const sensorsArr = Array.isArray(persistedConfig?.sensors) ? persistedConfig.sensors : [];
-    const used = sensorsArr.some((s) => String(s?.roomId) === id);
-    if (used) {
-        return res.status(409).json({
-            error: 'Room in use',
-            message: 'Cannot delete a room that still has sensors assigned to it.',
-        });
-    }
+    // If sensors are assigned to this manual room, unassign them so the room can be removed.
+    // This matches kiosk expectations: deleting a room shouldn't be blocked by stale mappings.
+    const nextSensors = sensorsArr.map((s) => (
+        String(s?.roomId) === id
+            ? { ...(s || {}), roomId: '' }
+            : s
+    ));
+    persistedConfig.sensors = nextSensors;
 
     persistedConfig.rooms = roomsArr.filter((r) => String(r?.id) !== id);
     persistConfigToDiskIfChanged('api-room-delete');

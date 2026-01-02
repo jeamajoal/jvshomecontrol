@@ -186,7 +186,7 @@ function App() {
               <select
                 value={menuPage}
                 onChange={(e) => setPage(Number(e.target.value))}
-                className={`min-w-[200px] min-h-[48px] rounded-xl border border-white/10 bg-black/10 px-5 py-3 text-base font-bold uppercase tracking-[0.18em] text-white/85 hover:bg-white/5 ${uiScheme.focusRing}`}
+                className={`menu-select min-w-[180px] rounded-xl border border-white/10 bg-black/10 px-4 py-2.5 text-sm font-bold uppercase tracking-[0.18em] text-white/85 hover:bg-white/5 ${uiScheme.focusRing}`}
               >
                 <option value={0}>Home</option>
                 <option value={1}>Climate</option>
@@ -232,7 +232,7 @@ function App() {
               ensureFullscreen();
               setPage(Number(e.target.value));
             }}
-            className="flex-1 min-h-[48px] rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-base font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 [-webkit-tap-highlight-color:transparent]"
+            className="menu-select flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 [-webkit-tap-highlight-color:transparent]"
           >
             <option value={0}>Home</option>
             <option value={1}>Climate</option>

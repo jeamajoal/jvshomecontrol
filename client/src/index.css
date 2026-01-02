@@ -42,6 +42,14 @@ input[type="number"].no-spinner::-webkit-inner-spin-button {
   margin: 0;
 }
 
+/*
+  Menu dropdown: keep the select control compact, but make the opened option list
+  easier to read/tap where the browser honors option styling.
+*/
+select.menu-select option {
+  font-size: 16px;
+}
+
 /* Custom Scrollbar for Webkit */
 ::-webkit-scrollbar {
   width: 6px;
