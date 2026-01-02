@@ -218,6 +218,9 @@ ensure_repo() {
     mkdir -p "$(dirname "${cfg}")"
     cp -a "${cfg_backup}" "${cfg}"
     chown "${APP_USER}:${APP_GROUP}" "${cfg}" || true
+
+    warn "Backup left in /tmp: ${cfg_backup}"
+    warn "After confirming your settings are correct, you should remove it (e.g. sudo rm -f '${cfg_backup}')."
   fi
 
   if [[ -n "${cert_backup_dir}" && -d "${cert_backup_dir}" ]]; then
@@ -225,6 +228,9 @@ ensure_repo() {
     mkdir -p "${cert_dir}"
     cp -a "${cert_backup_dir}/." "${cert_dir}/" || true
     chown -R "${APP_USER}:${APP_GROUP}" "${cert_dir}" || true
+
+    warn "Backup left in /tmp: ${cert_backup_dir}"
+    warn "After confirming HTTPS is working, you should remove it (e.g. sudo rm -rf '${cert_backup_dir}')."
   fi
 }
 

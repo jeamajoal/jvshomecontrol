@@ -69,6 +69,9 @@ It updates the repo by overwriting tracked files (a clean checkout), while prese
 - `server/data/config.json`
 - `server/data/certs/`
 
+Important: during install/update, the Debian installer may create temporary backups in `/tmp` (for example `jvshomecontrol.config.<timestamp>.json` and `jvshomecontrol.certs.<timestamp>/`).
+After the install completes and you've confirmed your settings are correct and the service is healthy, remove those backups from `/tmp`.
+
 The Debian installer is split into two files:
 
 - `scripts/install-debian.sh` (bootstrap): updates/clones the repo, then runs the repo version installer.
