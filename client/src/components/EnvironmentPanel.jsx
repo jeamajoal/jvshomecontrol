@@ -929,7 +929,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   ? ((overall.motionActive || overall.doorOpen) ? `${resolvedUiScheme.selectedCard}` : 'border-white/10')
                   : 'border-danger/30'
               }
-              valueClassName={connected ? 'text-neon-green' : 'text-neon-red'}
+              valueClassName={connected ? 'text-white' : 'text-neon-red'}
               uiScheme={resolvedUiScheme}
             />
           </div>
