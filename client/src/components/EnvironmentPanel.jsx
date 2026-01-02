@@ -444,7 +444,7 @@ async function sendDeviceCommand(deviceId, command, args = []) {
   }
 }
 
-const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues }) => {
+const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, sensorIndicatorColors }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
 
   const metrics = useMemo(() => computeRoomMetrics(devices, allowedControlIds), [devices, allowedControlIds]);
@@ -492,7 +492,14 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
     ? `${uiScheme?.selectedCard || 'border-primary/40'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
     : 'border-white/10';
 
-  const badgeBase = `inline-flex items-center rounded-lg border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${uiScheme?.selectedText || 'text-neon-blue'} border-white/10 bg-white/5`;
+  const badgeBase = 'inline-flex items-center rounded-lg border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] border-white/10 bg-white/5';
+
+  const motionBadgeText = getToleranceTextClassForColorId(
+    normalizeToleranceColorId(sensorIndicatorColors?.motion, 'warning')
+  );
+  const doorBadgeText = getToleranceTextClassForColorId(
+    normalizeToleranceColorId(sensorIndicatorColors?.door, 'neon-red')
+  );
 
   return (
     <section className={`glass-panel p-4 md:p-5 border ${headerGlow}`}>
@@ -502,8 +509,8 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
         </h2>
 
         <div className="shrink-0 flex items-center gap-2">
-          {metrics.motionActive ? <span className={badgeBase}>Motion</span> : null}
-          {metrics.doorOpen ? <span className={badgeBase}>Door</span> : null}
+          {metrics.motionActive ? <span className={`${badgeBase} ${motionBadgeText}`}>Motion</span> : null}
+          {metrics.doorOpen ? <span className={`${badgeBase} ${doorBadgeText}`}>Door</span> : null}
         </div>
       </div>
 
@@ -692,6 +699,17 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
       },
     };
   }, [config?.ui?.climateToleranceColors]);
+
+  const sensorIndicatorColors = useMemo(() => {
+    const raw = (config?.ui?.sensorIndicatorColors && typeof config.ui.sensorIndicatorColors === 'object')
+      ? config.ui.sensorIndicatorColors
+      : {};
+
+    return {
+      motion: normalizeToleranceColorId(raw.motion, 'warning'),
+      door: normalizeToleranceColorId(raw.door, 'neon-red'),
+    };
+  }, [config?.ui?.sensorIndicatorColors]);
 
   const allowedControlIds = useMemo(() => getAllowedDeviceIdSet(config, 'main'), [config]);
   const rooms = useMemo(() => buildRoomsWithStatuses(config, statuses), [config, statuses]);
@@ -930,6 +948,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   climateTolerances={climateTolerances}
                   climateToleranceColors={climateToleranceColors}
                   colorizeHomeValues={colorizeHomeValues}
+                  sensorIndicatorColors={sensorIndicatorColors}
                 />
               ))
             ) : (

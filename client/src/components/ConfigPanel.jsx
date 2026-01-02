@@ -96,6 +96,19 @@ async function saveColorizeHomeValues(colorizeHomeValues) {
   return res.json().catch(() => ({}));
 }
 
+async function saveSensorIndicatorColors(sensorIndicatorColors) {
+  const res = await fetch(`${API_HOST}/api/ui/sensor-indicator-colors`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sensorIndicatorColors: sensorIndicatorColors || {} }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Sensor indicator colors save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 const UI_COLOR_SCHEMES = {
   'electric-blue': {
     actionButton: 'text-neon-blue border-neon-blue/30 bg-neon-blue/10',
@@ -287,6 +300,17 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     };
   }, [config?.ui?.climateToleranceColors]);
 
+  const sensorIndicatorColors = useMemo(() => {
+    const raw = (config?.ui?.sensorIndicatorColors && typeof config.ui.sensorIndicatorColors === 'object')
+      ? config.ui.sensorIndicatorColors
+      : {};
+
+    return {
+      motion: normalizeToleranceColorId(raw.motion, 'warning'),
+      door: normalizeToleranceColorId(raw.door, 'neon-red'),
+    };
+  }, [config?.ui?.sensorIndicatorColors]);
+
   const [climateDraft, setClimateDraft] = useState(() => ({
     temperatureF: { cold: '68', comfy: '72', warm: '74' },
     humidityPct: { dry: '35', comfy: '55', humid: '65' },
@@ -302,6 +326,10 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [climateColorsDirty, setClimateColorsDirty] = useState(false);
   const [climateColorsError, setClimateColorsError] = useState(null);
   const [homeValueColorError, setHomeValueColorError] = useState(null);
+
+  const [sensorColorsDraft, setSensorColorsDraft] = useState(() => ({ motion: 'warning', door: 'neon-red' }));
+  const [sensorColorsDirty, setSensorColorsDirty] = useState(false);
+  const [sensorColorsError, setSensorColorsError] = useState(null);
 
   const colorizeHomeValues = Boolean(config?.ui?.colorizeHomeValues);
 
@@ -330,6 +358,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     if (climateColorsDirty) return;
     setClimateColorsDraft(climateToleranceColors);
   }, [climateColorsDirty, climateToleranceColors]);
+
+  useEffect(() => {
+    if (sensorColorsDirty) return;
+    setSensorColorsDraft(sensorIndicatorColors);
+  }, [sensorColorsDirty, sensorIndicatorColors]);
 
   const [newRoomName, setNewRoomName] = useState('');
   const [labelDrafts, setLabelDrafts] = useState(() => ({}));
@@ -697,6 +730,72 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               </label>
               {homeValueColorError ? (
                 <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {homeValueColorError}</div>
+              ) : null}
+            </div>
+
+            <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                Home Sensor Indicator Colors
+              </div>
+              <div className="mt-1 text-xs text-white/45">
+                Controls the color of the "Motion" and "Door" badges on Home.
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {[{ k: 'motion', label: 'Motion' }, { k: 'door', label: 'Door' }].map(({ k, label }) => (
+                  <label key={k} className="block">
+                    <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                      <span>{label} Color</span>
+                      <span className={`inline-block h-2 w-2 rounded-full ${toleranceSwatchClass(sensorColorsDraft[k])}`} />
+                    </div>
+                    <select
+                      value={sensorColorsDraft[k]}
+                      disabled={!connected || busy}
+                      onChange={(e) => {
+                        const next = String(e.target.value);
+                        setSensorColorsDirty(true);
+                        setSensorColorsDraft((prev) => ({ ...prev, [k]: next }));
+                      }}
+                      className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    >
+                      {TOLERANCE_COLOR_CHOICES.map((c) => (
+                        <option key={c.id} value={c.id}>{c.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
+
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  type="button"
+                  disabled={!connected || busy || !sensorColorsDirty}
+                  onClick={async () => {
+                    setSensorColorsError(null);
+                    setBusy(true);
+                    try {
+                      await saveSensorIndicatorColors({ ...sensorColorsDraft });
+                      setSensorColorsDirty(false);
+                    } catch (e) {
+                      setSensorColorsError(e?.message || String(e));
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                  className={`rounded-xl border px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] ${scheme.actionButton} ${(!connected || busy || !sensorColorsDirty) ? 'opacity-50' : ''}`}
+                >
+                  Save
+                </button>
+
+                {sensorColorsDirty ? (
+                  <div className="text-xs text-white/45">Unsaved changes</div>
+                ) : (
+                  <div className="text-xs text-white/45">Saved</div>
+                )}
+              </div>
+
+              {sensorColorsError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {sensorColorsError}</div>
               ) : null}
             </div>
 
