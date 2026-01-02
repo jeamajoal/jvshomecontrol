@@ -48,15 +48,15 @@ const EventsPanel = ({ onBack }) => {
   }, [eventsOpen]);
 
   return (
-    <div className="w-full h-full overflow-auto p-2 md:p-3">
+    <div className="w-full h-full overflow-auto utility-page">
       <div className="w-full">
-        <div className="glass-panel border border-white/10 p-4 md:p-5">
+        <div className="utility-panel p-4 md:p-6">
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
                 Events
               </div>
-              <div className="mt-1 text-xl md:text-2xl font-extrabold tracking-tight text-white">
+              <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
                 Recent Posts
               </div>
               <div className="mt-1 text-xs text-white/45">
@@ -87,7 +87,7 @@ const EventsPanel = ({ onBack }) => {
               {eventsError ? (
                 <div className="text-[11px] text-neon-red break-words">Events error: {eventsError}</div>
               ) : null}
-              <div className="rounded-2xl border border-white/10 bg-black/20 overflow-hidden">
+              <div className="utility-group overflow-hidden">
                 <div className="flex items-center justify-between gap-3 px-4 py-2 border-b border-white/10 bg-white/5">
                   <div className="text-[11px] uppercase tracking-[0.2em] font-semibold text-white/60">
                     Last {recentEvents.length} events

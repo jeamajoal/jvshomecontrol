@@ -30,6 +30,19 @@
   @apply bg-surface/30 backdrop-blur-xl border border-white/5 rounded-2xl shadow-2xl;
 }
 
+/* Utility pages (Settings / Events): slightly brighter and more structured. */
+.utility-page {
+  @apply p-3 md:p-4;
+}
+
+.utility-panel {
+  @apply rounded-2xl border border-white/15 bg-white/5 backdrop-blur-xl shadow-2xl;
+}
+
+.utility-group {
+  @apply rounded-2xl border border-white/15 bg-black/10;
+}
+
 /* Hide number input spinners (kiosk-friendly typing). */
 input[type="number"].no-spinner {
   -moz-appearance: textfield;
@@ -52,7 +65,8 @@ select.menu-select option {
 
 /* Custom Scrollbar for Webkit */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 12px;
+  height: 12px;
 }
 
 ::-webkit-scrollbar-track {
@@ -60,10 +74,18 @@ select.menu-select option {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.18);
   border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: auto;
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
 }

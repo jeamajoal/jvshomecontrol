@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import { API_HOST } from '../apiHost';
 import { useAppState } from '../appState';
@@ -275,6 +275,34 @@ async function deleteLabel(labelId) {
   return res.json().catch(() => ({}));
 }
 
+function useAsyncSave(saveFn) {
+  const [status, setStatus] = useState('idle'); // idle | saving | saved | error
+  const [error, setError] = useState(null);
+
+  const run = async (payload) => {
+    setStatus('saving');
+    setError(null);
+    try {
+      const res = await saveFn(payload);
+      setStatus('saved');
+      return res;
+    } catch (e) {
+      setStatus('error');
+      setError(e?.message || String(e));
+      throw e;
+    }
+  };
+
+  return { status, error, run, setError, setStatus };
+}
+
+const statusText = (status) => {
+  if (status === 'saving') return 'Saving…';
+  if (status === 'saved') return 'Saved';
+  if (status === 'error') return 'Save failed';
+  return '';
+};
+
 const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: connectedProp, onOpenEvents }) => {
   const ctx = useAppState();
   const config = configProp ?? ctx?.config;
@@ -293,6 +321,24 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
   const colorSchemeId = String(config?.ui?.colorScheme || 'electric-blue');
   const scheme = UI_COLOR_SCHEMES[colorSchemeId] || UI_COLOR_SCHEMES['electric-blue'];
+
+  const allowlistSave = useAsyncSave(saveAllowlists);
+  const colorSchemeSave = useAsyncSave(saveColorScheme);
+  const alertSoundsSave = useAsyncSave(saveAlertSounds);
+  const homeValueSave = useAsyncSave(saveColorizeHomeValues);
+  const sensorColorsSave = useAsyncSave(saveSensorIndicatorColors);
+  const climateTolSave = useAsyncSave(saveClimateTolerances);
+  const climateColorsSave = useAsyncSave(saveClimateToleranceColors);
+  const openMeteoSave = useAsyncSave(async (openMeteo) => {
+    const res = await saveOpenMeteoConfig(openMeteo);
+    const overrides = (res?.overriddenByEnv && typeof res.overriddenByEnv === 'object') ? res.overriddenByEnv : {};
+    setOpenMeteoEnvOverrides({
+      lat: overrides.lat === true,
+      lon: overrides.lon === true,
+      timezone: overrides.timezone === true,
+    });
+    return res;
+  });
 
   const alertSounds = useMemo(() => {
     const raw = (config?.ui?.alertSounds && typeof config.ui.alertSounds === 'object') ? config.ui.alertSounds : {};
@@ -440,8 +486,190 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     setSensorColorsDraft(sensorIndicatorColors);
   }, [sensorColorsDirty, sensorIndicatorColors]);
 
+  // Autosave: Home value opacity.
+  useEffect(() => {
+    if (!connected) return;
+    if (!homeValueOpacityDirty) return;
+
+    const t = setTimeout(async () => {
+      setHomeValueColorError(null);
+      try {
+        await homeValueSave.run({
+          colorizeHomeValues,
+          colorizeHomeValuesOpacityPct: homeValueOpacityDraft,
+        });
+        setHomeValueOpacityDirty(false);
+      } catch (err) {
+        setHomeValueColorError(err?.message || String(err));
+      }
+    }, 600);
+
+    return () => clearTimeout(t);
+  }, [connected, homeValueOpacityDirty, homeValueOpacityDraft, colorizeHomeValues]);
+
+  // Autosave: Home sensor indicator colors.
+  useEffect(() => {
+    if (!connected) return;
+    if (!sensorColorsDirty) return;
+
+    const t = setTimeout(async () => {
+      setSensorColorsError(null);
+      try {
+        await sensorColorsSave.run({ ...sensorColorsDraft });
+        setSensorColorsDirty(false);
+      } catch (e) {
+        setSensorColorsError(e?.message || String(e));
+      }
+    }, 500);
+
+    return () => clearTimeout(t);
+  }, [connected, sensorColorsDirty, sensorColorsDraft]);
+
+  // Autosave: Open-Meteo config.
+  useEffect(() => {
+    if (!connected) return;
+    if (!openMeteoDirty) return;
+
+    const t = setTimeout(async () => {
+      setOpenMeteoError(null);
+      try {
+        await openMeteoSave.run({
+          lat: String(openMeteoDraft.lat || '').trim(),
+          lon: String(openMeteoDraft.lon || '').trim(),
+          timezone: String(openMeteoDraft.timezone || '').trim() || 'auto',
+        });
+        setOpenMeteoDirty(false);
+      } catch (e) {
+        setOpenMeteoError(e?.message || String(e));
+      }
+    }, 700);
+
+    return () => clearTimeout(t);
+  }, [connected, openMeteoDirty, openMeteoDraft, openMeteoSave]);
+
+  const toFinite = (value) => {
+    if (value === null || value === undefined) return null;
+    const s = String(value).trim();
+    if (!s.length) return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const inc3 = (a, b, c) => (a < b) && (b < c);
+
+  // Autosave: Climate tolerances.
+  useEffect(() => {
+    if (!connected) return;
+    if (!climateDirty) return;
+
+    const t = setTimeout(async () => {
+      const tRaw = climateDraft.temperatureF;
+      const hRaw = climateDraft.humidityPct;
+      const lRaw = climateDraft.illuminanceLux;
+
+      const tVals = { cold: toFinite(tRaw.cold), comfy: toFinite(tRaw.comfy), warm: toFinite(tRaw.warm) };
+      const hVals = { dry: toFinite(hRaw.dry), comfy: toFinite(hRaw.comfy), humid: toFinite(hRaw.humid) };
+      const lVals = { dark: toFinite(lRaw.dark), dim: toFinite(lRaw.dim), bright: toFinite(lRaw.bright) };
+
+      if (tVals.cold === null || tVals.comfy === null || tVals.warm === null
+        || hVals.dry === null || hVals.comfy === null || hVals.humid === null
+        || lVals.dark === null || lVals.dim === null || lVals.bright === null) {
+        setClimateError('All tolerance thresholds must be valid numbers.');
+        return;
+      }
+      if (!inc3(tVals.cold, tVals.comfy, tVals.warm)) {
+        setClimateError('Temperature thresholds must be increasing (cold < comfy < warm).');
+        return;
+      }
+      if (!inc3(hVals.dry, hVals.comfy, hVals.humid)) {
+        setClimateError('Humidity thresholds must be increasing (dry < comfy < humid).');
+        return;
+      }
+      if (!inc3(lVals.dark, lVals.dim, lVals.bright)) {
+        setClimateError('Illuminance thresholds must be increasing (dark < dim < bright).');
+        return;
+      }
+
+      setClimateError(null);
+      try {
+        await climateTolSave.run({
+          temperatureF: { cold: tVals.cold, comfy: tVals.comfy, warm: tVals.warm },
+          humidityPct: { dry: hVals.dry, comfy: hVals.comfy, humid: hVals.humid },
+          illuminanceLux: { dark: lVals.dark, dim: lVals.dim, bright: lVals.bright },
+        });
+        setClimateDirty(false);
+      } catch (e) {
+        setClimateError(e?.message || String(e));
+      }
+    }, 700);
+
+    return () => clearTimeout(t);
+  }, [connected, climateDirty, climateDraft]);
+
+  // Autosave: Climate tolerance colors.
+  useEffect(() => {
+    if (!connected) return;
+    if (!climateColorsDirty) return;
+
+    const t = setTimeout(async () => {
+      setClimateColorsError(null);
+      try {
+        await climateColorsSave.run({
+          temperatureF: { ...climateColorsDraft.temperatureF },
+          humidityPct: { ...climateColorsDraft.humidityPct },
+          illuminanceLux: { ...climateColorsDraft.illuminanceLux },
+        });
+        setClimateColorsDirty(false);
+      } catch (e) {
+        setClimateColorsError(e?.message || String(e));
+      }
+    }, 500);
+
+    return () => clearTimeout(t);
+  }, [connected, climateColorsDirty, climateColorsDraft]);
+
+  const queueLabelAutosave = (labelId, text) => {
+    const id = String(labelId);
+    const trimmed = String(text ?? '').trim();
+    const timers = labelSaveTimersRef.current;
+    if (timers.has(id)) clearTimeout(timers.get(id));
+
+    if (!connected) {
+      setLabelSaveState((prev) => ({ ...prev, [id]: { status: 'idle', error: null } }));
+      return;
+    }
+
+    if (!trimmed.length) {
+      setLabelSaveState((prev) => ({ ...prev, [id]: { status: 'idle', error: 'Text is empty (not saved).' } }));
+      return;
+    }
+
+    setLabelSaveState((prev) => ({ ...prev, [id]: { status: 'saving', error: null } }));
+    const t = setTimeout(async () => {
+      try {
+        await updateLabel(id, trimmed);
+        setLabelSaveState((prev) => ({ ...prev, [id]: { status: 'saved', error: null } }));
+      } catch (e) {
+        setLabelSaveState((prev) => ({ ...prev, [id]: { status: 'error', error: e?.message || String(e) } }));
+      }
+    }, 650);
+
+    timers.set(id, t);
+  };
+
+  useEffect(() => {
+    return () => {
+      const timers = labelSaveTimersRef.current;
+      for (const t of timers.values()) clearTimeout(t);
+      timers.clear();
+    };
+  }, []);
+
   const [newRoomName, setNewRoomName] = useState('');
   const [labelDrafts, setLabelDrafts] = useState(() => ({}));
+
+  const [labelSaveState, setLabelSaveState] = useState(() => ({}));
+  const labelSaveTimersRef = useRef(new Map());
 
   const mainAllowedIds = useMemo(() => {
     const ids = Array.isArray(config?.ui?.mainAllowedDeviceIds)
@@ -561,7 +789,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
   const setAllowed = async (deviceId, list, nextAllowed) => {
     setError(null);
-    setBusy(true);
     try {
       const nextMain = new Set(Array.from(mainAllowedIds));
       const nextCtrl = new Set(Array.from(ctrlAllowedIds));
@@ -572,22 +799,20 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
       const payload = {};
       if (!mainLocked) payload.mainAllowedDeviceIds = Array.from(nextMain);
       if (!ctrlLocked) payload.ctrlAllowedDeviceIds = Array.from(nextCtrl);
-      await saveAllowlists(payload);
+      await allowlistSave.run(payload);
     } catch (e) {
       setError(e?.message || String(e));
-    } finally {
-      setBusy(false);
     }
   };
 
   return (
-    <div className="w-full h-full overflow-auto p-2 md:p-3">
+    <div className="w-full h-full overflow-auto utility-page">
       <div className="w-full">
-        <div className="glass-panel border border-white/10 p-4 md:p-5">
+        <div className="utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
               Config
             </div>
-            <div className="mt-1 text-xl md:text-2xl font-extrabold tracking-tight text-white">
+            <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
               Device Visibility
             </div>
             <div className="mt-1 text-xs text-white/45">
@@ -607,6 +832,10 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
             {error ? (
               <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {error}</div>
             ) : null}
+
+            <div className="mt-2 text-xs text-white/45">
+              {statusText(allowlistSave.status)}
+            </div>
 
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
               {allSwitchLikeDevices.length ? (
@@ -631,7 +860,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                             <input
                               type="checkbox"
                               className={`h-5 w-5 ${scheme.checkboxAccent}`}
-                              disabled={!connected || busy || mainLocked}
+                              disabled={!connected || allowlistSave.status === 'saving' || mainLocked}
                               checked={isMain}
                               onChange={(e) => setAllowed(d.id, 'main', e.target.checked)}
                             />
@@ -642,7 +871,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                             <input
                               type="checkbox"
                               className={`h-5 w-5 ${scheme.checkboxAccent}`}
-                              disabled={!connected || busy || ctrlLocked}
+                              disabled={!connected || allowlistSave.status === 'saving' || ctrlLocked}
                               checked={isCtrl}
                               onChange={(e) => setAllowed(d.id, 'ctrl', e.target.checked)}
                             />
@@ -663,20 +892,24 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
             ) : null}
           </div>
 
-          <div className="mt-4 glass-panel border border-white/10 p-4 md:p-5">
+          <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
               Appearance
             </div>
-            <div className="mt-1 text-xl md:text-2xl font-extrabold tracking-tight text-white">
+            <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
               Color Scheme
             </div>
             <div className="mt-1 text-xs text-white/45">
               Pick a single accent color for the UI.
             </div>
 
-            {error ? (
-              <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {error}</div>
+            {colorSchemeSave.error ? (
+              <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {colorSchemeSave.error}</div>
             ) : null}
+
+            <div className="mt-2 text-xs text-white/45">
+              {statusText(colorSchemeSave.status)}
+            </div>
 
             <div className="mt-4">
               {['Classy', 'Wild'].map((vibe) => (
@@ -692,19 +925,15 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                         <button
                           key={choice.id}
                           type="button"
-                          disabled={!connected || busy}
+                          disabled={!connected || busy || colorSchemeSave.status === 'saving'}
                           onClick={async () => {
-                            setError(null);
-                            setBusy(true);
                             try {
-                              await saveColorScheme(choice.id);
-                            } catch (e) {
-                              setError(e?.message || String(e));
-                            } finally {
-                              setBusy(false);
+                              await colorSchemeSave.run(choice.id);
+                            } catch {
+                              // handled by controller
                             }
                           }}
-                          className={`rounded-xl border px-3 py-3 text-left transition-colors ${isSelected ? 'border-white/30 bg-white/10' : 'border-white/10 bg-black/20 hover:bg-white/5'} ${(!connected || busy) ? 'opacity-50' : ''}`}
+                          className={`rounded-xl border px-3 py-3 text-left transition-colors ${isSelected ? 'border-white/30 bg-white/10' : 'border-white/10 bg-black/20 hover:bg-white/5'} ${(!connected || busy || colorSchemeSave.status === 'saving') ? 'opacity-50' : ''}`}
                         >
                           <div className="flex items-center gap-3">
                             <div className={`h-3.5 w-3.5 rounded-full ${choiceScheme.swatch}`} />
@@ -726,11 +955,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
             </div>
           </div>
 
-          <div className="mt-4 glass-panel border border-white/10 p-4 md:p-5">
+          <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
               Sounds
             </div>
-            <div className="mt-1 text-xl md:text-2xl font-extrabold tracking-tight text-white">
+            <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
               Activity Alerts
             </div>
             <div className="mt-1 text-xs text-white/45">
@@ -741,9 +970,13 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               <div className="mt-2 text-[11px] text-neon-red break-words">Sounds unavailable: {soundFilesError}</div>
             ) : null}
 
-            {error ? (
-              <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {error}</div>
+            {alertSoundsSave.error ? (
+              <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {alertSoundsSave.error}</div>
             ) : null}
+
+            <div className="mt-2 text-xs text-white/45">
+              {statusText(alertSoundsSave.status)}
+            </div>
 
             <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
               {[
@@ -755,7 +988,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                   <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">{label}</div>
                   <select
                     value={alertSounds[key] || ''}
-                    disabled={!connected || busy}
+                    disabled={!connected || busy || alertSoundsSave.status === 'saving'}
                     onChange={async (e) => {
                       const value = String(e.target.value || '');
                       const next = {
@@ -763,18 +996,15 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                         [key]: value,
                       };
 
-                      setError(null);
-                      setBusy(true);
+                      alertSoundsSave.setError(null);
                       try {
-                        await saveAlertSounds({
+                        await alertSoundsSave.run({
                           motion: next.motion || null,
                           doorOpen: next.doorOpen || null,
                           doorClose: next.doorClose || null,
                         });
-                      } catch (err) {
-                        setError(err?.message || String(err));
-                      } finally {
-                        setBusy(false);
+                      } catch {
+                        // handled by controller
                       }
                     }}
                     className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
@@ -793,11 +1023,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
             ) : null}
           </div>
 
-          <div className="mt-4 glass-panel border border-white/10 p-4 md:p-5">
+          <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
               Climate
             </div>
-            <div className="mt-1 text-xl md:text-2xl font-extrabold tracking-tight text-white">
+            <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
               Heatmap Tolerances
             </div>
             <div className="mt-1 text-xs text-white/45">
@@ -817,21 +1047,18 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                 <input
                   type="checkbox"
                   className={`h-5 w-5 ${scheme.checkboxAccent}`}
-                  disabled={!connected || busy}
+                  disabled={!connected || busy || homeValueSave.status === 'saving'}
                   checked={colorizeHomeValues}
                   onChange={async (e) => {
                     const next = !!e.target.checked;
                     setHomeValueColorError(null);
-                    setBusy(true);
                     try {
-                      await saveColorizeHomeValues({
+                      await homeValueSave.run({
                         colorizeHomeValues: next,
                         colorizeHomeValuesOpacityPct: homeValueOpacityDraft,
                       });
                     } catch (err) {
                       setHomeValueColorError(err?.message || String(err));
-                    } finally {
-                      setBusy(false);
                     }
                   }}
                 />
@@ -885,32 +1112,13 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                   className="mt-3 w-full"
                 />
 
-                <div className="mt-3 flex items-center gap-3">
-                  <button
-                    type="button"
-                    disabled={!connected || busy || !homeValueOpacityDirty}
-                    onClick={async () => {
-                      setHomeValueColorError(null);
-                      setBusy(true);
-                      try {
-                        await saveColorizeHomeValues({
-                          colorizeHomeValues,
-                          colorizeHomeValuesOpacityPct: homeValueOpacityDraft,
-                        });
-                        setHomeValueOpacityDirty(false);
-                      } catch (err) {
-                        setHomeValueColorError(err?.message || String(err));
-                      } finally {
-                        setBusy(false);
-                      }
-                    }}
-                    className={`rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${scheme.actionButton} ${(!connected || busy || !homeValueOpacityDirty) ? 'opacity-40' : ''}`}
-                  >
-                    Save Opacity
-                  </button>
-                  {!connected ? (
-                    <div className="text-xs text-white/45">Server offline: editing disabled.</div>
-                  ) : null}
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="text-xs text-white/45">
+                    {homeValueOpacityDirty ? 'Pending changes…' : 'Saved'}
+                  </div>
+                  <div className="text-xs text-white/45">
+                    {statusText(homeValueSave.status)}
+                  </div>
                 </div>
               </div>
 
@@ -952,32 +1160,13 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                 ))}
               </div>
 
-              <div className="mt-3 flex items-center gap-3">
-                <button
-                  type="button"
-                  disabled={!connected || busy || !sensorColorsDirty}
-                  onClick={async () => {
-                    setSensorColorsError(null);
-                    setBusy(true);
-                    try {
-                      await saveSensorIndicatorColors({ ...sensorColorsDraft });
-                      setSensorColorsDirty(false);
-                    } catch (e) {
-                      setSensorColorsError(e?.message || String(e));
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
-                  className={`rounded-xl border px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] ${scheme.actionButton} ${(!connected || busy || !sensorColorsDirty) ? 'opacity-50' : ''}`}
-                >
-                  Save
-                </button>
-
-                {sensorColorsDirty ? (
-                  <div className="text-xs text-white/45">Unsaved changes</div>
-                ) : (
-                  <div className="text-xs text-white/45">Saved</div>
-                )}
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="text-xs text-white/45">
+                  {sensorColorsDirty ? 'Pending changes…' : 'Saved'}
+                </div>
+                <div className="text-xs text-white/45">
+                  {statusText(sensorColorsSave.status)}
+                </div>
               </div>
 
               {sensorColorsError ? (
@@ -1046,7 +1235,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                 </label>
               </div>
 
-              <div className="mt-3 flex flex-wrap items-center gap-3">
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                 <a
                   href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${openMeteoDraft.lat || ''},${openMeteoDraft.lon || ''}`)}`}
                   target="_blank"
@@ -1056,35 +1245,12 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                   Open Google Maps to pick coordinates
                 </a>
 
-                <button
-                  type="button"
-                  disabled={!connected || busy || !openMeteoDirty}
-                  onClick={async () => {
-                    setOpenMeteoError(null);
-                    setBusy(true);
-                    try {
-                      const res = await saveOpenMeteoConfig({
-                        lat: String(openMeteoDraft.lat || '').trim(),
-                        lon: String(openMeteoDraft.lon || '').trim(),
-                        timezone: String(openMeteoDraft.timezone || '').trim() || 'auto',
-                      });
-                      const overrides = (res?.overriddenByEnv && typeof res.overriddenByEnv === 'object') ? res.overriddenByEnv : {};
-                      setOpenMeteoEnvOverrides({
-                        lat: overrides.lat === true,
-                        lon: overrides.lon === true,
-                        timezone: overrides.timezone === true,
-                      });
-                      setOpenMeteoDirty(false);
-                    } catch (e) {
-                      setOpenMeteoError(e?.message || String(e));
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
-                  className={`rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${scheme.actionButton} ${(!connected || busy || !openMeteoDirty) ? 'opacity-40' : ''}`}
-                >
-                  Save Weather Location
-                </button>
+                <div className="text-xs text-white/45">
+                  {openMeteoDirty ? 'Pending changes…' : 'Saved'}
+                  {openMeteoSave.status !== 'idle' ? (
+                    <span className="ml-2">({statusText(openMeteoSave.status)})</span>
+                  ) : null}
+                </div>
               </div>
 
               {openMeteoError ? (
@@ -1261,96 +1427,13 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               </div>
             </div>
 
-            <div className="mt-4 flex items-center gap-3">
-              <button
-                type="button"
-                disabled={!connected || busy || (!climateDirty && !climateColorsDirty)}
-                onClick={async () => {
-                  const toFinite = (v) => {
-                    const s = String(v ?? '').trim();
-                    if (!s.length) return null;
-                    const n = Number(s);
-                    return Number.isFinite(n) ? n : null;
-                  };
-                  const inc3 = (a, b, c) => Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c) && a < b && b < c;
-                  const tRaw = climateDraft.temperatureF;
-                  const hRaw = climateDraft.humidityPct;
-                  const lRaw = climateDraft.illuminanceLux;
-
-                  const t = {
-                    cold: toFinite(tRaw.cold),
-                    comfy: toFinite(tRaw.comfy),
-                    warm: toFinite(tRaw.warm),
-                  };
-                  const h = {
-                    dry: toFinite(hRaw.dry),
-                    comfy: toFinite(hRaw.comfy),
-                    humid: toFinite(hRaw.humid),
-                  };
-                  const l = {
-                    dark: toFinite(lRaw.dark),
-                    dim: toFinite(lRaw.dim),
-                    bright: toFinite(lRaw.bright),
-                  };
-
-                  if (climateDirty) {
-                    if (t.cold === null || t.comfy === null || t.warm === null || h.dry === null || h.comfy === null || h.humid === null || l.dark === null || l.dim === null || l.bright === null) {
-                      setClimateError('All tolerance thresholds must be valid numbers.');
-                      return;
-                    }
-                    if (!inc3(t.cold, t.comfy, t.warm)) {
-                      setClimateError('Temperature thresholds must be increasing (cold < comfy < warm).');
-                      return;
-                    }
-                    if (!inc3(h.dry, h.comfy, h.humid)) {
-                      setClimateError('Humidity thresholds must be increasing (dry < comfy < humid).');
-                      return;
-                    }
-                    if (!inc3(l.dark, l.dim, l.bright)) {
-                      setClimateError('Illuminance thresholds must be increasing (dark < dim < bright).');
-                      return;
-                    }
-                  }
-
-                  setClimateError(null);
-                  setClimateColorsError(null);
-                  setBusy(true);
-                  try {
-                    if (climateDirty) {
-                      await saveClimateTolerances({
-                        temperatureF: { cold: t.cold, comfy: t.comfy, warm: t.warm },
-                        humidityPct: { dry: h.dry, comfy: h.comfy, humid: h.humid },
-                        illuminanceLux: { dark: l.dark, dim: l.dim, bright: l.bright },
-                      });
-                      setClimateDirty(false);
-                    }
-
-                    if (climateColorsDirty) {
-                      await saveClimateToleranceColors({
-                        temperatureF: { ...climateColorsDraft.temperatureF },
-                        humidityPct: { ...climateColorsDraft.humidityPct },
-                        illuminanceLux: { ...climateColorsDraft.illuminanceLux },
-                      });
-                      setClimateColorsDirty(false);
-                    }
-                  } catch (e) {
-                    const msg = e?.message || String(e);
-                    if (climateDirty) setClimateError(msg);
-                    else setClimateColorsError(msg);
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-                className={`rounded-xl border px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] ${scheme.actionButton} ${(!connected || busy || !climateDirty) ? 'opacity-50' : ''}`}
-              >
-                Save
-              </button>
-
-              {(climateDirty || climateColorsDirty) ? (
-                <div className="text-xs text-white/45">Unsaved changes</div>
-              ) : (
-                <div className="text-xs text-white/45">Saved</div>
-              )}
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <div className="text-xs text-white/45">
+                {(climateDirty || climateColorsDirty) ? 'Pending changes…' : 'Saved'}
+              </div>
+              <div className="text-xs text-white/45">
+                Tolerances: {statusText(climateTolSave.status) || 'Idle'} · Colors: {statusText(climateColorsSave.status) || 'Idle'}
+              </div>
             </div>
 
             {!connected ? (
@@ -1358,11 +1441,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
             ) : null}
           </div>
 
-          <div className="mt-4 glass-panel border border-white/10 p-4 md:p-5">
+          <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
               Rooms
             </div>
-            <div className="mt-1 text-xl md:text-2xl font-extrabold tracking-tight text-white">
+            <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
               Manual Rooms
             </div>
             <div className="mt-1 text-xs text-white/45">
@@ -1437,11 +1520,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
             </div>
           </div>
 
-          <div className="mt-4 glass-panel border border-white/10 p-4 md:p-5">
+          <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
               Labels
             </div>
-            <div className="mt-1 text-xl md:text-2xl font-extrabold tracking-tight text-white">
+            <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
               Freeform Text
             </div>
             <div className="mt-1 text-xs text-white/45">
@@ -1472,38 +1555,33 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
             <div className="mt-4 grid grid-cols-1 gap-3">
               {labels.length ? (
                 labels.map((l) => (
-                  <div key={l.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div key={l.id} className="utility-group p-4">
                     <div className="text-[10px] uppercase tracking-[0.2em] text-white/45 font-semibold">
                       {l.id}
                     </div>
                     <textarea
                       value={labelDrafts[l.id] ?? l.text}
-                      onChange={(e) => setLabelDrafts((prev) => ({ ...prev, [l.id]: e.target.value }))}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setLabelDrafts((prev) => ({ ...prev, [l.id]: next }));
+                        queueLabelAutosave(l.id, next);
+                      }}
                       rows={2}
                       className={`mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 placeholder:text-white/35 ${scheme.focusRing}`}
                       disabled={!connected || busy}
                       placeholder="Label text"
                     />
 
+                    <div className="mt-2 flex items-center justify-between gap-3">
+                      <div className="text-xs text-white/45">
+                        {statusText(labelSaveState[l.id]?.status) || 'Idle'}
+                      </div>
+                      {labelSaveState[l.id]?.error ? (
+                        <div className="text-xs text-neon-red break-words">{labelSaveState[l.id]?.error}</div>
+                      ) : null}
+                    </div>
+
                     <div className="mt-3 flex gap-2">
-                      <button
-                        type="button"
-                        disabled={!connected || busy || !String(labelDrafts[l.id] ?? '').trim()}
-                        onClick={async () => {
-                          setError(null);
-                          setBusy(true);
-                          try {
-                            await updateLabel(l.id, String(labelDrafts[l.id] ?? '').trim());
-                          } catch (e) {
-                            setError(e?.message || String(e));
-                          } finally {
-                            setBusy(false);
-                          }
-                        }}
-                        className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || !String(labelDrafts[l.id] ?? '').trim()) ? 'opacity-50' : 'hover:bg-white/5'}`}
-                      >
-                        Save Text
-                      </button>
                       <button
                         type="button"
                         disabled={!connected || busy}
@@ -1531,13 +1609,13 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
             </div>
           </div>
 
-          <div className="mt-4 glass-panel border border-white/10 p-4 md:p-5">
+          <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
                   Events
                 </div>
-                <div className="mt-1 text-xl md:text-2xl font-extrabold tracking-tight text-white">
+                <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
                   Recent Posts
                 </div>
                 <div className="mt-1 text-xs text-white/45">
