@@ -35,6 +35,11 @@ const UI_COLOR_SCHEMES = Object.freeze([
     'classic-blue',
     'emerald',
     'amber',
+    'stone',
+    'slate',
+    'zinc',
+    'white',
+    'copper',
     'neon-green',
     'neon-red',
 ]);
@@ -566,6 +571,12 @@ function normalizePersistedConfig(raw) {
         'blue',
         'slate',
         'stone',
+        'white',
+        'black',
+        'zinc',
+        'neutral',
+        'tan',
+        'brown',
     ]);
 
     const colorsRaw = (uiRaw.climateToleranceColors && typeof uiRaw.climateToleranceColors === 'object')
@@ -2036,6 +2047,12 @@ app.put('/api/ui/climate-tolerance-colors', (req, res) => {
         'blue',
         'slate',
         'stone',
+        'white',
+        'black',
+        'zinc',
+        'neutral',
+        'tan',
+        'brown',
     ]);
 
     const prev = (persistedConfig?.ui && typeof persistedConfig.ui === 'object' && persistedConfig.ui.climateToleranceColors && typeof persistedConfig.ui.climateToleranceColors === 'object')
@@ -2126,6 +2143,12 @@ app.put('/api/ui/sensor-indicator-colors', (req, res) => {
         'blue',
         'slate',
         'stone',
+        'white',
+        'black',
+        'zinc',
+        'neutral',
+        'tan',
+        'brown',
     ]);
 
     const prev = (persistedConfig?.ui && typeof persistedConfig.ui === 'object' && persistedConfig.ui.sensorIndicatorColors && typeof persistedConfig.ui.sensorIndicatorColors === 'object')

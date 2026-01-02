@@ -140,12 +140,42 @@ const UI_COLOR_SCHEMES = {
     checkboxAccent: 'accent-neon-red',
     swatch: 'bg-neon-red',
   },
+  slate: {
+    actionButton: 'text-slate-200 border-slate-500/35 bg-slate-500/15',
+    checkboxAccent: 'accent-slate-400',
+    swatch: 'bg-slate-500',
+  },
+  stone: {
+    actionButton: 'text-stone-200 border-stone-400/35 bg-stone-400/15',
+    checkboxAccent: 'accent-stone-400',
+    swatch: 'bg-stone-400',
+  },
+  zinc: {
+    actionButton: 'text-zinc-200 border-zinc-400/35 bg-zinc-400/15',
+    checkboxAccent: 'accent-zinc-400',
+    swatch: 'bg-zinc-400',
+  },
+  white: {
+    actionButton: 'text-white border-white/25 bg-white/10',
+    checkboxAccent: 'accent-white',
+    swatch: 'bg-white',
+  },
+  copper: {
+    actionButton: 'text-amber-300 border-amber-700/40 bg-amber-700/20',
+    checkboxAccent: 'accent-amber-500',
+    swatch: 'bg-amber-700',
+  },
 };
 
 const COLOR_SCHEME_CHOICES = [
   { id: 'classic-blue', label: 'Classic Blue', vibe: 'Classy' },
   { id: 'emerald', label: 'Emerald', vibe: 'Classy' },
   { id: 'amber', label: 'Amber', vibe: 'Classy' },
+  { id: 'stone', label: 'Stone (Tan)', vibe: 'Classy' },
+  { id: 'slate', label: 'Slate (Charcoal)', vibe: 'Classy' },
+  { id: 'zinc', label: 'Zinc', vibe: 'Classy' },
+  { id: 'white', label: 'White', vibe: 'Classy' },
+  { id: 'copper', label: 'Copper (Brown)', vibe: 'Classy' },
   { id: 'electric-blue', label: 'Electric Blue', vibe: 'Wild' },
   { id: 'neon-green', label: 'Neon Green', vibe: 'Wild' },
   { id: 'neon-red', label: 'Neon Red', vibe: 'Wild' },
