@@ -1243,6 +1243,7 @@ async function syncHubitatDataInner() {
                 // Back-compat
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
+                colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
             },
@@ -1506,6 +1507,7 @@ app.post('/api/rooms', (req, res) => {
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
+                colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
             },
@@ -1554,6 +1556,7 @@ app.delete('/api/rooms/:id', (req, res) => {
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
+                colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
             },
@@ -1592,6 +1595,7 @@ app.post('/api/labels', (req, res) => {
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
+                colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
             },
@@ -1628,6 +1632,7 @@ app.put('/api/labels/:id', (req, res) => {
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
+                colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
             },
@@ -1662,6 +1667,7 @@ app.delete('/api/labels/:id', (req, res) => {
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
+                colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
             },
@@ -2391,6 +2397,9 @@ app.post('/api/layout', (req, res) => {
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
+                colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
+                alertSounds: persistedConfig?.ui?.alertSounds,
+                climateTolerances: persistedConfig?.ui?.climateTolerances,
             },
         };
         io.emit('config_update', config);
@@ -2428,6 +2437,9 @@ app.delete('/api/layout', (req, res) => {
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
+                colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
+                alertSounds: persistedConfig?.ui?.alertSounds,
+                climateTolerances: persistedConfig?.ui?.climateTolerances,
             },
         };
         io.emit('config_update', config);
