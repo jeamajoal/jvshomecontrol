@@ -141,7 +141,6 @@ const useRoomsFitScale = (cardScalePct = 100) => {
 
   const [roomsScale, setRoomsScale] = useState(1);
   const [scaledRoomsHeightPx, setScaledRoomsHeightPx] = useState(null);
-  const [scaledRoomsWidthPx, setScaledRoomsWidthPx] = useState(null);
 
   useEffect(() => {
     const viewportEl = viewportRef.current;
@@ -163,7 +162,6 @@ const useRoomsFitScale = (cardScalePct = 100) => {
       if (!isMdUp) {
         setRoomsScale(1);
         setScaledRoomsHeightPx(null);
-        setScaledRoomsWidthPx(null);
         return;
       }
 
@@ -194,7 +192,6 @@ const useRoomsFitScale = (cardScalePct = 100) => {
 
       setRoomsScale((prev) => (Math.abs(prev - nextScale) < 0.01 ? prev : nextScale));
       setScaledRoomsHeightPx(Math.ceil(roomsH * nextScale));
-      setScaledRoomsWidthPx(Math.ceil(roomsW * nextScale));
     };
 
     compute();
@@ -210,7 +207,7 @@ const useRoomsFitScale = (cardScalePct = 100) => {
     };
   }, [cardScalePct]);
 
-  return { viewportRef, metricRowRef, roomsRef, roomsScale, scaledRoomsHeightPx, scaledRoomsWidthPx };
+  return { viewportRef, metricRowRef, roomsRef, roomsScale, scaledRoomsHeightPx };
 };
 
 const MetricCard = ({
@@ -806,7 +803,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
   const allowedControlIds = useMemo(() => getAllowedDeviceIdSet(config, 'main'), [config]);
   const rooms = useMemo(() => buildRoomsWithStatuses(config, statuses), [config, statuses]);
   const now = useClock(1000);
-  const { viewportRef, metricRowRef, roomsRef, roomsScale, scaledRoomsHeightPx, scaledRoomsWidthPx } = useRoomsFitScale(cardScalePct);
+  const { viewportRef, metricRowRef, roomsRef, roomsScale, scaledRoomsHeightPx } = useRoomsFitScale(cardScalePct);
 
   const [weather, setWeather] = useState(null);
   const [weatherError, setWeatherError] = useState(null);
@@ -1036,12 +1033,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
 
           <div
             className="mt-4"
-            style={(scaledRoomsHeightPx || scaledRoomsWidthPx)
-              ? {
-                ...(scaledRoomsHeightPx ? { height: `${scaledRoomsHeightPx}px` } : null),
-                ...(scaledRoomsWidthPx ? { width: `${scaledRoomsWidthPx}px` } : null),
-              }
-              : undefined}
+            style={scaledRoomsHeightPx ? { height: `${scaledRoomsHeightPx}px` } : undefined}
           >
             <div
               ref={roomsRef}
