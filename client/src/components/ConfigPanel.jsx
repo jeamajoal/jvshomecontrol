@@ -124,6 +124,19 @@ async function saveColorizeHomeValues(payload) {
   return res.json().catch(() => ({}));
 }
 
+async function saveHomeBackground(homeBackground) {
+  const res = await fetch(`${API_HOST}/api/ui/home-background`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ homeBackground: homeBackground || {} }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Home background save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveSensorIndicatorColors(sensorIndicatorColors) {
   const res = await fetch(`${API_HOST}/api/ui/sensor-indicator-colors`, {
     method: 'PUT',
@@ -326,6 +339,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const colorSchemeSave = useAsyncSave(saveColorScheme);
   const alertSoundsSave = useAsyncSave(saveAlertSounds);
   const homeValueSave = useAsyncSave(saveColorizeHomeValues);
+  const homeBackgroundSave = useAsyncSave(saveHomeBackground);
   const sensorColorsSave = useAsyncSave(saveSensorIndicatorColors);
   const climateTolSave = useAsyncSave(saveClimateTolerances);
   const climateColorsSave = useAsyncSave(saveClimateToleranceColors);
@@ -444,6 +458,25 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [homeValueOpacityDraft, setHomeValueOpacityDraft] = useState(() => 100);
   const [homeValueOpacityDirty, setHomeValueOpacityDirty] = useState(false);
 
+  const homeBackgroundFromConfig = useMemo(() => {
+    const raw = (config?.ui?.homeBackground && typeof config.ui.homeBackground === 'object')
+      ? config.ui.homeBackground
+      : {};
+
+    const enabled = raw.enabled === true;
+    const url = (raw.url === null || raw.url === undefined) ? '' : String(raw.url);
+    const opacityRaw = Number(raw.opacityPct);
+    const opacityPct = Number.isFinite(opacityRaw)
+      ? Math.max(0, Math.min(100, Math.round(opacityRaw)))
+      : 35;
+
+    return { enabled, url, opacityPct };
+  }, [config?.ui?.homeBackground]);
+
+  const [homeBackgroundDraft, setHomeBackgroundDraft] = useState(() => ({ enabled: false, url: '', opacityPct: 35 }));
+  const [homeBackgroundDirty, setHomeBackgroundDirty] = useState(false);
+  const [homeBackgroundError, setHomeBackgroundError] = useState(null);
+
   const [sensorColorsDraft, setSensorColorsDraft] = useState(() => ({ motion: 'warning', door: 'neon-red' }));
   const [sensorColorsDirty, setSensorColorsDirty] = useState(false);
   const [sensorColorsError, setSensorColorsError] = useState(null);
@@ -454,6 +487,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     if (homeValueOpacityDirty) return;
     setHomeValueOpacityDraft(homeValueOpacityFromConfig);
   }, [homeValueOpacityDirty, homeValueOpacityFromConfig]);
+
+  useEffect(() => {
+    if (homeBackgroundDirty) return;
+    setHomeBackgroundDraft(homeBackgroundFromConfig);
+  }, [homeBackgroundDirty, homeBackgroundFromConfig]);
 
   useEffect(() => {
     if (climateDirty) return;
@@ -506,6 +544,43 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
     return () => clearTimeout(t);
   }, [connected, homeValueOpacityDirty, homeValueOpacityDraft, colorizeHomeValues]);
+
+  // Autosave: Home background.
+  useEffect(() => {
+    if (!connected) return;
+    if (!homeBackgroundDirty) return;
+
+    const t = setTimeout(async () => {
+      setHomeBackgroundError(null);
+      try {
+        const trimmedUrl = String(homeBackgroundDraft.url || '').trim();
+        const enabled = homeBackgroundDraft.enabled === true;
+        const opacityRaw = Number(homeBackgroundDraft.opacityPct);
+        const opacityPct = Number.isFinite(opacityRaw)
+          ? Math.max(0, Math.min(100, Math.round(opacityRaw)))
+          : 35;
+
+        // If enabled but missing URL, force-disable to avoid a save loop.
+        if (enabled && !trimmedUrl) {
+          setHomeBackgroundDraft((prev) => ({ ...prev, enabled: false }));
+          setHomeBackgroundError('Enter an image URL before enabling.');
+          setHomeBackgroundDirty(false);
+          return;
+        }
+
+        await homeBackgroundSave.run({
+          enabled,
+          url: trimmedUrl || null,
+          opacityPct,
+        });
+        setHomeBackgroundDirty(false);
+      } catch (e) {
+        setHomeBackgroundError(e?.message || String(e));
+      }
+    }, 700);
+
+    return () => clearTimeout(t);
+  }, [connected, homeBackgroundDirty, homeBackgroundDraft]);
 
   // Autosave: Home sensor indicator colors.
   useEffect(() => {
@@ -953,6 +1028,142 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                 </div>
               ))}
             </div>
+          </div>
+
+          <div className="mt-4 utility-panel p-4 md:p-6">
+            <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+              Home
+            </div>
+            <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
+              Background
+            </div>
+            <div className="mt-1 text-xs text-white/45">
+              Set an image URL to show behind all Home controls.
+            </div>
+
+            <div className="mt-4 utility-group p-4">
+              <label className="flex items-center justify-between gap-4 select-none">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                    Enable background
+                  </div>
+                  <div className="mt-1 text-xs text-white/45">
+                    When enabled, the image renders behind the Home dashboard.
+                  </div>
+                </div>
+
+                <input
+                  type="checkbox"
+                  className={`h-5 w-5 ${scheme.checkboxAccent}`}
+                  disabled={!connected || busy || homeBackgroundSave.status === 'saving'}
+                  checked={homeBackgroundDraft.enabled}
+                  onChange={(e) => {
+                    const nextEnabled = !!e.target.checked;
+                    const trimmedUrl = String(homeBackgroundDraft.url || '').trim();
+                    setHomeBackgroundError(null);
+
+                    if (nextEnabled && !trimmedUrl) {
+                      setHomeBackgroundError('Enter an image URL before enabling.');
+                      return;
+                    }
+
+                    setHomeBackgroundDirty(true);
+                    setHomeBackgroundDraft((prev) => ({ ...prev, enabled: nextEnabled }));
+                  }}
+                />
+              </label>
+
+              <label className="block mt-4">
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                  Image URL
+                </div>
+                <input
+                  type="text"
+                  value={homeBackgroundDraft.url}
+                  disabled={!connected || busy}
+                  onChange={(e) => {
+                    const nextUrl = String(e.target.value);
+                    setHomeBackgroundError(null);
+                    setHomeBackgroundDirty(true);
+                    setHomeBackgroundDraft((prev) => {
+                      const trimmed = nextUrl.trim();
+                      // If the user clears the URL, force-disable to avoid an invalid enabled state.
+                      const nextEnabled = prev.enabled && trimmed.length ? prev.enabled : false;
+                      return { ...prev, url: nextUrl, enabled: nextEnabled };
+                    });
+                  }}
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                  placeholder="https://example.com/background.jpg (or /path/on-this-server.jpg)"
+                />
+              </label>
+
+              <div className="mt-4 utility-group p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                      Opacity
+                    </div>
+                    <div className="mt-1 text-xs text-white/45">
+                      Lower = more translucent.
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={homeBackgroundDraft.opacityPct}
+                      disabled={!connected || busy}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 35;
+                        setHomeBackgroundError(null);
+                        setHomeBackgroundDirty(true);
+                        setHomeBackgroundDraft((prev) => ({ ...prev, opacityPct: next }));
+                      }}
+                      className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    />
+                    <div className="text-xs text-white/45">%</div>
+                  </div>
+                </div>
+
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={homeBackgroundDraft.opacityPct}
+                  disabled={!connected || busy}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 35;
+                    setHomeBackgroundError(null);
+                    setHomeBackgroundDirty(true);
+                    setHomeBackgroundDraft((prev) => ({ ...prev, opacityPct: next }));
+                  }}
+                  className="mt-3 w-full"
+                />
+
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="text-xs text-white/45">
+                    {homeBackgroundDirty ? 'Pending changes…' : 'Saved'}
+                  </div>
+                  <div className="text-xs text-white/45">
+                    {statusText(homeBackgroundSave.status)}
+                  </div>
+                </div>
+              </div>
+
+              {homeBackgroundError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {homeBackgroundError}</div>
+              ) : null}
+            </div>
+
+            {!connected ? (
+              <div className="mt-3 text-xs text-white/45">Server offline: editing disabled.</div>
+            ) : null}
           </div>
 
           <div className="mt-4 utility-panel p-4 md:p-6">

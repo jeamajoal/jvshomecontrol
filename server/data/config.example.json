@@ -11,6 +11,11 @@
   },
   "ui": {
     "colorScheme": "electric-blue",
+    "homeBackground": {
+      "enabled": false,
+      "url": null,
+      "opacityPct": 35
+    },
     "mainAllowedDeviceIds": [],
     "ctrlAllowedDeviceIds": []
   },

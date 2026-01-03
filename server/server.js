@@ -619,6 +619,21 @@ function normalizePersistedConfig(raw) {
 
     const sensorIndicatorColors = pickColorGroup(sensorRaw, ['motion', 'door'], DEFAULT_SENSOR_INDICATOR_COLORS);
 
+    const homeBgRaw = (uiRaw.homeBackground && typeof uiRaw.homeBackground === 'object')
+        ? uiRaw.homeBackground
+        : {};
+
+    const homeBackground = {
+        enabled: homeBgRaw.enabled === true,
+        url: asFile(homeBgRaw.url),
+        opacityPct: clampInt(homeBgRaw.opacityPct, 0, 100, 35),
+    };
+
+    // If there's no URL, don't treat the background as enabled.
+    if (homeBackground.enabled && !homeBackground.url) {
+        homeBackground.enabled = false;
+    }
+
     const normalizeTriplet = (rawObj, keys, fallback) => {
         const outObj = { ...fallback };
         if (!rawObj || typeof rawObj !== 'object') return outObj;
@@ -655,6 +670,8 @@ function normalizePersistedConfig(raw) {
         climateToleranceColors,
         // Home indicator badge colors (Motion/Door)
         sensorIndicatorColors,
+        // Optional Home background image (rendered behind all controls)
+        homeBackground,
     };
 
     return out;
@@ -684,9 +701,10 @@ function loadPersistedConfig() {
             const hadColorizeHomeValuesOpacityPct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'colorizeHomeValuesOpacityPct'));
             const hadClimateToleranceColors = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'climateToleranceColors'));
             const hadSensorIndicatorColors = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'sensorIndicatorColors'));
+            const hadHomeBackground = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeBackground'));
             persistedConfig = normalizePersistedConfig(raw);
             // If we added new fields for back-compat, write them back once.
-            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadColorizeHomeValuesOpacityPct || !hadClimateToleranceColors || !hadSensorIndicatorColors) {
+            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadColorizeHomeValuesOpacityPct || !hadClimateToleranceColors || !hadSensorIndicatorColors || !hadHomeBackground) {
                 lastPersistedSerialized = stableStringify(raw);
                 let label = 'migrate-ui-sensor-indicator-colors';
                 if (!hadAlertSounds) label = 'migrate-ui-alert-sounds';
@@ -694,6 +712,7 @@ function loadPersistedConfig() {
                 else if (!hadColorizeHomeValues) label = 'migrate-ui-colorize-home-values';
                 else if (!hadColorizeHomeValuesOpacityPct) label = 'migrate-ui-colorize-home-opacity';
                 else if (!hadClimateToleranceColors) label = 'migrate-ui-climate-tolerance-colors';
+                else if (!hadHomeBackground) label = 'migrate-ui-home-background';
                 persistConfigToDiskIfChanged(label, { force: true });
             }
         } else {
@@ -777,6 +796,7 @@ function rebuildRuntimeConfigFromPersisted() {
             climateTolerances: persistedConfig?.ui?.climateTolerances,
             climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
             sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
+            homeBackground: persistedConfig?.ui?.homeBackground,
         },
     };
 }
@@ -1347,6 +1367,7 @@ async function syncHubitatDataInner() {
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
+                homeBackground: persistedConfig?.ui?.homeBackground,
             },
         };
         sensorStatuses = newStatuses;
@@ -1614,6 +1635,7 @@ app.post('/api/rooms', (req, res) => {
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
+                homeBackground: persistedConfig?.ui?.homeBackground,
             },
         };
         emitConfigUpdateSafe();
@@ -1667,6 +1689,7 @@ app.delete('/api/rooms/:id', (req, res) => {
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
+                homeBackground: persistedConfig?.ui?.homeBackground,
             },
         };
         emitConfigUpdateSafe();
@@ -1709,6 +1732,7 @@ app.post('/api/labels', (req, res) => {
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
+                homeBackground: persistedConfig?.ui?.homeBackground,
             },
         };
         emitConfigUpdateSafe();
@@ -1749,6 +1773,7 @@ app.put('/api/labels/:id', (req, res) => {
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
+                homeBackground: persistedConfig?.ui?.homeBackground,
             },
         };
         emitConfigUpdateSafe();
@@ -1787,6 +1812,7 @@ app.delete('/api/labels/:id', (req, res) => {
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
+                homeBackground: persistedConfig?.ui?.homeBackground,
             },
         };
         emitConfigUpdateSafe();
@@ -1945,6 +1971,76 @@ app.put('/api/ui/colorize-home-values', (req, res) => {
             ...(config?.ui || {}),
             colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
             colorizeHomeValuesOpacityPct: persistedConfig?.ui?.colorizeHomeValuesOpacityPct,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update UI Home background from the kiosk.
+// Expected payload: { homeBackground: { enabled: boolean, url: string|null, opacityPct?: number(0-100) } }
+app.put('/api/ui/home-background', (req, res) => {
+    const incoming = req.body?.homeBackground;
+    if (!incoming || typeof incoming !== 'object') {
+        return res.status(400).json({ error: 'Missing homeBackground' });
+    }
+
+    const enabled = incoming.enabled;
+    if (typeof enabled !== 'boolean') {
+        return res.status(400).json({ error: 'Missing homeBackground.enabled (boolean)' });
+    }
+
+    const rawUrl = incoming.url;
+    const url = (rawUrl === null || rawUrl === undefined)
+        ? null
+        : String(rawUrl).trim();
+
+    if (enabled && !url) {
+        return res.status(400).json({ error: 'homeBackground.url is required when enabled=true' });
+    }
+
+    const opacityRaw = Object.prototype.hasOwnProperty.call(incoming, 'opacityPct')
+        ? incoming.opacityPct
+        : undefined;
+
+    const hasOpacity = opacityRaw !== undefined;
+    const opacityNum = (typeof opacityRaw === 'number') ? opacityRaw : Number(opacityRaw);
+    const opacityPct = hasOpacity && Number.isFinite(opacityNum)
+        ? Math.max(0, Math.min(100, Math.round(opacityNum)))
+        : null;
+
+    if (hasOpacity && opacityPct === null) {
+        return res.status(400).json({ error: 'Invalid homeBackground.opacityPct (0-100)' });
+    }
+
+    const prev = (persistedConfig?.ui && typeof persistedConfig.ui === 'object' && persistedConfig.ui.homeBackground && typeof persistedConfig.ui.homeBackground === 'object')
+        ? persistedConfig.ui.homeBackground
+        : {};
+
+    const next = {
+        enabled,
+        url: url || null,
+        opacityPct: opacityPct === null
+            ? (Number.isFinite(Number(prev.opacityPct)) ? Math.max(0, Math.min(100, Math.round(Number(prev.opacityPct)))) : 35)
+            : opacityPct,
+    };
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            homeBackground: next,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-home-background');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            homeBackground: persistedConfig?.ui?.homeBackground,
         },
     };
     io.emit('config_update', config);
@@ -2795,6 +2891,7 @@ app.post('/api/layout', (req, res) => {
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
+                homeBackground: persistedConfig?.ui?.homeBackground,
             },
         };
         io.emit('config_update', config);
@@ -2838,6 +2935,7 @@ app.delete('/api/layout', (req, res) => {
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
+                homeBackground: persistedConfig?.ui?.homeBackground,
             },
         };
         io.emit('config_update', config);

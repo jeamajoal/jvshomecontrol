@@ -121,6 +121,91 @@ ensure_user() {
     "${APP_USER}"
 }
 
+ensure_config_json() {
+  local cfg example
+  cfg="${APP_DIR}/${CONFIG_FILE_REL}"
+  example="${APP_DIR}/server/data/config.example.json"
+
+  if [[ ! -f "${example}" ]]; then
+    warn "Config example not found; skipping: ${example}"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "${cfg}")"
+
+  if [[ ! -f "${cfg}" ]]; then
+    log "Creating config.json from config.example.json…"
+    cp -a "${example}" "${cfg}"
+    chown "${APP_USER}:${APP_GROUP}" "${cfg}" || true
+    return 0
+  fi
+
+  log "Merging new default config keys into existing config.json (preserving your values)…"
+  local stamp backup
+  stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  backup="${cfg}.${stamp}.bak"
+  cp -a "${cfg}" "${backup}"
+
+  # Use Node to perform a deep "defaults" merge:
+  # - Existing user values win
+  # - Missing keys are filled from config.example.json
+  CFG_PATH="${cfg}" EXAMPLE_PATH="${example}" node - <<'NODE'
+const fs = require('fs');
+const path = require('path');
+
+const cfg = process.env.CFG_PATH;
+const example = process.env.EXAMPLE_PATH;
+
+function isPlainObject(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+
+function mergeDefaults(target, defaults) {
+  if (Array.isArray(defaults)) {
+    return Array.isArray(target) ? target : defaults;
+  }
+
+  if (isPlainObject(defaults)) {
+    const out = isPlainObject(target) ? { ...target } : {};
+    for (const [k, defVal] of Object.entries(defaults)) {
+      if (Object.prototype.hasOwnProperty.call(out, k)) {
+        const cur = out[k];
+        if (isPlainObject(cur) && isPlainObject(defVal)) {
+          out[k] = mergeDefaults(cur, defVal);
+        }
+        // else: user value wins
+      } else {
+        out[k] = defVal;
+      }
+    }
+    return out;
+  }
+
+  // Primitive default: only apply if key was missing entirely.
+  return target;
+}
+
+function readJson(p) {
+  return JSON.parse(fs.readFileSync(p, 'utf8'));
+}
+
+const existing = readJson(cfg);
+const defaults = readJson(example);
+const merged = mergeDefaults(existing, defaults);
+
+const before = JSON.stringify(existing);
+const after = JSON.stringify(merged);
+if (before === after) {
+  process.exit(0);
+}
+
+fs.writeFileSync(cfg, JSON.stringify(merged, null, 2) + '\n');
+NODE
+
+  chown "${APP_USER}:${APP_GROUP}" "${cfg}" || true
+  warn "Config backup left in place: ${backup}"
+}
+
 install_and_build() {
   log "Installing server dependencies…"
   sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}/server' && npm ci --omit=dev"
@@ -285,6 +370,7 @@ main() {
   require_root
   install_prereqs
   ensure_user
+  ensure_config_json
   install_and_build
   ensure_https_setup
   ensure_env_file

@@ -745,6 +745,22 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     };
   }, [config?.ui?.sensorIndicatorColors]);
 
+  const homeBackground = useMemo(() => {
+    const raw = (config?.ui?.homeBackground && typeof config.ui.homeBackground === 'object')
+      ? config.ui.homeBackground
+      : {};
+
+    const enabled = raw.enabled === true;
+    const url = (raw.url === null || raw.url === undefined) ? null : String(raw.url).trim();
+    const opacityRaw = Number(raw.opacityPct);
+    const opacityPct = Number.isFinite(opacityRaw)
+      ? Math.max(0, Math.min(100, Math.round(opacityRaw)))
+      : 35;
+
+    if (!enabled || !url) return { enabled: false, url: null, opacityPct };
+    return { enabled: true, url, opacityPct };
+  }, [config?.ui?.homeBackground]);
+
   const allowedControlIds = useMemo(() => getAllowedDeviceIdSet(config, 'main'), [config]);
   const rooms = useMemo(() => buildRoomsWithStatuses(config, statuses), [config, statuses]);
   const now = useClock(1000);
@@ -855,9 +871,21 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     : outsideSensors.temperature;
 
   return (
-    <div ref={viewportRef} className="w-full h-full overflow-auto p-2 md:p-3">
+    <div ref={viewportRef} className="relative w-full h-full overflow-auto p-2 md:p-3">
+      {homeBackground.enabled && homeBackground.url ? (
+        <div
+          className="absolute inset-0 z-0 pointer-events-none"
+          style={{
+            backgroundImage: `url(\"${homeBackground.url.replace(/"/g, '\\"')}\")`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: homeBackground.opacityPct / 100,
+          }}
+        />
+      ) : null}
+
       <div
-        className="w-full h-full"
+        className="relative z-10 w-full h-full"
         style={{
           transform: `scale(${scale})`,
           transformOrigin: 'top left',
