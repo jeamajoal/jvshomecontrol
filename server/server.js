@@ -1383,6 +1383,7 @@ async function syncHubitatDataInner() {
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
                 homeBackground: persistedConfig?.ui?.homeBackground,
+                cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
             },
         };
         sensorStatuses = newStatuses;
@@ -1667,6 +1668,7 @@ app.post('/api/rooms', (req, res) => {
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
                 homeBackground: persistedConfig?.ui?.homeBackground,
+                cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
             },
         };
         emitConfigUpdateSafe();
@@ -1721,6 +1723,7 @@ app.delete('/api/rooms/:id', (req, res) => {
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
                 homeBackground: persistedConfig?.ui?.homeBackground,
+                cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
             },
         };
         emitConfigUpdateSafe();
@@ -1764,6 +1767,7 @@ app.post('/api/labels', (req, res) => {
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
                 homeBackground: persistedConfig?.ui?.homeBackground,
+                cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
             },
         };
         emitConfigUpdateSafe();
@@ -1805,6 +1809,7 @@ app.put('/api/labels/:id', (req, res) => {
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
                 homeBackground: persistedConfig?.ui?.homeBackground,
+                cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
             },
         };
         emitConfigUpdateSafe();
@@ -1844,6 +1849,7 @@ app.delete('/api/labels/:id', (req, res) => {
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
                 homeBackground: persistedConfig?.ui?.homeBackground,
+                cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
             },
         };
         emitConfigUpdateSafe();
@@ -2956,6 +2962,7 @@ app.post('/api/layout', (req, res) => {
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
                 homeBackground: persistedConfig?.ui?.homeBackground,
+                cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
             },
         };
         io.emit('config_update', config);
@@ -3000,6 +3007,7 @@ app.delete('/api/layout', (req, res) => {
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
                 homeBackground: persistedConfig?.ui?.homeBackground,
+                cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
             },
         };
         io.emit('config_update', config);
