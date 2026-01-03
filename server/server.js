@@ -24,6 +24,7 @@ const DATA_DIR = path.join(__dirname, 'data');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const SOUNDS_DIR = path.join(DATA_DIR, 'sounds');
+const BACKGROUNDS_DIR = path.join(DATA_DIR, 'backgrounds');
 const MAX_BACKUP_FILES = (() => {
     const raw = process.env.BACKUP_MAX_FILES;
     const parsed = raw ? Number(raw) : 200;
@@ -203,6 +204,10 @@ if (HAS_BUILT_CLIENT) {
 // Serve custom alert sounds from the server-managed sounds directory.
 // Files placed in server/data/sounds will be reachable at /sounds/<file>.
 app.use('/sounds', express.static(SOUNDS_DIR));
+
+// Serve custom Home background images from the server-managed backgrounds directory.
+// Files placed in server/data/backgrounds will be reachable at /backgrounds/<file>.
+app.use('/backgrounds', express.static(BACKGROUNDS_DIR));
 
 // State
 let persistedConfig = { weather: settings.weather, rooms: [], sensors: [] }; // Stored in server/data/config.json
@@ -407,6 +412,7 @@ function ensureDataDirs() {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
     if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR);
     if (!fs.existsSync(SOUNDS_DIR)) fs.mkdirSync(SOUNDS_DIR);
+    if (!fs.existsSync(BACKGROUNDS_DIR)) fs.mkdirSync(BACKGROUNDS_DIR);
 }
 
 function stableStringify(value) {
@@ -1559,6 +1565,22 @@ app.get('/api/sounds', (req, res) => {
         ensureDataDirs();
         const exts = new Set(['.mp3', '.wav', '.ogg']);
         const files = fs.readdirSync(SOUNDS_DIR, { withFileTypes: true })
+            .filter((d) => d.isFile())
+            .map((d) => d.name)
+            .filter((name) => exts.has(path.extname(name).toLowerCase()))
+            .sort((a, b) => a.localeCompare(b));
+
+        res.json({ ok: true, files });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err?.message || String(err) });
+    }
+});
+
+app.get('/api/backgrounds', (req, res) => {
+    try {
+        ensureDataDirs();
+        const exts = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
+        const files = fs.readdirSync(BACKGROUNDS_DIR, { withFileTypes: true })
             .filter((d) => d.isFile())
             .map((d) => d.name)
             .filter((name) => exts.has(path.extname(name).toLowerCase()))

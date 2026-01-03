@@ -44,6 +44,17 @@ async function fetchSoundFiles() {
   return files.map((v) => String(v)).filter(Boolean);
 }
 
+async function fetchBackgroundFiles() {
+  const res = await fetch(`${API_HOST}/api/backgrounds`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Backgrounds fetch failed (${res.status})`);
+  }
+  const data = await res.json().catch(() => ({}));
+  const files = Array.isArray(data?.files) ? data.files : [];
+  return files.map((v) => String(v)).filter(Boolean);
+}
+
 async function fetchOpenMeteoConfig() {
   const res = await fetch(`${API_HOST}/api/weather/open-meteo-config`);
   if (!res.ok) {
@@ -327,6 +338,8 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
   const [soundFiles, setSoundFiles] = useState([]);
   const [soundFilesError, setSoundFilesError] = useState(null);
+  const [backgroundFiles, setBackgroundFiles] = useState([]);
+  const [backgroundFilesError, setBackgroundFilesError] = useState(null);
   const [openMeteoDraft, setOpenMeteoDraft] = useState(() => ({ lat: '', lon: '', timezone: 'auto' }));
   const [openMeteoDirty, setOpenMeteoDirty] = useState(false);
   const [openMeteoError, setOpenMeteoError] = useState(null);
@@ -740,6 +753,25 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        setBackgroundFilesError(null);
+        const files = await fetchBackgroundFiles();
+        if (!cancelled) setBackgroundFiles(files);
+      } catch (e) {
+        if (!cancelled) setBackgroundFilesError(e?.message || String(e));
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const [newRoomName, setNewRoomName] = useState('');
   const [labelDrafts, setLabelDrafts] = useState(() => ({}));
 
@@ -1095,6 +1127,48 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                   className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
                   placeholder="https://example.com/background.jpg (or /path/on-this-server.jpg)"
                 />
+              </label>
+
+              <label className="block mt-3">
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                  Or pick a server background
+                </div>
+                <select
+                  value=""
+                  disabled={!connected || busy || !backgroundFiles.length}
+                  onChange={(e) => {
+                    const file = String(e.target.value || '').trim();
+                    if (!file) return;
+
+                    setHomeBackgroundError(null);
+                    setHomeBackgroundDirty(true);
+                    setHomeBackgroundDraft((prev) => {
+                      const nextUrl = `/backgrounds/${encodeURIComponent(file)}`;
+                      const nextEnabled = true;
+                      return { ...prev, url: nextUrl, enabled: nextEnabled };
+                    });
+
+                    // reset select back to placeholder
+                    try {
+                      e.target.value = '';
+                    } catch {
+                      // ignore
+                    }
+                  }}
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                >
+                  <option value="">
+                    {backgroundFilesError
+                      ? `Backgrounds unavailable (${backgroundFilesError})`
+                      : (backgroundFiles.length ? 'Select a background…' : 'No backgrounds found')}
+                  </option>
+                  {backgroundFiles.map((f) => (
+                    <option key={f} value={f}>{f}</option>
+                  ))}
+                </select>
+                <div className="mt-2 text-xs text-white/45">
+                  Put images in <span className="text-white/70">server/data/backgrounds</span> to appear here.
+                </div>
               </label>
 
               <div className="mt-4 utility-group p-4">

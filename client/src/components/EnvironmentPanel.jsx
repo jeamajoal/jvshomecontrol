@@ -876,7 +876,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
         <div
           className="absolute inset-0 z-0 pointer-events-none"
           style={{
-            backgroundImage: `url(\"${homeBackground.url.replace(/"/g, '\\"')}\")`,
+            backgroundImage: `url('${homeBackground.url.replace(/'/g, "\\'")}')`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             opacity: homeBackground.opacityPct / 100,
