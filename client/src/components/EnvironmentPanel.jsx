@@ -284,7 +284,9 @@ const SwitchButton = ({ label, isOn, disabled, onToggle, busy, uiScheme }) => {
 const ActionButton = ({ label, icon: IconComponent, disabled, busy, onClick, accent = 'blue', uiScheme }) => {
   const accentClass = accent === 'green'
     ? 'text-neon-green border-neon-green/30 bg-neon-green/10'
-    : (uiScheme?.actionButton || 'text-neon-blue border-neon-blue/30 bg-neon-blue/10');
+    : (accent === 'fixed'
+      ? 'text-neon-blue border-neon-blue/30 bg-neon-blue/10'
+      : (uiScheme?.actionButton || 'text-neon-blue border-neon-blue/30 bg-neon-blue/10'));
 
   return (
     <button
@@ -602,7 +604,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
                     <ActionButton
                       label="On"
                       icon={Power}
-                      accent="blue"
+                      accent="fixed"
                       disabled={!connected}
                       busy={busyActions.has(`${d.id}:on`)}
                       onClick={() => runAction(d.id, 'on')}
@@ -613,7 +615,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
                     <ActionButton
                       label="Off"
                       icon={Power}
-                      accent="green"
+                      accent="fixed"
                       disabled={!connected}
                       busy={busyActions.has(`${d.id}:off`)}
                       onClick={() => runAction(d.id, 'off')}
