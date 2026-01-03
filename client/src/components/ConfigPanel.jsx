@@ -384,6 +384,18 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [openMeteoError, setOpenMeteoError] = useState(null);
   const [openMeteoEnvOverrides, setOpenMeteoEnvOverrides] = useState(() => ({ lat: false, lon: false, timezone: false }));
 
+  const [activeTab, setActiveTab] = useState('appearance');
+
+  const TABS = [
+    { id: 'devices', label: 'Devices' },
+    { id: 'appearance', label: 'Appearance' },
+    { id: 'home', label: 'Home' },
+    { id: 'sounds', label: 'Sounds' },
+    { id: 'climate', label: 'Climate' },
+    { id: 'layout', label: 'Layout' },
+    { id: 'events', label: 'Events' },
+  ];
+
   const colorSchemeId = String(config?.ui?.colorScheme || 'electric-blue');
   const scheme = UI_COLOR_SCHEMES[colorSchemeId] || UI_COLOR_SCHEMES['electric-blue'];
 
@@ -1056,7 +1068,30 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   return (
     <div className="w-full h-full overflow-auto utility-page">
       <div className="w-full">
-        <div className="utility-panel p-4 md:p-6">
+        <div className="utility-panel p-3 md:p-4">
+          <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+            Settings
+          </div>
+          <div className="mt-3 flex items-center gap-2 overflow-x-auto">
+            {TABS.map((t) => {
+              const selected = t.id === activeTab;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setActiveTab(t.id)}
+                  className={`shrink-0 rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${selected ? 'border-white/30 bg-white/10 text-white' : 'border-white/10 bg-black/20 text-white/70 hover:bg-white/5'}`}
+                  aria-current={selected ? 'page' : undefined}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {activeTab === 'devices' ? (
+          <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
               Config
             </div>
@@ -1139,7 +1174,9 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               <div className="mt-3 text-xs text-white/45">Server offline: editing disabled.</div>
             ) : null}
           </div>
+        ) : null}
 
+        {activeTab === 'appearance' ? (
           <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
               Appearance
@@ -1391,7 +1428,9 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               ))}
             </div>
           </div>
+        ) : null}
 
+        {activeTab === 'home' ? (
           <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
               Home
@@ -1569,7 +1608,9 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               <div className="mt-3 text-xs text-white/45">Server offline: editing disabled.</div>
             ) : null}
           </div>
+        ) : null}
 
+        {activeTab === 'sounds' ? (
           <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
               Sounds
@@ -1637,7 +1678,9 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               <div className="mt-3 text-xs text-white/45">Server offline: editing disabled.</div>
             ) : null}
           </div>
+        ) : null}
 
+        {activeTab === 'climate' ? (
           <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
               Climate
@@ -2055,8 +2098,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               <div className="mt-3 text-xs text-white/45">Server offline: editing disabled.</div>
             ) : null}
           </div>
+        ) : null}
 
-          <div className="mt-4 utility-panel p-4 md:p-6">
+        {activeTab === 'layout' ? (
+          <>
+            <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
               Rooms
             </div>
@@ -2134,11 +2180,10 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               )}
             </div>
           </div>
-
-          <div className="mt-4 utility-panel p-4 md:p-6">
-            <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
-              Labels
-            </div>
+            <div className="mt-4 utility-panel p-4 md:p-6">
+              <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+                Labels
+              </div>
             <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
               Freeform Text
             </div>
@@ -2223,7 +2268,10 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               )}
             </div>
           </div>
+          </>
+        ) : null}
 
+        {activeTab === 'events' ? (
           <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -2247,6 +2295,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               </button>
             </div>
           </div>
+        ) : null}
       </div>
     </div>
   );
