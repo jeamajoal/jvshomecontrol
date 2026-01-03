@@ -658,6 +658,10 @@ function normalizePersistedConfig(raw) {
     // Currently used by the Home panel to scale cards/controls for different screens.
     const cardScalePct = clampInt(uiRaw.cardScalePct, 50, 200, 100);
 
+    // Home room grid columns at XL breakpoint (>= 1280px).
+    // Default matches current layout (3 columns).
+    const homeRoomColumnsXl = clampInt(uiRaw.homeRoomColumnsXl, 1, 6, 3);
+
     const normalizeTriplet = (rawObj, keys, fallback) => {
         const outObj = { ...fallback };
         if (!rawObj || typeof rawObj !== 'object') return outObj;
@@ -700,6 +704,8 @@ function normalizePersistedConfig(raw) {
         cardOpacityScalePct,
         // Scale percent for UI cards/controls (used by Home fit-scale).
         cardScalePct,
+        // Home room columns at XL breakpoint.
+        homeRoomColumnsXl,
     };
 
     return out;
@@ -732,9 +738,10 @@ function loadPersistedConfig() {
             const hadHomeBackground = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeBackground'));
             const hadCardOpacityScalePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'cardOpacityScalePct'));
             const hadCardScalePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'cardScalePct'));
+            const hadHomeRoomColumnsXl = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeRoomColumnsXl'));
             persistedConfig = normalizePersistedConfig(raw);
             // If we added new fields for back-compat, write them back once.
-            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadColorizeHomeValuesOpacityPct || !hadClimateToleranceColors || !hadSensorIndicatorColors || !hadHomeBackground || !hadCardOpacityScalePct || !hadCardScalePct) {
+            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadColorizeHomeValuesOpacityPct || !hadClimateToleranceColors || !hadSensorIndicatorColors || !hadHomeBackground || !hadCardOpacityScalePct || !hadCardScalePct || !hadHomeRoomColumnsXl) {
                 lastPersistedSerialized = stableStringify(raw);
                 let label = 'migrate-ui-sensor-indicator-colors';
                 if (!hadAlertSounds) label = 'migrate-ui-alert-sounds';
@@ -745,6 +752,7 @@ function loadPersistedConfig() {
                 else if (!hadHomeBackground) label = 'migrate-ui-home-background';
                 else if (!hadCardOpacityScalePct) label = 'migrate-ui-card-opacity-scale';
                 else if (!hadCardScalePct) label = 'migrate-ui-card-scale';
+                else if (!hadHomeRoomColumnsXl) label = 'migrate-ui-home-room-columns';
                 persistConfigToDiskIfChanged(label, { force: true });
             }
         } else {
@@ -831,6 +839,7 @@ function rebuildRuntimeConfigFromPersisted() {
             homeBackground: persistedConfig?.ui?.homeBackground,
             cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
             cardScalePct: persistedConfig?.ui?.cardScalePct,
+            homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
         },
     };
 }
@@ -1404,6 +1413,7 @@ async function syncHubitatDataInner() {
                 homeBackground: persistedConfig?.ui?.homeBackground,
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
                 cardScalePct: persistedConfig?.ui?.cardScalePct,
+                homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
             },
         };
         sensorStatuses = newStatuses;
@@ -1697,6 +1707,7 @@ app.post('/api/rooms', (req, res) => {
                 homeBackground: persistedConfig?.ui?.homeBackground,
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
                 cardScalePct: persistedConfig?.ui?.cardScalePct,
+                homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
             },
         };
         emitConfigUpdateSafe();
@@ -1753,6 +1764,7 @@ app.delete('/api/rooms/:id', (req, res) => {
                 homeBackground: persistedConfig?.ui?.homeBackground,
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
                 cardScalePct: persistedConfig?.ui?.cardScalePct,
+                homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
             },
         };
         emitConfigUpdateSafe();
@@ -1798,6 +1810,7 @@ app.post('/api/labels', (req, res) => {
                 homeBackground: persistedConfig?.ui?.homeBackground,
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
                 cardScalePct: persistedConfig?.ui?.cardScalePct,
+                homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
             },
         };
         emitConfigUpdateSafe();
@@ -1841,6 +1854,7 @@ app.put('/api/labels/:id', (req, res) => {
                 homeBackground: persistedConfig?.ui?.homeBackground,
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
                 cardScalePct: persistedConfig?.ui?.cardScalePct,
+                homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
             },
         };
         emitConfigUpdateSafe();
@@ -1882,6 +1896,7 @@ app.delete('/api/labels/:id', (req, res) => {
                 homeBackground: persistedConfig?.ui?.homeBackground,
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
                 cardScalePct: persistedConfig?.ui?.cardScalePct,
+                homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
             },
         };
         emitConfigUpdateSafe();
@@ -2188,6 +2203,7 @@ app.put('/api/ui/card-opacity-scale', (req, res) => {
             ...(config?.ui || {}),
             cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
             cardScalePct: persistedConfig?.ui?.cardScalePct,
+            homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
         },
     };
     io.emit('config_update', config);
@@ -2221,6 +2237,39 @@ app.put('/api/ui/card-scale', (req, res) => {
         ui: {
             ...(config?.ui || {}),
             cardScalePct: persistedConfig?.ui?.cardScalePct,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update Home room grid columns (XL breakpoint) from the kiosk.
+// Expected payload: { homeRoomColumnsXl: number(1-6) }
+app.put('/api/ui/home-room-columns-xl', (req, res) => {
+    const raw = req.body?.homeRoomColumnsXl;
+    const num = (typeof raw === 'number') ? raw : Number(raw);
+    if (!Number.isFinite(num)) {
+        return res.status(400).json({ error: 'Missing homeRoomColumnsXl (1-6)' });
+    }
+
+    const homeRoomColumnsXl = Math.max(1, Math.min(6, Math.round(num)));
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            homeRoomColumnsXl,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-home-room-columns-xl');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
         },
     };
     io.emit('config_update', config);
@@ -3074,6 +3123,7 @@ app.post('/api/layout', (req, res) => {
                 homeBackground: persistedConfig?.ui?.homeBackground,
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
                 cardScalePct: persistedConfig?.ui?.cardScalePct,
+                homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
             },
         };
         io.emit('config_update', config);
@@ -3120,6 +3170,7 @@ app.delete('/api/layout', (req, res) => {
                 homeBackground: persistedConfig?.ui?.homeBackground,
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
                 cardScalePct: persistedConfig?.ui?.cardScalePct,
+                homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
             },
         };
         io.emit('config_update', config);

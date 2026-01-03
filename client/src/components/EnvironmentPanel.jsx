@@ -775,6 +775,12 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     return Math.max(50, Math.min(200, Math.round(raw)));
   }, [config?.ui?.cardScalePct]);
 
+  const homeRoomColumnsXl = useMemo(() => {
+    const raw = Number(config?.ui?.homeRoomColumnsXl);
+    if (!Number.isFinite(raw)) return 3;
+    return Math.max(1, Math.min(6, Math.round(raw)));
+  }, [config?.ui?.homeRoomColumnsXl]);
+
   const allowedControlIds = useMemo(() => getAllowedDeviceIdSet(config, 'main'), [config]);
   const rooms = useMemo(() => buildRoomsWithStatuses(config, statuses), [config, statuses]);
   const now = useClock(1000);
@@ -1012,7 +1018,10 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
             />
           </div>
 
-          <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div
+            className="mt-4 jvs-home-rooms-grid gap-4"
+            style={{ '--jvs-home-rooms-cols-xl': homeRoomColumnsXl }}
+          >
             {rooms.length ? (
               rooms.map((r) => (
                 <RoomPanel

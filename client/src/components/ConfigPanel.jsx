@@ -174,6 +174,19 @@ async function saveCardScalePct(cardScalePct) {
   return res.json().catch(() => ({}));
 }
 
+async function saveHomeRoomColumnsXl(homeRoomColumnsXl) {
+  const res = await fetch(`${API_HOST}/api/ui/home-room-columns-xl`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ homeRoomColumnsXl }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Home columns save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveSensorIndicatorColors(sensorIndicatorColors) {
   const res = await fetch(`${API_HOST}/api/ui/sensor-indicator-colors`, {
     method: 'PUT',
@@ -381,6 +394,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const homeBackgroundSave = useAsyncSave(saveHomeBackground);
   const cardOpacitySave = useAsyncSave(saveCardOpacityScalePct);
   const cardScaleSave = useAsyncSave(saveCardScalePct);
+  const homeRoomColsSave = useAsyncSave(saveHomeRoomColumnsXl);
   const sensorColorsSave = useAsyncSave(saveSensorIndicatorColors);
   const climateTolSave = useAsyncSave(saveClimateTolerances);
   const climateColorsSave = useAsyncSave(saveClimateToleranceColors);
@@ -511,6 +525,12 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return Math.max(50, Math.min(200, Math.round(raw)));
   }, [config?.ui?.cardScalePct]);
 
+  const homeRoomColumnsXlFromConfig = useMemo(() => {
+    const raw = Number(config?.ui?.homeRoomColumnsXl);
+    if (!Number.isFinite(raw)) return 3;
+    return Math.max(1, Math.min(6, Math.round(raw)));
+  }, [config?.ui?.homeRoomColumnsXl]);
+
   const [cardOpacityScaleDraft, setCardOpacityScaleDraft] = useState(() => 100);
   const [cardOpacityScaleDirty, setCardOpacityScaleDirty] = useState(false);
   const [cardOpacityScaleError, setCardOpacityScaleError] = useState(null);
@@ -518,6 +538,10 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [cardScaleDraft, setCardScaleDraft] = useState(() => 100);
   const [cardScaleDirty, setCardScaleDirty] = useState(false);
   const [cardScaleError, setCardScaleError] = useState(null);
+
+  const [homeRoomColumnsXlDraft, setHomeRoomColumnsXlDraft] = useState(() => 3);
+  const [homeRoomColumnsXlDirty, setHomeRoomColumnsXlDirty] = useState(false);
+  const [homeRoomColumnsXlError, setHomeRoomColumnsXlError] = useState(null);
 
   const homeBackgroundFromConfig = useMemo(() => {
     const raw = (config?.ui?.homeBackground && typeof config.ui.homeBackground === 'object')
@@ -558,6 +582,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     if (cardScaleDirty) return;
     setCardScaleDraft(cardScaleFromConfig);
   }, [cardScaleDirty, cardScaleFromConfig]);
+
+  useEffect(() => {
+    if (homeRoomColumnsXlDirty) return;
+    setHomeRoomColumnsXlDraft(homeRoomColumnsXlFromConfig);
+  }, [homeRoomColumnsXlDirty, homeRoomColumnsXlFromConfig]);
 
   useEffect(() => {
     if (homeBackgroundDirty) return;
@@ -651,6 +680,24 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
     return () => clearTimeout(t);
   }, [connected, cardScaleDirty, cardScaleDraft]);
+
+  // Autosave: Home room columns (XL).
+  useEffect(() => {
+    if (!connected) return;
+    if (!homeRoomColumnsXlDirty) return;
+
+    const t = setTimeout(async () => {
+      setHomeRoomColumnsXlError(null);
+      try {
+        await homeRoomColsSave.run(homeRoomColumnsXlDraft);
+        setHomeRoomColumnsXlDirty(false);
+      } catch (err) {
+        setHomeRoomColumnsXlError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, homeRoomColumnsXlDirty, homeRoomColumnsXlDraft]);
 
   // Autosave: Home background.
   useEffect(() => {
@@ -1227,6 +1274,69 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
               {cardScaleError ? (
                 <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {cardScaleError}</div>
+              ) : null}
+            </div>
+
+            <div className="mt-4 utility-group p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                    Home columns (wide screens)
+                  </div>
+                  <div className="mt-1 text-xs text-white/45">
+                    Sets how many room cards per row on XL screens.
+                  </div>
+                </div>
+
+                <div className="shrink-0 flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={6}
+                    step={1}
+                    value={homeRoomColumnsXlDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const next = Number.isFinite(n) ? Math.max(1, Math.min(6, Math.round(n))) : 3;
+                      setHomeRoomColumnsXlError(null);
+                      setHomeRoomColumnsXlDirty(true);
+                      setHomeRoomColumnsXlDraft(next);
+                    }}
+                    className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                  />
+                  <div className="text-xs text-white/45">cols</div>
+                </div>
+              </div>
+
+              <input
+                type="range"
+                min={1}
+                max={6}
+                step={1}
+                value={homeRoomColumnsXlDraft}
+                disabled={!connected || busy}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  const next = Number.isFinite(n) ? Math.max(1, Math.min(6, Math.round(n))) : 3;
+                  setHomeRoomColumnsXlError(null);
+                  setHomeRoomColumnsXlDirty(true);
+                  setHomeRoomColumnsXlDraft(next);
+                }}
+                className="mt-3 w-full"
+              />
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="text-xs text-white/45">
+                  {homeRoomColumnsXlDirty ? 'Pending changes…' : 'Saved'}
+                </div>
+                <div className="text-xs text-white/45">
+                  {statusText(homeRoomColsSave.status)}
+                </div>
+              </div>
+
+              {homeRoomColumnsXlError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {homeRoomColumnsXlError}</div>
               ) : null}
             </div>
 
