@@ -48,6 +48,7 @@ function App() {
       document.documentElement.style.setProperty('--jvs-glass-panel-bg-opacity', String(clamp01(0.30 * scale)));
       document.documentElement.style.setProperty('--jvs-utility-panel-bg-opacity', String(clamp01(0.10 * scale)));
       document.documentElement.style.setProperty('--jvs-utility-group-bg-opacity', String(clamp01(0.20 * scale)));
+      document.documentElement.style.setProperty('--jvs-accent-card-bg-opacity', String(clamp01(0.10 * scale)));
     } catch {
       // ignore
     }

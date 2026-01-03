@@ -31,6 +31,12 @@
   --tw-bg-opacity: var(--jvs-glass-panel-bg-opacity, 0.30);
 }
 
+/* Accent-tinted card background (used for active/selected states).
+   Uses the current scheme's --accent-rgb and is scaled via cardOpacityScalePct. */
+.jvs-accent-card-bg {
+  background-color: rgb(var(--accent-rgb) / var(--jvs-accent-card-bg-opacity, 0.10));
+}
+
 /* Utility pages (Settings / Events): slightly brighter and more structured. */
 .utility-page {
   @apply p-3 md:p-4 text-sm md:text-base;

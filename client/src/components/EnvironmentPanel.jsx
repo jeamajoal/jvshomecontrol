@@ -242,7 +242,7 @@ const getColorizeOpacityStyle = (enabled, opacityPct) => {
 
 const SwitchButton = ({ label, isOn, disabled, onToggle, busy, uiScheme }) => {
   const stateClass = isOn
-    ? `${uiScheme?.selectedCard || 'bg-neon-blue/15 border-neon-blue/40'} ${uiScheme?.selectedText || 'text-neon-blue'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
+    ? `${uiScheme?.selectedCard || 'border-neon-blue/40 jvs-accent-card-bg'} ${uiScheme?.selectedText || 'text-neon-blue'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
     : 'bg-white/5 border-white/10 text-white/70';
 
   return (
