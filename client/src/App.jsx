@@ -43,12 +43,20 @@ function App() {
       const scalePct = Number.isFinite(raw) ? Math.max(0, Math.min(200, Math.round(raw))) : 100;
       const scale = scalePct / 100;
       const clamp01 = (n) => Math.max(0, Math.min(1, n));
+      const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
       // Keep existing look at scalePct=100.
       document.documentElement.style.setProperty('--jvs-glass-panel-bg-opacity', String(clamp01(0.30 * scale)));
       document.documentElement.style.setProperty('--jvs-utility-panel-bg-opacity', String(clamp01(0.10 * scale)));
       document.documentElement.style.setProperty('--jvs-utility-group-bg-opacity', String(clamp01(0.20 * scale)));
       document.documentElement.style.setProperty('--jvs-accent-card-bg-opacity', String(clamp01(0.10 * scale)));
+
+      // Reduce the frosted-glass blur when cards are made more transparent.
+      // 100% => ~24px (current), 0% => 0px (fully clear).
+      const baseBlurPx = 24;
+      const blurPx = clamp(baseBlurPx * clamp01(scale), 0, baseBlurPx);
+      document.documentElement.style.setProperty('--jvs-glass-panel-blur-px', `${blurPx}px`);
+      document.documentElement.style.setProperty('--jvs-utility-panel-blur-px', `${blurPx}px`);
     } catch {
       // ignore
     }
