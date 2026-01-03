@@ -248,7 +248,7 @@ const getColorizeOpacityStyle = (enabled, opacityPct) => {
 
 const SwitchButton = ({ label, isOn, disabled, onToggle, busy, uiScheme }) => {
   const stateClass = isOn
-    ? `${uiScheme?.selectedCard || 'border-neon-blue/40 jvs-accent-card-bg'} ${uiScheme?.selectedText || 'text-neon-blue'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
+    ? 'bg-white/10 border-white/20 text-white'
     : 'bg-white/5 border-white/10 text-white/70';
 
   return (
@@ -279,7 +279,7 @@ const SwitchButton = ({ label, isOn, disabled, onToggle, busy, uiScheme }) => {
           {busy ? (
             <Loader2 className={`w-5 h-5 md:w-6 md:h-6 animate-spin ${uiScheme?.metricIcon || 'text-neon-blue'}`} />
           ) : (
-            <Power className={`w-5 h-5 md:w-6 md:h-6 ${isOn ? (uiScheme?.selectedText || 'text-neon-blue') : 'text-white/60'}`} />
+            <Power className={`w-5 h-5 md:w-6 md:h-6 ${isOn ? 'text-white' : 'text-white/60'}`} />
           )}
         </div>
       </div>
@@ -291,7 +291,7 @@ const ActionButton = ({ label, icon: IconComponent, disabled, busy, onClick, acc
   const accentClass = accent === 'green'
     ? 'text-neon-green border-neon-green/30 bg-neon-green/10'
     : (accent === 'fixed'
-      ? 'text-neon-blue border-neon-blue/30 bg-neon-blue/10'
+      ? 'text-white/80 border-white/15 bg-white/5'
       : (uiScheme?.actionButton || 'text-neon-blue border-neon-blue/30 bg-neon-blue/10'));
 
   return (
@@ -605,7 +605,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
                 <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold truncate">
                   {d.label}
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2">
+                <div className="mt-4 flex flex-wrap gap-2">
                   {d.commands.includes('on') ? (
                     <ActionButton
                       label="On"
