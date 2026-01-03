@@ -148,6 +148,19 @@ async function saveHomeBackground(homeBackground) {
   return res.json().catch(() => ({}));
 }
 
+async function saveCardOpacityScalePct(cardOpacityScalePct) {
+  const res = await fetch(`${API_HOST}/api/ui/card-opacity-scale`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cardOpacityScalePct }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Card opacity save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveSensorIndicatorColors(sensorIndicatorColors) {
   const res = await fetch(`${API_HOST}/api/ui/sensor-indicator-colors`, {
     method: 'PUT',
@@ -353,6 +366,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const alertSoundsSave = useAsyncSave(saveAlertSounds);
   const homeValueSave = useAsyncSave(saveColorizeHomeValues);
   const homeBackgroundSave = useAsyncSave(saveHomeBackground);
+  const cardOpacitySave = useAsyncSave(saveCardOpacityScalePct);
   const sensorColorsSave = useAsyncSave(saveSensorIndicatorColors);
   const climateTolSave = useAsyncSave(saveClimateTolerances);
   const climateColorsSave = useAsyncSave(saveClimateToleranceColors);
@@ -471,6 +485,16 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [homeValueOpacityDraft, setHomeValueOpacityDraft] = useState(() => 100);
   const [homeValueOpacityDirty, setHomeValueOpacityDirty] = useState(false);
 
+  const cardOpacityScaleFromConfig = useMemo(() => {
+    const raw = Number(config?.ui?.cardOpacityScalePct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(0, Math.min(200, Math.round(raw)));
+  }, [config?.ui?.cardOpacityScalePct]);
+
+  const [cardOpacityScaleDraft, setCardOpacityScaleDraft] = useState(() => 100);
+  const [cardOpacityScaleDirty, setCardOpacityScaleDirty] = useState(false);
+  const [cardOpacityScaleError, setCardOpacityScaleError] = useState(null);
+
   const homeBackgroundFromConfig = useMemo(() => {
     const raw = (config?.ui?.homeBackground && typeof config.ui.homeBackground === 'object')
       ? config.ui.homeBackground
@@ -500,6 +524,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     if (homeValueOpacityDirty) return;
     setHomeValueOpacityDraft(homeValueOpacityFromConfig);
   }, [homeValueOpacityDirty, homeValueOpacityFromConfig]);
+
+  useEffect(() => {
+    if (cardOpacityScaleDirty) return;
+    setCardOpacityScaleDraft(cardOpacityScaleFromConfig);
+  }, [cardOpacityScaleDirty, cardOpacityScaleFromConfig]);
 
   useEffect(() => {
     if (homeBackgroundDirty) return;
@@ -557,6 +586,24 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
     return () => clearTimeout(t);
   }, [connected, homeValueOpacityDirty, homeValueOpacityDraft, colorizeHomeValues]);
+
+  // Autosave: Card opacity scale.
+  useEffect(() => {
+    if (!connected) return;
+    if (!cardOpacityScaleDirty) return;
+
+    const t = setTimeout(async () => {
+      setCardOpacityScaleError(null);
+      try {
+        await cardOpacitySave.run(cardOpacityScaleDraft);
+        setCardOpacityScaleDirty(false);
+      } catch (err) {
+        setCardOpacityScaleError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, cardOpacityScaleDirty, cardOpacityScaleDraft]);
 
   // Autosave: Home background.
   useEffect(() => {
@@ -1008,6 +1055,69 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
             </div>
             <div className="mt-1 text-xs text-white/45">
               Pick a single accent color for the UI.
+            </div>
+
+            <div className="mt-4 utility-group p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                    Card transparency
+                  </div>
+                  <div className="mt-1 text-xs text-white/45">
+                    Adjusts card/panel backgrounds only (not the values). 100% = default.
+                  </div>
+                </div>
+
+                <div className="shrink-0 flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={200}
+                    step={1}
+                    value={cardOpacityScaleDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const next = Number.isFinite(n) ? Math.max(0, Math.min(200, Math.round(n))) : 100;
+                      setCardOpacityScaleError(null);
+                      setCardOpacityScaleDirty(true);
+                      setCardOpacityScaleDraft(next);
+                    }}
+                    className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                  />
+                  <div className="text-xs text-white/45">%</div>
+                </div>
+              </div>
+
+              <input
+                type="range"
+                min={0}
+                max={200}
+                step={1}
+                value={cardOpacityScaleDraft}
+                disabled={!connected || busy}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  const next = Number.isFinite(n) ? Math.max(0, Math.min(200, Math.round(n))) : 100;
+                  setCardOpacityScaleError(null);
+                  setCardOpacityScaleDirty(true);
+                  setCardOpacityScaleDraft(next);
+                }}
+                className="mt-3 w-full"
+              />
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="text-xs text-white/45">
+                  {cardOpacityScaleDirty ? 'Pending changes…' : 'Saved'}
+                </div>
+                <div className="text-xs text-white/45">
+                  {statusText(cardOpacitySave.status)}
+                </div>
+              </div>
+
+              {cardOpacityScaleError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {cardOpacityScaleError}</div>
+              ) : null}
             </div>
 
             {colorSchemeSave.error ? (

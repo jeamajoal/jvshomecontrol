@@ -640,6 +640,10 @@ function normalizePersistedConfig(raw) {
         homeBackground.enabled = false;
     }
 
+    // Card background opacity scale.
+    // 100 = default styling, 0 = fully transparent, 200 = twice as opaque (clamped per-card).
+    const cardOpacityScalePct = clampInt(uiRaw.cardOpacityScalePct, 0, 200, 100);
+
     const normalizeTriplet = (rawObj, keys, fallback) => {
         const outObj = { ...fallback };
         if (!rawObj || typeof rawObj !== 'object') return outObj;
@@ -678,6 +682,8 @@ function normalizePersistedConfig(raw) {
         sensorIndicatorColors,
         // Optional Home background image (rendered behind all controls)
         homeBackground,
+        // Opacity scale for UI cards/panels (affects panel backgrounds only).
+        cardOpacityScalePct,
     };
 
     return out;
@@ -708,9 +714,10 @@ function loadPersistedConfig() {
             const hadClimateToleranceColors = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'climateToleranceColors'));
             const hadSensorIndicatorColors = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'sensorIndicatorColors'));
             const hadHomeBackground = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeBackground'));
+            const hadCardOpacityScalePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'cardOpacityScalePct'));
             persistedConfig = normalizePersistedConfig(raw);
             // If we added new fields for back-compat, write them back once.
-            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadColorizeHomeValuesOpacityPct || !hadClimateToleranceColors || !hadSensorIndicatorColors || !hadHomeBackground) {
+            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadColorizeHomeValuesOpacityPct || !hadClimateToleranceColors || !hadSensorIndicatorColors || !hadHomeBackground || !hadCardOpacityScalePct) {
                 lastPersistedSerialized = stableStringify(raw);
                 let label = 'migrate-ui-sensor-indicator-colors';
                 if (!hadAlertSounds) label = 'migrate-ui-alert-sounds';
@@ -719,6 +726,7 @@ function loadPersistedConfig() {
                 else if (!hadColorizeHomeValuesOpacityPct) label = 'migrate-ui-colorize-home-opacity';
                 else if (!hadClimateToleranceColors) label = 'migrate-ui-climate-tolerance-colors';
                 else if (!hadHomeBackground) label = 'migrate-ui-home-background';
+                else if (!hadCardOpacityScalePct) label = 'migrate-ui-card-opacity-scale';
                 persistConfigToDiskIfChanged(label, { force: true });
             }
         } else {
@@ -803,6 +811,7 @@ function rebuildRuntimeConfigFromPersisted() {
             climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
             sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
             homeBackground: persistedConfig?.ui?.homeBackground,
+            cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
         },
     };
 }
@@ -2063,6 +2072,39 @@ app.put('/api/ui/home-background', (req, res) => {
         ui: {
             ...(config?.ui || {}),
             homeBackground: persistedConfig?.ui?.homeBackground,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update UI card background opacity scale from the kiosk.
+// Expected payload: { cardOpacityScalePct: number(0-200) }
+app.put('/api/ui/card-opacity-scale', (req, res) => {
+    const raw = req.body?.cardOpacityScalePct;
+    const num = (typeof raw === 'number') ? raw : Number(raw);
+    if (!Number.isFinite(num)) {
+        return res.status(400).json({ error: 'Missing cardOpacityScalePct (0-200)' });
+    }
+
+    const cardOpacityScalePct = Math.max(0, Math.min(200, Math.round(num)));
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            cardOpacityScalePct,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-card-opacity-scale');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
         },
     };
     io.emit('config_update', config);

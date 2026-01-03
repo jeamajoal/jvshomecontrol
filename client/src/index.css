@@ -27,7 +27,8 @@
 }
 
 .glass-panel {
-  @apply bg-surface/30 backdrop-blur-xl border border-white/5 rounded-2xl shadow-2xl;
+  @apply bg-surface backdrop-blur-xl border border-white/5 rounded-2xl shadow-2xl;
+  --tw-bg-opacity: var(--jvs-glass-panel-bg-opacity, 0.30);
 }
 
 /* Utility pages (Settings / Events): slightly brighter and more structured. */
@@ -36,11 +37,13 @@
 }
 
 .utility-panel {
-  @apply rounded-2xl border border-white/20 bg-white/10 backdrop-blur-xl shadow-2xl;
+  @apply rounded-2xl border border-white/20 bg-white backdrop-blur-xl shadow-2xl;
+  --tw-bg-opacity: var(--jvs-utility-panel-bg-opacity, 0.10);
 }
 
 .utility-group {
-  @apply rounded-2xl border-2 border-white/20 bg-black/20;
+  @apply rounded-2xl border-2 border-white/20 bg-black;
+  --tw-bg-opacity: var(--jvs-utility-group-bg-opacity, 0.20);
 }
 
 /* Make form controls easier to read/tap on tablets. */

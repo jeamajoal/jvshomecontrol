@@ -37,6 +37,22 @@ function App() {
     }
   }, [uiScheme.rgb]);
 
+  useEffect(() => {
+    try {
+      const raw = Number(config?.ui?.cardOpacityScalePct);
+      const scalePct = Number.isFinite(raw) ? Math.max(0, Math.min(200, Math.round(raw))) : 100;
+      const scale = scalePct / 100;
+      const clamp01 = (n) => Math.max(0, Math.min(1, n));
+
+      // Keep existing look at scalePct=100.
+      document.documentElement.style.setProperty('--jvs-glass-panel-bg-opacity', String(clamp01(0.30 * scale)));
+      document.documentElement.style.setProperty('--jvs-utility-panel-bg-opacity', String(clamp01(0.10 * scale)));
+      document.documentElement.style.setProperty('--jvs-utility-group-bg-opacity', String(clamp01(0.20 * scale)));
+    } catch {
+      // ignore
+    }
+  }, [config?.ui?.cardOpacityScalePct]);
+
   const pageLabel = page === 0
     ? 'Home'
     : page === 1

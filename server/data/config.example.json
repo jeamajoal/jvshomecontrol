@@ -11,6 +11,7 @@
   },
   "ui": {
     "colorScheme": "electric-blue",
+    "cardOpacityScalePct": 100,
     "homeBackground": {
       "enabled": false,
       "url": null,
