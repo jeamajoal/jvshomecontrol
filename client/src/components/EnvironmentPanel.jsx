@@ -622,6 +622,105 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
     normalizeToleranceColorId(sensorIndicatorColors?.door, 'neon-red')
   );
 
+  const metricCards = useMemo(() => {
+    const cards = [];
+    if (metrics.temperatureCount > 0) {
+      cards.push(
+        <MetricCard
+          key="temperature"
+          title="Temperature"
+          value={formatTemp(metrics.temperature)}
+          sub={metrics.temperature === null ? 'No sensor' : null}
+          icon={Thermometer}
+          accentClassName="border-white/10"
+          valueClassName={getColorizedValueClass('temperature', metrics.temperature, climateTolerances, climateToleranceColors, colorizeHomeValues)}
+          valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
+          iconWrapClassName="bg-white/5"
+          uiScheme={uiScheme}
+          primaryTextColorClassName={primaryTextColorClassName}
+          secondaryTextClassName={secondaryTextColorClassName}
+          secondaryTextStrongClassName={secondaryTextColorClassName}
+          scaled
+          scale={scaleNum}
+        />
+      );
+    }
+
+    if (metrics.humidityCount > 0) {
+      cards.push(
+        <MetricCard
+          key="humidity"
+          title="Humidity"
+          value={metrics.humidity === null ? '—' : formatPercent(metrics.humidity)}
+          sub={metrics.humidity === null ? 'No sensor' : null}
+          icon={Droplets}
+          accentClassName="border-white/10"
+          valueClassName={
+            colorizeHomeValues
+              ? getColorizedValueClass('humidity', metrics.humidity, climateTolerances, climateToleranceColors, true)
+              : ''
+          }
+          valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
+          iconWrapClassName="bg-white/5"
+          uiScheme={uiScheme}
+          primaryTextColorClassName={primaryTextColorClassName}
+          secondaryTextClassName={secondaryTextColorClassName}
+          secondaryTextStrongClassName={secondaryTextColorClassName}
+          scaled
+          scale={scaleNum}
+        />
+      );
+    }
+
+    if (metrics.illuminanceCount > 0) {
+      cards.push(
+        <MetricCard
+          key="illuminance"
+          title="Illuminance"
+          value={metrics.illuminance === null ? '—' : formatLux(metrics.illuminance)}
+          sub={metrics.illuminance === null ? 'No sensor' : null}
+          icon={Sun}
+          accentClassName="border-white/10"
+          valueClassName={
+            colorizeHomeValues
+              ? getColorizedValueClass('illuminance', metrics.illuminance, climateTolerances, climateToleranceColors, true)
+              : ''
+          }
+          valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
+          iconWrapClassName="bg-white/5"
+          uiScheme={uiScheme}
+          primaryTextColorClassName={primaryTextColorClassName}
+          secondaryTextClassName={secondaryTextColorClassName}
+          secondaryTextStrongClassName={secondaryTextColorClassName}
+          scaled
+          scale={scaleNum}
+        />
+      );
+    }
+    return cards;
+  }, [
+    metrics.temperatureCount,
+    metrics.humidityCount,
+    metrics.illuminanceCount,
+    metrics.temperature,
+    metrics.humidity,
+    metrics.illuminance,
+    climateTolerances,
+    climateToleranceColors,
+    colorizeHomeValues,
+    colorizeHomeValuesOpacityPct,
+    uiScheme,
+    primaryTextColorClassName,
+    secondaryTextColorClassName,
+    scaleNum,
+  ]);
+
+  const metricGridClassName = metricCards.length <= 1
+    ? 'grid-cols-1'
+    : metricCards.length === 2
+      ? 'grid-cols-2'
+      : 'grid-cols-2 lg:grid-cols-3';
+
   return (
     <section className={`glass-panel p-4 md:p-5 border ${headerGlow}`}>
       <div className="flex items-center justify-between gap-3">
@@ -639,69 +738,8 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
       </div>
 
       {hasEnv ? (
-        <div className="mt-4 grid grid-cols-2 lg:grid-cols-3 gap-3">
-          {metrics.temperatureCount > 0 ? (
-            <MetricCard
-            title="Temperature"
-            value={formatTemp(metrics.temperature)}
-            sub={metrics.temperature === null ? 'No sensor' : null}
-            icon={Thermometer}
-            accentClassName="border-white/10"
-            valueClassName={getColorizedValueClass('temperature', metrics.temperature, climateTolerances, climateToleranceColors, colorizeHomeValues)}
-            valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
-            iconWrapClassName="bg-white/5"
-            uiScheme={uiScheme}
-            primaryTextColorClassName={primaryTextColorClassName}
-            secondaryTextClassName={secondaryTextColorClassName}
-            secondaryTextStrongClassName={secondaryTextColorClassName}
-            scaled
-            scale={scaleNum}
-            />
-          ) : null}
-          {metrics.humidityCount > 0 ? (
-            <MetricCard
-            title="Humidity"
-            value={metrics.humidity === null ? '—' : formatPercent(metrics.humidity)}
-            sub={metrics.humidity === null ? 'No sensor' : null}
-            icon={Droplets}
-            accentClassName="border-white/10"
-            valueClassName={
-              colorizeHomeValues
-                ? getColorizedValueClass('humidity', metrics.humidity, climateTolerances, climateToleranceColors, true)
-                : ''
-            }
-            valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
-            iconWrapClassName="bg-white/5"
-            uiScheme={uiScheme}
-            primaryTextColorClassName={primaryTextColorClassName}
-            secondaryTextClassName={secondaryTextColorClassName}
-            secondaryTextStrongClassName={secondaryTextColorClassName}
-            scaled
-            scale={scaleNum}
-            />
-          ) : null}
-          {metrics.illuminanceCount > 0 ? (
-            <MetricCard
-            title="Illuminance"
-            value={metrics.illuminance === null ? '—' : formatLux(metrics.illuminance)}
-            sub={metrics.illuminance === null ? 'No sensor' : null}
-            icon={Sun}
-            accentClassName="border-white/10"
-            valueClassName={
-              colorizeHomeValues
-                ? getColorizedValueClass('illuminance', metrics.illuminance, climateTolerances, climateToleranceColors, true)
-                : ''
-            }
-            valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
-            iconWrapClassName="bg-white/5"
-            uiScheme={uiScheme}
-            primaryTextColorClassName={primaryTextColorClassName}
-            secondaryTextClassName={secondaryTextColorClassName}
-            secondaryTextStrongClassName={secondaryTextColorClassName}
-            scaled
-            scale={scaleNum}
-            />
-          ) : null}
+        <div className={`mt-4 grid ${metricGridClassName} gap-3`}>
+          {metricCards}
         </div>
       ) : null}
 
