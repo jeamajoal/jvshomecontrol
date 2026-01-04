@@ -509,6 +509,15 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const connected = connectedProp ?? ctx?.connected;
 
   const selectedPanelName = String(ctx?.panelName ?? '').trim();
+  const selectedPanelProfile = useMemo(() => {
+    if (!selectedPanelName) return null;
+    const raw = (config?.ui?.panelProfiles && typeof config.ui.panelProfiles === 'object')
+      ? config.ui.panelProfiles
+      : {};
+    const hit = raw[selectedPanelName];
+    return (hit && typeof hit === 'object') ? hit : null;
+  }, [config?.ui?.panelProfiles, selectedPanelName]);
+  const isPresetSelected = Boolean(selectedPanelProfile?._preset);
   const panelNames = useMemo(() => {
     const raw = (config?.ui?.panelProfiles && typeof config.ui.panelProfiles === 'object') ? config.ui.panelProfiles : {};
     return Object.keys(raw).sort((a, b) => a.localeCompare(b));
@@ -1624,7 +1633,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
           <div className="mt-3 flex items-center gap-2 overflow-x-auto">
             {TABS.map((t) => {
               const selected = t.id === activeTab;
-              return (
+                  This is a shipped preset (read-only). Pick a preset you like, enter a new panel name, then click Create — the new panel profile starts from this preset.
                 <button
                   key={t.id}
                   type="button"
@@ -1656,9 +1665,20 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>
-              <div className="mt-1 text-[11px] text-white/45">
+              <div
+                className="mt-1 jvs-secondary-text text-white/60"
+                style={{ fontSize: 'calc(11px * var(--jvs-secondary-text-size-scale, 1))' }}
+              >
                 {selectedPanelName ? 'Panel-specific overrides enabled.' : 'Editing global defaults.'}
               </div>
+              {isPresetSelected ? (
+                <div
+                  className="mt-1 jvs-secondary-text text-white/60"
+                  style={{ fontSize: 'calc(11px * var(--jvs-secondary-text-size-scale, 1))' }}
+                >
+                  This is a shipped preset (read-only). Pick a preset you like, enter a new panel name, then click Create — the new panel profile starts from this preset.
+                </div>
+              ) : null}
             </div>
 
             <div className="md:col-span-6">
@@ -1790,7 +1810,19 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               Adjust the Home look & feel.
             </div>
 
-            <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {isPresetSelected ? (
+              <div
+                className="mt-2 jvs-secondary-text text-white/60"
+                style={{ fontSize: 'calc(12px * var(--jvs-secondary-text-size-scale, 1))' }}
+              >
+                Presets are read-only. Create a new panel profile (above) to customize these settings.
+              </div>
+            ) : null}
+
+            <div
+              className={`mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4 ${isPresetSelected ? 'opacity-50 pointer-events-none' : ''}`}
+              aria-disabled={isPresetSelected ? 'true' : 'false'}
+            >
               <div className="utility-group p-4 lg:col-span-2">
                 <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
                   UI accent
