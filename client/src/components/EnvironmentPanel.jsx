@@ -498,7 +498,16 @@ async function sendDeviceCommand(deviceId, command, args = []) {
   }
 }
 
-const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
+const getDeviceCommandAllowlistForId = (deviceCommandAllowlist, deviceId) => {
+  const id = String(deviceId || '').trim();
+  if (!id) return null;
+  const raw = (deviceCommandAllowlist && typeof deviceCommandAllowlist === 'object') ? deviceCommandAllowlist : {};
+  const arr = raw[id];
+  if (!Array.isArray(arr)) return null;
+  return arr.map((v) => String(v || '').trim()).filter(Boolean);
+};
+
+const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, deviceCommandAllowlist, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
 
   const scaleNumRaw = Number(contentScale);
@@ -521,7 +530,13 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
       .filter((d) => Array.isArray(d.commands) && d.commands.length)
       .map((d) => ({
         ...d,
-        commands: d.commands.filter((c) => allow.has(c)),
+        commands: (() => {
+          const perDevice = getDeviceCommandAllowlistForId(deviceCommandAllowlist, d.id);
+          const base = d.commands.filter((c) => allow.has(c));
+          if (!perDevice) return base;
+          const set = new Set(perDevice);
+          return base.filter((c) => set.has(c));
+        })(),
       }))
       .filter((d) => d.commands.length);
   }, [devices, allowedControlIds]);
@@ -1144,6 +1159,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   colorizeHomeValues={colorizeHomeValues}
                   colorizeHomeValuesOpacityPct={colorizeHomeValuesOpacityPct}
                   sensorIndicatorColors={sensorIndicatorColors}
+                  deviceCommandAllowlist={config?.ui?.deviceCommandAllowlist}
                   primaryTextColorClassName={primaryTextColorClass}
                   secondaryTextColorClassName={secondaryTextColorClass}
                   contentScale={roomContentScale}

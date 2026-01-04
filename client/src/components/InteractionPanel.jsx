@@ -4,7 +4,7 @@ import { Loader2, Power, SlidersHorizontal } from 'lucide-react';
 import { getUiScheme } from '../uiScheme';
 import { API_HOST } from '../apiHost';
 import { useAppState } from '../appState';
-import { buildRoomsWithStatuses, getAllowedDeviceIdSet } from '../deviceSelectors';
+import { buildRoomsWithStatuses, getAllowedDeviceIdSet, getDeviceCommandAllowlist } from '../deviceSelectors';
 
 const asNumber = (value) => {
   const num = typeof value === 'number' ? value : parseFloat(String(value));
@@ -277,7 +277,9 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                 const controllables = devices
                   .map((d) => {
                     const attrs = d.status?.attributes || {};
-                    const commands = Array.isArray(d.status?.commands) ? d.status.commands : [];
+                    const commandsRaw = Array.isArray(d.status?.commands) ? d.status.commands : [];
+                    const perDevice = getDeviceCommandAllowlist(config, d.id);
+                    const commands = perDevice ? commandsRaw.filter((c) => perDevice.includes(c)) : commandsRaw;
                     return {
                       id: d.id,
                       label: d.label,
@@ -314,7 +316,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
 
                         const isOn = sw === 'on';
 
-                        if (isSwitch && hasLevel) {
+                        if (isSwitch && hasLevel && d.commands.includes('setLevel')) {
                           return (
                             <LevelTile
                               key={d.id}

@@ -56,10 +56,23 @@ function App() {
       ? profiles[panelName]
       : null;
 
+    const baseDeviceLabelOverrides = (ui.deviceLabelOverrides && typeof ui.deviceLabelOverrides === 'object') ? ui.deviceLabelOverrides : {};
+    const baseDeviceCommandAllowlist = (ui.deviceCommandAllowlist && typeof ui.deviceCommandAllowlist === 'object') ? ui.deviceCommandAllowlist : {};
+    const profileDeviceLabelOverrides = (profile && profile.deviceLabelOverrides && typeof profile.deviceLabelOverrides === 'object') ? profile.deviceLabelOverrides : {};
+    const profileDeviceCommandAllowlist = (profile && profile.deviceCommandAllowlist && typeof profile.deviceCommandAllowlist === 'object') ? profile.deviceCommandAllowlist : {};
+
     const nextUi = {
       ...ui,
       ...(profile || {}),
       panelProfiles: ui.panelProfiles,
+      deviceLabelOverrides: {
+        ...baseDeviceLabelOverrides,
+        ...profileDeviceLabelOverrides,
+      },
+      deviceCommandAllowlist: {
+        ...baseDeviceCommandAllowlist,
+        ...profileDeviceCommandAllowlist,
+      },
     };
 
     return {

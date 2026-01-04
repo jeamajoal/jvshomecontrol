@@ -11,6 +11,29 @@ function getVisibleRoomIdSet(config) {
   return ids.length ? new Set(ids) : null;
 }
 
+function getDeviceLabelOverride(config, deviceId) {
+  const id = asText(deviceId);
+  if (!id) return null;
+  const raw = (config?.ui?.deviceLabelOverrides && typeof config.ui.deviceLabelOverrides === 'object')
+    ? config.ui.deviceLabelOverrides
+    : {};
+  const v = raw[id];
+  const s = asText(v);
+  return s;
+}
+
+export function getDeviceCommandAllowlist(config, deviceId) {
+  const id = asText(deviceId);
+  if (!id) return null;
+  const raw = (config?.ui?.deviceCommandAllowlist && typeof config.ui.deviceCommandAllowlist === 'object')
+    ? config.ui.deviceCommandAllowlist
+    : {};
+  const arr = raw[id];
+  if (!Array.isArray(arr)) return null;
+  const cleaned = arr.map((v) => String(v || '').trim()).filter(Boolean);
+  return cleaned.length ? cleaned : [];
+}
+
 export function getDeviceStatus(statuses, deviceId) {
   const id = asText(deviceId);
   if (!id) return null;
@@ -55,9 +78,11 @@ export function buildRoomsWithStatuses(config, statuses) {
     const id = asText(dev?.id);
     if (!id) continue;
 
+    const labelOverride = getDeviceLabelOverride(config, id);
     const entry = {
       ...dev,
       status: getDeviceStatus(statuses, id),
+      label: labelOverride || String(dev?.label || getDeviceStatus(statuses, id)?.label || id),
     };
 
     const roomId = asText(dev?.roomId);
@@ -100,6 +125,7 @@ export function buildRoomsWithActivity(config, statuses) {
     if (!id) continue;
 
     const st = getDeviceStatus(statuses, id);
+    const labelOverride = getDeviceLabelOverride(config, id);
     const attrs = st?.attributes && typeof st.attributes === 'object' ? st.attributes : {};
 
     const motion = asText(attrs.motion);
@@ -110,7 +136,7 @@ export function buildRoomsWithActivity(config, statuses) {
 
     const entry = {
       id,
-      label: String(d?.label || st?.label || id),
+      label: String(labelOverride || d?.label || st?.label || id),
       motion,
       contact,
       lastUpdated: asText(st?.lastUpdated),

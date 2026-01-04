@@ -29,6 +29,9 @@
       "url": null,
       "opacityPct": 35
     },
+    "visibleRoomIds": [],
+    "deviceLabelOverrides": {},
+    "deviceCommandAllowlist": {},
     "panelProfiles": {
       "Neon Glass": {
         "accentColorId": "neon-blue",
@@ -44,7 +47,14 @@
         "secondaryTextSizePct": 105,
         "secondaryTextColorId": "slate",
         "cardScalePct": 105,
-        "homeRoomColumnsXl": 3
+        "homeRoomColumnsXl": 3,
+        "visibleRoomIds": [],
+        "deviceLabelOverrides": {
+          "123": "Kitchen Lights"
+        },
+        "deviceCommandAllowlist": {
+          "123": ["on", "off", "toggle"]
+        }
       },
       "Stealth Slate": {
         "accentColorId": "slate",

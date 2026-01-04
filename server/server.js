@@ -121,6 +121,10 @@ const PRIMARY_TEXT_SIZE_PCT_RANGE = Object.freeze({ min: 50, max: 200, def: 100 
 const BLUR_SCALE_PCT_RANGE = Object.freeze({ min: 0, max: 200, def: 100 });
 const ICON_SIZE_PCT_RANGE = Object.freeze({ min: 50, max: 200, def: 100 });
 
+// Commands that can be rendered by the current UI panels.
+// (We intentionally constrain this so config can't inject arbitrary commands into the UI.)
+const ALLOWED_PANEL_DEVICE_COMMANDS = new Set(['on', 'off', 'toggle', 'setLevel', 'refresh', 'push']);
+
 // Default preset panel profiles that ship with the product.
 // These are always available as read-only templates.
 const DEFAULT_PANEL_PROFILES_PRESETS = Object.freeze({
@@ -807,6 +811,40 @@ function normalizePersistedConfig(raw) {
         ? uiRaw.visibleRoomIds.map((v) => String(v || '').trim()).filter(Boolean)
         : [];
 
+    const deviceLabelOverrides = (() => {
+        const rawMap = (uiRaw.deviceLabelOverrides && typeof uiRaw.deviceLabelOverrides === 'object')
+            ? uiRaw.deviceLabelOverrides
+            : {};
+        const outMap = {};
+        for (const [k, v] of Object.entries(rawMap)) {
+            const id = String(k || '').trim();
+            if (!id) continue;
+            const label = String(v ?? '').trim();
+            if (!label) continue;
+            if (label.length > 64) continue;
+            outMap[id] = label;
+        }
+        return outMap;
+    })();
+
+    const deviceCommandAllowlist = (() => {
+        const rawMap = (uiRaw.deviceCommandAllowlist && typeof uiRaw.deviceCommandAllowlist === 'object')
+            ? uiRaw.deviceCommandAllowlist
+            : {};
+        const outMap = {};
+        for (const [k, v] of Object.entries(rawMap)) {
+            const id = String(k || '').trim();
+            if (!id) continue;
+            if (!Array.isArray(v)) continue;
+            const cmds = v
+                .map((c) => String(c || '').trim())
+                .filter((c) => c && ALLOWED_PANEL_DEVICE_COMMANDS.has(c));
+            // Empty array is allowed (meaning: show no commands for this device on this panel).
+            outMap[id] = Array.from(new Set(cmds)).slice(0, 32);
+        }
+        return outMap;
+    })();
+
     const rawAccent = String(uiRaw.accentColorId || uiRaw.colorScheme || '').trim();
     const accentColorId = normalizeAccentColorId(rawAccent);
 
@@ -1074,6 +1112,41 @@ function normalizePersistedConfig(raw) {
                 : [])
             : null;
 
+        const pDeviceLabelOverrides = (() => {
+            if (!Object.prototype.hasOwnProperty.call(p, 'deviceLabelOverrides')) return null;
+            const rawMap = (p.deviceLabelOverrides && typeof p.deviceLabelOverrides === 'object')
+                ? p.deviceLabelOverrides
+                : {};
+            const outMap = {};
+            for (const [k, v] of Object.entries(rawMap)) {
+                const id = String(k || '').trim();
+                if (!id) continue;
+                const label = String(v ?? '').trim();
+                if (!label) continue;
+                if (label.length > 64) continue;
+                outMap[id] = label;
+            }
+            return outMap;
+        })();
+
+        const pDeviceCommandAllowlist = (() => {
+            if (!Object.prototype.hasOwnProperty.call(p, 'deviceCommandAllowlist')) return null;
+            const rawMap = (p.deviceCommandAllowlist && typeof p.deviceCommandAllowlist === 'object')
+                ? p.deviceCommandAllowlist
+                : {};
+            const outMap = {};
+            for (const [k, v] of Object.entries(rawMap)) {
+                const id = String(k || '').trim();
+                if (!id) continue;
+                if (!Array.isArray(v)) continue;
+                const cmds = v
+                    .map((c) => String(c || '').trim())
+                    .filter((c) => c && ALLOWED_PANEL_DEVICE_COMMANDS.has(c));
+                outMap[id] = Array.from(new Set(cmds)).slice(0, 32);
+            }
+            return outMap;
+        })();
+
         const pHomeBgRaw = (p.homeBackground && typeof p.homeBackground === 'object') ? p.homeBackground : null;
         const pHomeBackground = pHomeBgRaw
             ? {
@@ -1106,6 +1179,8 @@ function normalizePersistedConfig(raw) {
             ...(pVisibleRoomIds !== null ? { visibleRoomIds: pVisibleRoomIds } : {}),
             ...(pCtrlAllowedDeviceIds !== null ? { ctrlAllowedDeviceIds: pCtrlAllowedDeviceIds } : {}),
             ...(pMainAllowedDeviceIds !== null ? { mainAllowedDeviceIds: pMainAllowedDeviceIds } : {}),
+            ...(pDeviceLabelOverrides !== null ? { deviceLabelOverrides: pDeviceLabelOverrides } : {}),
+            ...(pDeviceCommandAllowlist !== null ? { deviceCommandAllowlist: pDeviceCommandAllowlist } : {}),
             ...(PRESET_PANEL_PROFILE_NAMES.has(name) ? { _preset: true } : {}),
         };
 
@@ -1136,6 +1211,8 @@ function normalizePersistedConfig(raw) {
         ctrlAllowedDeviceIds: ctrlAllowed.map((v) => String(v || '').trim()).filter(Boolean),
         mainAllowedDeviceIds: mainAllowed.map((v) => String(v || '').trim()).filter(Boolean),
         visibleRoomIds,
+        deviceLabelOverrides,
+        deviceCommandAllowlist,
         accentColorId,
         colorizeHomeValues,
         colorizeHomeValuesOpacityPct,
@@ -1198,6 +1275,8 @@ function ensurePanelProfileExists(panelName) {
                 ? ui.ctrlAllowedDeviceIds
                 : (Array.isArray(ui.allowedDeviceIds) ? ui.allowedDeviceIds : []),
             mainAllowedDeviceIds: Array.isArray(ui.mainAllowedDeviceIds) ? ui.mainAllowedDeviceIds : [],
+            deviceLabelOverrides: (ui.deviceLabelOverrides && typeof ui.deviceLabelOverrides === 'object') ? ui.deviceLabelOverrides : {},
+            deviceCommandAllowlist: (ui.deviceCommandAllowlist && typeof ui.deviceCommandAllowlist === 'object') ? ui.deviceCommandAllowlist : {},
             accentColorId: ui.accentColorId,
             homeBackground: ui.homeBackground,
             cardOpacityScalePct: ui.cardOpacityScalePct,
@@ -2561,6 +2640,125 @@ app.put('/api/ui/visible-room-ids', (req, res) => {
     return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
 });
 
+// Update per-device UI overrides (label + command allowlist).
+// Expected payload: { deviceId: string, label?: string|null, commands?: string[]|null, panelName?: string }
+app.put('/api/ui/device-overrides', (req, res) => {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+    const deviceId = String(body.deviceId || '').trim();
+    if (!deviceId) {
+        return res.status(400).json({ error: 'Missing deviceId' });
+    }
+
+    const labelRaw = Object.prototype.hasOwnProperty.call(body, 'label') ? body.label : undefined;
+    const label = (labelRaw === null || labelRaw === undefined)
+        ? null
+        : String(labelRaw ?? '').trim();
+    if (typeof label === 'string' && label.length > 64) {
+        return res.status(400).json({ error: 'Label too long (max 64 chars)' });
+    }
+
+    const commandsRaw = Object.prototype.hasOwnProperty.call(body, 'commands') ? body.commands : undefined;
+    const commands = (commandsRaw === null || commandsRaw === undefined)
+        ? null
+        : (Array.isArray(commandsRaw)
+            ? commandsRaw
+                .map((c) => String(c || '').trim())
+                .filter((c) => c && ALLOWED_PANEL_DEVICE_COMMANDS.has(c))
+            : null);
+    if (commandsRaw !== undefined && commandsRaw !== null && !Array.isArray(commandsRaw)) {
+        return res.status(400).json({ error: 'commands must be an array of strings (or null)' });
+    }
+
+    const panelName = normalizePanelName(body.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        const prev = (persistedConfig?.ui?.panelProfiles && persistedConfig.ui.panelProfiles[ensured] && typeof persistedConfig.ui.panelProfiles[ensured] === 'object')
+            ? persistedConfig.ui.panelProfiles[ensured]
+            : {};
+        const prevLabels = (prev.deviceLabelOverrides && typeof prev.deviceLabelOverrides === 'object') ? prev.deviceLabelOverrides : {};
+        const prevCmds = (prev.deviceCommandAllowlist && typeof prev.deviceCommandAllowlist === 'object') ? prev.deviceCommandAllowlist : {};
+
+        const nextLabels = { ...prevLabels };
+        if (label === null || label === '') delete nextLabels[deviceId];
+        else nextLabels[deviceId] = label;
+
+        const nextCmds = { ...prevCmds };
+        if (commands === null) {
+            delete nextCmds[deviceId];
+        } else {
+            nextCmds[deviceId] = Array.from(new Set(commands)).slice(0, 32);
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...prev,
+                        deviceLabelOverrides: nextLabels,
+                        deviceCommandAllowlist: nextCmds,
+                    },
+                },
+            },
+        });
+    } else {
+        const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+        const prevLabels = (ui.deviceLabelOverrides && typeof ui.deviceLabelOverrides === 'object') ? ui.deviceLabelOverrides : {};
+        const prevCmds = (ui.deviceCommandAllowlist && typeof ui.deviceCommandAllowlist === 'object') ? ui.deviceCommandAllowlist : {};
+
+        const nextLabels = { ...prevLabels };
+        if (label === null || label === '') delete nextLabels[deviceId];
+        else nextLabels[deviceId] = label;
+
+        const nextCmds = { ...prevCmds };
+        if (commands === null) {
+            delete nextCmds[deviceId];
+        } else {
+            nextCmds[deviceId] = Array.from(new Set(commands)).slice(0, 32);
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...ui,
+                deviceLabelOverrides: nextLabels,
+                deviceCommandAllowlist: nextCmds,
+            },
+        });
+    }
+
+    persistConfigToDiskIfChanged('api-ui-device-overrides');
+
+    const nextAllowlists = getUiAllowlistsInfo();
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            ctrlAllowedDeviceIds: nextAllowlists.ctrl.ids,
+            mainAllowedDeviceIds: nextAllowlists.main.ids,
+            allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            ctrlAllowlistSource: nextAllowlists.ctrl.source,
+            ctrlAllowlistLocked: nextAllowlists.ctrl.locked,
+            mainAllowlistSource: nextAllowlists.main.source,
+            mainAllowlistLocked: nextAllowlists.main.locked,
+            visibleRoomIds: Array.isArray(persistedConfig?.ui?.visibleRoomIds) ? persistedConfig.ui.visibleRoomIds : [],
+            deviceLabelOverrides: (persistedConfig?.ui?.deviceLabelOverrides && typeof persistedConfig.ui.deviceLabelOverrides === 'object') ? persistedConfig.ui.deviceLabelOverrides : {},
+            deviceCommandAllowlist: (persistedConfig?.ui?.deviceCommandAllowlist && typeof persistedConfig.ui.deviceCommandAllowlist === 'object') ? persistedConfig.ui.deviceCommandAllowlist : {},
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
 // List server-side panel profiles.
 app.get('/api/ui/panels', (req, res) => {
     const profiles = (persistedConfig?.ui?.panelProfiles && typeof persistedConfig.ui.panelProfiles === 'object')
@@ -2612,6 +2810,8 @@ app.post('/api/ui/panels', (req, res) => {
             ? effectiveUi.ctrlAllowedDeviceIds
             : (Array.isArray(effectiveUi.allowedDeviceIds) ? effectiveUi.allowedDeviceIds : []),
         mainAllowedDeviceIds: Array.isArray(effectiveUi.mainAllowedDeviceIds) ? effectiveUi.mainAllowedDeviceIds : [],
+        deviceLabelOverrides: (effectiveUi.deviceLabelOverrides && typeof effectiveUi.deviceLabelOverrides === 'object') ? effectiveUi.deviceLabelOverrides : {},
+        deviceCommandAllowlist: (effectiveUi.deviceCommandAllowlist && typeof effectiveUi.deviceCommandAllowlist === 'object') ? effectiveUi.deviceCommandAllowlist : {},
         accentColorId: effectiveUi.accentColorId,
         homeBackground: effectiveUi.homeBackground,
         cardOpacityScalePct: effectiveUi.cardOpacityScalePct,

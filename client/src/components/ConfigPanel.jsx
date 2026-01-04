@@ -37,6 +37,19 @@ async function saveVisibleRoomIds(visibleRoomIds, panelName) {
   return res.json().catch(() => ({}));
 }
 
+async function saveDeviceOverrides(payload) {
+  const res = await fetch(`${API_HOST}/api/ui/device-overrides`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Device override save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveAccentColorId(accentColorId, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/accent-color`, {
     method: 'PUT',
@@ -891,6 +904,29 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     setHomeBackgroundDraft(homeBackgroundFromConfig);
   }, [selectedPanelName]);
 
+  // When switching profiles, reset per-device override drafts to reflect the newly selected profile.
+  useEffect(() => {
+    const timers = deviceOverrideTimersRef.current;
+    for (const t of timers.values()) clearTimeout(t);
+    timers.clear();
+
+    setDeviceOverrideSaveState({});
+    setDeviceOverrideDrafts(() => {
+      const next = {};
+      for (const d of allSwitchLikeDevices) {
+        const id = String(d?.id || '').trim();
+        if (!id) continue;
+        const label = String(effectiveDeviceLabelOverrides?.[id] ?? '');
+        const cmds = effectiveDeviceCommandAllowlist?.[id];
+        next[id] = {
+          label,
+          commands: Array.isArray(cmds) ? cmds.map((c) => String(c)) : null,
+        };
+      }
+      return next;
+    });
+  }, [selectedPanelName, allSwitchLikeDevices, effectiveDeviceLabelOverrides, effectiveDeviceCommandAllowlist]);
+
   useEffect(() => {
     if (cardOpacityScaleDirty) return;
     setCardOpacityScaleDraft(cardOpacityScaleFromConfig);
@@ -1466,6 +1502,14 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   }, []);
 
   useEffect(() => {
+    return () => {
+      const timers = deviceOverrideTimersRef.current;
+      for (const t of timers.values()) clearTimeout(t);
+      timers.clear();
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     const load = async () => {
@@ -1486,6 +1530,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
   const [newRoomName, setNewRoomName] = useState('');
   const [labelDrafts, setLabelDrafts] = useState(() => ({}));
+
+  const [deviceOverrideDrafts, setDeviceOverrideDrafts] = useState(() => ({}));
+  const [deviceOverrideSaveState, setDeviceOverrideSaveState] = useState(() => ({}));
+  const deviceOverrideTimersRef = useRef(new Map());
+  const UI_DEVICE_COMMANDS = useMemo(() => (['on', 'off', 'toggle', 'setLevel', 'refresh', 'push']), []);
 
   const [labelSaveState, setLabelSaveState] = useState(() => ({}));
   const labelSaveTimersRef = useRef(new Map());
@@ -1521,6 +1570,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
         return {
           id: String(d.id),
           label: d.label || st?.label || String(d.id),
+          commands: Array.from(new Set(commands.map((c) => String(c || '').trim()).filter(Boolean))),
         };
       })
       .filter(Boolean);
@@ -1528,6 +1578,44 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     devices.sort((a, b) => String(a.label).localeCompare(String(b.label)));
     return devices;
   }, [config?.sensors, statuses]);
+
+  const effectiveDeviceLabelOverrides = useMemo(() => {
+    const v = config?.ui?.deviceLabelOverrides;
+    return (v && typeof v === 'object') ? v : {};
+  }, [config?.ui?.deviceLabelOverrides]);
+
+  const effectiveDeviceCommandAllowlist = useMemo(() => {
+    const v = config?.ui?.deviceCommandAllowlist;
+    return (v && typeof v === 'object') ? v : {};
+  }, [config?.ui?.deviceCommandAllowlist]);
+
+  useEffect(() => {
+    setDeviceOverrideDrafts((prev) => {
+      const next = { ...prev };
+      for (const d of allSwitchLikeDevices) {
+        const id = String(d?.id || '').trim();
+        if (!id) continue;
+
+        const existing = next[id];
+        const label = String(effectiveDeviceLabelOverrides?.[id] ?? '');
+        const cmds = effectiveDeviceCommandAllowlist?.[id];
+        const normalizedCmds = Array.isArray(cmds) ? cmds.map((c) => String(c)) : null;
+
+        if (!existing) {
+          next[id] = { label, commands: normalizedCmds };
+        } else {
+          // Only fill in missing keys to avoid clobbering in-progress edits.
+          if (existing.label === undefined) existing.label = label;
+          if (existing.commands === undefined) existing.commands = normalizedCmds;
+        }
+      }
+
+      for (const k of Object.keys(next)) {
+        if (!allSwitchLikeDevices.some((d) => String(d?.id) === k)) delete next[k];
+      }
+      return next;
+    });
+  }, [allSwitchLikeDevices, effectiveDeviceLabelOverrides, effectiveDeviceCommandAllowlist]);
 
   const manualRooms = useMemo(() => {
     const rooms = Array.isArray(config?.rooms) ? config.rooms : [];
@@ -1639,6 +1727,98 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
       mounted = false;
     };
   }, [openMeteoDirty]);
+
+  const queueDeviceLabelAutosave = (deviceId, text) => {
+    const id = String(deviceId || '').trim();
+    const trimmed = String(text ?? '').trim();
+    const timers = deviceOverrideTimersRef.current;
+    const key = `${id}:label`;
+    if (!id) return;
+    if (timers.has(key)) clearTimeout(timers.get(key));
+
+    if (!connected) {
+      setDeviceOverrideSaveState((prev) => ({
+        ...prev,
+        [id]: { ...(prev[id] || {}), label: { status: 'idle', error: null } },
+      }));
+      return;
+    }
+
+    setDeviceOverrideSaveState((prev) => ({
+      ...prev,
+      [id]: { ...(prev[id] || {}), label: { status: 'saving', error: null } },
+    }));
+
+    const t = setTimeout(async () => {
+      try {
+        await saveDeviceOverrides({
+          deviceId: id,
+          label: trimmed ? trimmed : null,
+          ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
+        });
+        setDeviceOverrideSaveState((prev) => ({
+          ...prev,
+          [id]: { ...(prev[id] || {}), label: { status: 'saved', error: null } },
+        }));
+      } catch (e) {
+        setDeviceOverrideSaveState((prev) => ({
+          ...prev,
+          [id]: { ...(prev[id] || {}), label: { status: 'error', error: e?.message || String(e) } },
+        }));
+      }
+    }, 650);
+
+    timers.set(key, t);
+  };
+
+  const toggleDeviceCommand = async (device, command, nextAllowed) => {
+    const id = String(device?.id || '').trim();
+    const cmd = String(command || '').trim();
+    if (!id || !cmd) return;
+
+    const available = Array.isArray(device?.commands) ? device.commands : [];
+    const availableAllowed = UI_DEVICE_COMMANDS.filter((c) => available.includes(c));
+    if (!availableAllowed.includes(cmd)) return;
+
+    const existingArr = deviceOverrideDrafts?.[id]?.commands;
+    const baseSet = Array.isArray(existingArr)
+      ? new Set(existingArr.map((c) => String(c)))
+      : new Set(availableAllowed);
+
+    if (nextAllowed) baseSet.add(cmd);
+    else baseSet.delete(cmd);
+
+    const nextArr = UI_DEVICE_COMMANDS.filter((c) => availableAllowed.includes(c) && baseSet.has(c));
+    const isAll = nextArr.length === availableAllowed.length;
+
+    setDeviceOverrideDrafts((prev) => ({
+      ...prev,
+      [id]: { ...(prev[id] || {}), commands: isAll ? null : nextArr },
+    }));
+
+    if (!connected) return;
+
+    setDeviceOverrideSaveState((prev) => ({
+      ...prev,
+      [id]: { ...(prev[id] || {}), commands: { status: 'saving', error: null } },
+    }));
+    try {
+      await saveDeviceOverrides({
+        deviceId: id,
+        commands: isAll ? null : nextArr,
+        ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
+      });
+      setDeviceOverrideSaveState((prev) => ({
+        ...prev,
+        [id]: { ...(prev[id] || {}), commands: { status: 'saved', error: null } },
+      }));
+    } catch (e) {
+      setDeviceOverrideSaveState((prev) => ({
+        ...prev,
+        [id]: { ...(prev[id] || {}), commands: { status: 'error', error: e?.message || String(e) } },
+      }));
+    }
+  };
 
   const setAllowed = async (deviceId, list, nextAllowed) => {
     setError(null);
@@ -1780,6 +1960,15 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               Choose where each device appears: Home and/or Controls.
             </div>
 
+            {isPresetSelected ? (
+              <div
+                className="mt-2 jvs-secondary-text text-white/60"
+                style={{ fontSize: 'calc(12px * var(--jvs-secondary-text-size-scale, 1))' }}
+              >
+                Presets are read-only. Create a new panel profile (above) to customize device visibility and overrides.
+              </div>
+            ) : null}
+
             {mainLocked ? (
               <div className="mt-2 text-[11px] text-neon-red">
                 Home list locked by server env var UI_ALLOWED_MAIN_DEVICE_IDS.
@@ -1798,11 +1987,26 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               {statusText(allowlistSave.status)}
             </div>
 
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div
+              className={`mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 ${isPresetSelected ? 'opacity-50 pointer-events-none' : ''}`}
+              aria-disabled={isPresetSelected ? 'true' : 'false'}
+            >
               {allSwitchLikeDevices.length ? (
                 allSwitchLikeDevices.map((d) => {
                   const isMain = mainAllowedIds.has(String(d.id));
                   const isCtrl = ctrlAllowedIds.has(String(d.id));
+
+                  const draft = (deviceOverrideDrafts && deviceOverrideDrafts[d.id] && typeof deviceOverrideDrafts[d.id] === 'object')
+                    ? deviceOverrideDrafts[d.id]
+                    : {};
+                  const displayNameDraft = String(draft.label ?? '');
+                  const explicitCommands = Array.isArray(draft.commands) ? draft.commands.map((c) => String(c)) : null;
+                  const availableAllowedCommands = UI_DEVICE_COMMANDS.filter((c) => Array.isArray(d.commands) && d.commands.includes(c));
+
+                  const labelSave = deviceOverrideSaveState?.[d.id]?.label || null;
+                  const cmdSave = deviceOverrideSaveState?.[d.id]?.commands || null;
+                  const isInheritCommands = explicitCommands === null;
+
                   return (
                     <div
                       key={d.id}
@@ -1838,6 +2042,123 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                             />
                             Controls
                           </label>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 border-t border-white/10 pt-4">
+                        <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                          Overrides
+                        </div>
+                        <div className="mt-1 text-xs text-white/45">
+                          Display name and which commands show on this panel.
+                        </div>
+
+                        <label className="mt-3 block">
+                          <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                            <span>Display Name</span>
+                            <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">
+                              {labelSave?.status === 'saving'
+                                ? 'Saving…'
+                                : (labelSave?.status === 'saved'
+                                  ? 'Saved'
+                                  : (labelSave?.status === 'error' ? 'Error' : ''))}
+                            </span>
+                          </div>
+                          <input
+                            value={displayNameDraft}
+                            onChange={(e) => {
+                              const next = String(e.target.value);
+                              setDeviceOverrideDrafts((prev) => ({
+                                ...prev,
+                                [d.id]: { ...(prev[d.id] || {}), label: next },
+                              }));
+                              queueDeviceLabelAutosave(d.id, next);
+                            }}
+                            placeholder="(inherit)"
+                            className={`mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 placeholder:text-white/35 ${scheme.focusRing}`}
+                            disabled={!connected || busy}
+                          />
+                          {labelSave?.status === 'error' ? (
+                            <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {labelSave.error}</div>
+                          ) : null}
+                        </label>
+
+                        <div className="mt-4">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                              Commands
+                            </div>
+                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">
+                              {cmdSave?.status === 'saving'
+                                ? 'Saving…'
+                                : (cmdSave?.status === 'saved'
+                                  ? 'Saved'
+                                  : (cmdSave?.status === 'error'
+                                    ? 'Error'
+                                    : (isInheritCommands ? 'Inherit' : 'Custom')))}
+                            </div>
+                          </div>
+
+                          {availableAllowedCommands.length ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {availableAllowedCommands.map((cmd) => {
+                                const checked = isInheritCommands ? true : explicitCommands.includes(cmd);
+                                const label = cmd === 'setLevel' ? 'Level' : cmd;
+                                return (
+                                  <label key={cmd} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      disabled={!connected || busy}
+                                      onChange={(e) => toggleDeviceCommand(d, cmd, Boolean(e.target.checked))}
+                                    />
+                                    <span className="text-xs font-semibold text-white/80">{label}</span>
+                                  </label>
+                                );
+                              })}
+
+                              <button
+                                type="button"
+                                disabled={!connected || busy || isInheritCommands}
+                                onClick={async () => {
+                                  setDeviceOverrideDrafts((prev) => ({
+                                    ...prev,
+                                    [d.id]: { ...(prev[d.id] || {}), commands: null },
+                                  }));
+                                  if (!connected) return;
+                                  setDeviceOverrideSaveState((prev) => ({
+                                    ...prev,
+                                    [d.id]: { ...(prev[d.id] || {}), commands: { status: 'saving', error: null } },
+                                  }));
+                                  try {
+                                    await saveDeviceOverrides({
+                                      deviceId: String(d.id),
+                                      commands: null,
+                                      ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
+                                    });
+                                    setDeviceOverrideSaveState((prev) => ({
+                                      ...prev,
+                                      [d.id]: { ...(prev[d.id] || {}), commands: { status: 'saved', error: null } },
+                                    }));
+                                  } catch (e) {
+                                    setDeviceOverrideSaveState((prev) => ({
+                                      ...prev,
+                                      [d.id]: { ...(prev[d.id] || {}), commands: { status: 'error', error: e?.message || String(e) } },
+                                    }));
+                                  }
+                                }}
+                                className={`rounded-xl border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || isInheritCommands) ? 'opacity-50' : 'hover:bg-white/5'}`}
+                              >
+                                Reset
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="mt-2 text-xs text-white/45">No supported commands found for this device.</div>
+                          )}
+
+                          {cmdSave?.status === 'error' ? (
+                            <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {cmdSave.error}</div>
+                          ) : null}
                         </div>
                       </div>
                     </div>
