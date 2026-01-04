@@ -13,6 +13,8 @@ import { getUiScheme } from './uiScheme';
 import { API_HOST } from './apiHost';
 import { AppStateProvider } from './AppStateProvider';
 
+import { getToleranceColorStyle, getToleranceTextClass } from './toleranceColors';
+
 import { socket } from './socket';
 
 function App() {
@@ -66,16 +68,104 @@ function App() {
     };
   }, [config, panelName]);
 
-  const colorSchemeId = String(effectiveConfig?.ui?.colorScheme || 'electric-blue');
-  const uiScheme = getUiScheme(colorSchemeId);
+  const accentColorId = String(effectiveConfig?.ui?.accentColorId || 'neon-blue');
+  const baseScheme = getUiScheme(accentColorId);
+
+  const iconColorIdRaw = String(effectiveConfig?.ui?.iconColorId ?? '').trim();
+  const iconColorClass = iconColorIdRaw && iconColorIdRaw !== 'none'
+    ? (getToleranceTextClass(iconColorIdRaw) || baseScheme.metricIcon)
+    : baseScheme.metricIcon;
+
+  const uiScheme = useMemo(() => ({
+    ...baseScheme,
+    metricIcon: iconColorClass,
+  }), [baseScheme, iconColorClass]);
 
   useEffect(() => {
+    const resolveRgbTripletFromBgClass = (bgClass) => {
+      const el = document.createElement('div');
+      el.className = bgClass;
+      el.style.position = 'absolute';
+      el.style.left = '-99999px';
+      el.style.top = '-99999px';
+      el.style.width = '1px';
+      el.style.height = '1px';
+      try {
+        document.body.appendChild(el);
+      } catch {
+        return null;
+      }
+
+      try {
+        const color = window.getComputedStyle(el).backgroundColor;
+        const m = String(color || '').match(/rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+        if (!m) return null;
+        const r = Number(m[1]);
+        const g = Number(m[2]);
+        const b = Number(m[3]);
+        if (![r, g, b].every((n) => Number.isFinite(n))) return null;
+        return `${r} ${g} ${b}`;
+      } catch {
+        return null;
+      } finally {
+        try {
+          el.remove();
+        } catch {
+          // ignore
+        }
+      }
+    };
+
     try {
-      document.documentElement.style.setProperty('--accent-rgb', uiScheme.rgb);
+      const accentColorIdRaw = String(effectiveConfig?.ui?.accentColorId ?? '').trim();
+      const resolvedAccentColorId = accentColorIdRaw || 'neon-blue';
+      const accentStyle = getToleranceColorStyle(resolvedAccentColorId);
+      const accentTokens = String(accentStyle?.swatch || '').split(/\s+/).filter(Boolean);
+      const accentBgToken = accentTokens.find((t) => t.startsWith('bg-'));
+      const accentTriplet = accentBgToken ? resolveRgbTripletFromBgClass(accentBgToken) : null;
+      if (accentTriplet) {
+        document.documentElement.style.setProperty('--accent-rgb', accentTriplet);
+      }
     } catch {
       // ignore
     }
-  }, [uiScheme.rgb]);
+
+    try {
+      const glowColorIdRaw = String(effectiveConfig?.ui?.glowColorId ?? '').trim();
+      const shouldInherit = !glowColorIdRaw || glowColorIdRaw === 'none';
+
+      if (shouldInherit) {
+        document.documentElement.style.setProperty('--jvs-glow-rgb', `var(--accent-rgb)`);
+        return;
+      }
+
+      const style = getToleranceColorStyle(glowColorIdRaw);
+      const tokens = String(style?.swatch || '').split(/\s+/).filter(Boolean);
+      const bgToken = tokens.find((t) => t.startsWith('bg-'));
+      const triplet = bgToken ? resolveRgbTripletFromBgClass(bgToken) : null;
+      if (triplet) {
+        document.documentElement.style.setProperty('--jvs-glow-rgb', triplet);
+      } else {
+        document.documentElement.style.setProperty('--jvs-glow-rgb', `var(--accent-rgb)`);
+      }
+    } catch {
+      // ignore
+    }
+  }, [effectiveConfig?.ui?.accentColorId, effectiveConfig?.ui?.glowColorId]);
+
+  useEffect(() => {
+    try {
+      const opacityRaw = Number(effectiveConfig?.ui?.iconOpacityPct);
+      const opacityPct = Number.isFinite(opacityRaw) ? Math.max(0, Math.min(100, Math.round(opacityRaw))) : 100;
+      document.documentElement.style.setProperty('--jvs-icon-opacity', String(opacityPct / 100));
+
+      const sizeRaw = Number(effectiveConfig?.ui?.iconSizePct);
+      const sizePct = Number.isFinite(sizeRaw) ? Math.max(50, Math.min(200, Math.round(sizeRaw))) : 100;
+      document.documentElement.style.setProperty('--jvs-icon-size-scale', String(sizePct / 100));
+    } catch {
+      // ignore
+    }
+  }, [effectiveConfig?.ui?.iconOpacityPct, effectiveConfig?.ui?.iconSizePct]);
 
   useEffect(() => {
     try {

@@ -10,7 +10,10 @@
     }
   },
   "ui": {
-    "colorScheme": "electric-blue",
+    "accentColorId": "neon-blue",
+    "iconColorId": null,
+    "iconOpacityPct": 100,
+    "iconSizePct": 100,
     "cardOpacityScalePct": 100,
     "blurScalePct": 100,
     "secondaryTextOpacityPct": 45,
@@ -28,7 +31,10 @@
     },
     "panelProfiles": {
       "Neon Glass": {
-        "colorScheme": "electric-blue",
+        "accentColorId": "neon-blue",
+        "iconColorId": "neon-blue",
+        "iconOpacityPct": 90,
+        "iconSizePct": 110,
         "cardOpacityScalePct": 75,
         "blurScalePct": 170,
         "primaryTextOpacityPct": 100,
@@ -41,7 +47,10 @@
         "homeRoomColumnsXl": 3
       },
       "Stealth Slate": {
-        "colorScheme": "slate",
+        "accentColorId": "slate",
+        "iconColorId": "white",
+        "iconOpacityPct": 70,
+        "iconSizePct": 105,
         "cardOpacityScalePct": 60,
         "blurScalePct": 0,
         "primaryTextOpacityPct": 95,
@@ -54,7 +63,10 @@
         "homeRoomColumnsXl": 3
       },
       "Arcade Mint": {
-        "colorScheme": "neon-green",
+        "accentColorId": "neon-green",
+        "iconColorId": "neon-green",
+        "iconOpacityPct": 100,
+        "iconSizePct": 120,
         "cardOpacityScalePct": 90,
         "blurScalePct": 140,
         "primaryTextOpacityPct": 100,
@@ -67,7 +79,10 @@
         "homeRoomColumnsXl": 3
       },
       "Copper Warmth": {
-        "colorScheme": "copper",
+        "accentColorId": "brown",
+        "iconColorId": "tan",
+        "iconOpacityPct": 90,
+        "iconSizePct": 105,
         "cardOpacityScalePct": 115,
         "blurScalePct": 110,
         "primaryTextOpacityPct": 100,
@@ -80,7 +95,10 @@
         "homeRoomColumnsXl": 3
       },
       "Ice Cave": {
-        "colorScheme": "classic-blue",
+        "accentColorId": "primary",
+        "iconColorId": "cyan",
+        "iconOpacityPct": 95,
+        "iconSizePct": 110,
         "cardOpacityScalePct": 80,
         "blurScalePct": 200,
         "primaryTextOpacityPct": 100,
@@ -93,7 +111,10 @@
         "homeRoomColumnsXl": 3
       },
       "Amber Signal": {
-        "colorScheme": "amber",
+        "accentColorId": "warning",
+        "iconColorId": "amber",
+        "iconOpacityPct": 95,
+        "iconSizePct": 110,
         "cardOpacityScalePct": 100,
         "blurScalePct": 120,
         "primaryTextOpacityPct": 100,
@@ -106,7 +127,10 @@
         "homeRoomColumnsXl": 3
       },
       "Zinc Minimal": {
-        "colorScheme": "zinc",
+        "accentColorId": "zinc",
+        "iconColorId": "zinc",
+        "iconOpacityPct": 60,
+        "iconSizePct": 95,
         "cardOpacityScalePct": 130,
         "blurScalePct": 35,
         "primaryTextOpacityPct": 100,
@@ -119,7 +143,10 @@
         "homeRoomColumnsXl": 3
       },
       "Red Alert": {
-        "colorScheme": "neon-red",
+        "accentColorId": "neon-red",
+        "iconColorId": "neon-red",
+        "iconOpacityPct": 100,
+        "iconSizePct": 115,
         "cardOpacityScalePct": 95,
         "blurScalePct": 90,
         "primaryTextOpacityPct": 100,

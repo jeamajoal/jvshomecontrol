@@ -6,6 +6,13 @@
   :root {
     /* Default accent (Electric Blue) — overridden at runtime from config */
     --accent-rgb: 0 212 255;
+
+    /* Accent glow (separate from UI accent); defaults to the UI accent. */
+    --jvs-glow-rgb: var(--accent-rgb);
+
+    /* Home icon styling */
+    --jvs-icon-opacity: 1;
+    --jvs-icon-size-scale: 1;
   }
 
   html, body, #root {
@@ -78,6 +85,12 @@
    Uses the current scheme's --accent-rgb and is scaled via cardOpacityScalePct. */
 .jvs-accent-card-bg {
   background-color: rgb(var(--accent-rgb) / var(--jvs-accent-card-bg-opacity, 0.10));
+}
+
+.jvs-icon {
+  opacity: var(--jvs-icon-opacity, 1);
+  transform: scale(var(--jvs-icon-size-scale, 1));
+  transform-origin: center;
 }
 
 /* Menu/Header surfaces should respect the same transparency setting so the Home background can be truly full-screen. */

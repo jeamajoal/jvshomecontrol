@@ -39,12 +39,12 @@ export default {
                 },
                 'glow-accent': {
                     '0%, 100%': {
-                        boxShadow: 'inset 0 0 15px rgb(var(--accent-rgb) / 0.30)',
-                        borderColor: 'rgb(var(--accent-rgb) / 0.40)'
+                        boxShadow: 'inset 0 0 15px rgb(var(--jvs-glow-rgb, var(--accent-rgb)) / 0.30)',
+                        borderColor: 'rgb(var(--jvs-glow-rgb, var(--accent-rgb)) / 0.40)'
                     },
                     '50%': {
-                        boxShadow: 'inset 0 0 30px rgb(var(--accent-rgb) / 0.60)',
-                        borderColor: 'rgb(var(--accent-rgb) / 0.80)'
+                        boxShadow: 'inset 0 0 30px rgb(var(--jvs-glow-rgb, var(--accent-rgb)) / 0.60)',
+                        borderColor: 'rgb(var(--jvs-glow-rgb, var(--accent-rgb)) / 0.80)'
                     },
                 },
             }

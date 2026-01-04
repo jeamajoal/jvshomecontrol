@@ -133,7 +133,7 @@ const MetricCard = ({ title, value, sub, icon: IconComponent, uiScheme }) => (
       </div>
 
       <div className="shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center">
-        {React.createElement(IconComponent, { className: `w-6 h-6 md:w-7 md:h-7 ${uiScheme?.metricIcon || 'text-neon-blue'}` })}
+        {React.createElement(IconComponent, { className: `w-6 h-6 md:w-7 md:h-7 jvs-icon ${uiScheme?.metricIcon || 'text-neon-blue'}` })}
       </div>
     </div>
   </div>

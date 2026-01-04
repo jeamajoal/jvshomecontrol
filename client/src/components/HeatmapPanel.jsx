@@ -160,8 +160,8 @@ const HeatmapPanel = ({ config: configProp, statuses: statusesProp, uiScheme: ui
   }, []);
 
   const resolvedUiScheme = useMemo(
-    () => uiScheme || getUiScheme(config?.ui?.colorScheme),
-    [uiScheme, config?.ui?.colorScheme],
+    () => uiScheme || getUiScheme(config?.ui?.accentColorId),
+    [uiScheme, config?.ui?.accentColorId],
   );
 
   const [mode, setMode] = useState('temperature');

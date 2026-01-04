@@ -6,6 +6,7 @@ import {
   TOLERANCE_COLOR_CHOICES,
   normalizeToleranceColorId,
 } from '../toleranceColors';
+import { getUiScheme } from '../uiScheme';
 
 async function saveAllowlists(payload) {
   const res = await fetch(`${API_HOST}/api/ui/allowed-device-ids`, {
@@ -20,27 +21,30 @@ async function saveAllowlists(payload) {
   return res.json().catch(() => ({}));
 }
 
-async function saveColorScheme(colorScheme, panelName) {
-  const res = await fetch(`${API_HOST}/api/ui/color-scheme`, {
+async function saveAccentColorId(accentColorId, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/accent-color`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      colorScheme,
+      accentColorId,
       ...(panelName ? { panelName } : {}),
     }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(text || `Color scheme save failed (${res.status})`);
+    throw new Error(text || `Accent color save failed (${res.status})`);
   }
   return res.json().catch(() => ({}));
 }
 
-async function createPanelProfile(name) {
+async function createPanelProfile(name, seedFromPanelName) {
   const res = await fetch(`${API_HOST}/api/ui/panels`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({
+      name,
+      ...(seedFromPanelName ? { seedFromPanelName } : {}),
+    }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -295,6 +299,70 @@ async function savePrimaryTextColorId(primaryTextColorId, panelName) {
   return res.json().catch(() => ({}));
 }
 
+async function saveGlowColorId(glowColorId, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/glow-color`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      glowColorId: glowColorId || null,
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Glow color save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function saveIconColorId(iconColorId, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/icon-color`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      iconColorId: iconColorId || null,
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Icon color save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function saveIconOpacityPct(iconOpacityPct, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/icon-opacity`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      iconOpacityPct,
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Icon opacity save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function saveIconSizePct(iconSizePct, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/icon-size`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      iconSizePct,
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Icon size save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveCardScalePct(cardScalePct, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/card-scale`, {
     method: 'PUT',
@@ -339,78 +407,6 @@ async function saveSensorIndicatorColors(sensorIndicatorColors) {
   }
   return res.json().catch(() => ({}));
 }
-
-const UI_COLOR_SCHEMES = {
-  'electric-blue': {
-    actionButton: 'text-neon-blue border-neon-blue/30 bg-neon-blue/10',
-    checkboxAccent: 'accent-neon-blue',
-    swatch: 'bg-neon-blue',
-  },
-  'classic-blue': {
-    actionButton: 'text-primary border-primary/30 bg-primary/10',
-    checkboxAccent: 'accent-primary',
-    swatch: 'bg-primary',
-  },
-  emerald: {
-    actionButton: 'text-success border-success/30 bg-success/10',
-    checkboxAccent: 'accent-success',
-    swatch: 'bg-success',
-  },
-  amber: {
-    actionButton: 'text-warning border-warning/30 bg-warning/10',
-    checkboxAccent: 'accent-warning',
-    swatch: 'bg-warning',
-  },
-  'neon-green': {
-    actionButton: 'text-neon-green border-neon-green/30 bg-neon-green/10',
-    checkboxAccent: 'accent-neon-green',
-    swatch: 'bg-neon-green',
-  },
-  'neon-red': {
-    actionButton: 'text-neon-red border-neon-red/30 bg-neon-red/10',
-    checkboxAccent: 'accent-neon-red',
-    swatch: 'bg-neon-red',
-  },
-  slate: {
-    actionButton: 'text-slate-200 border-slate-500/35 bg-slate-500/15',
-    checkboxAccent: 'accent-slate-400',
-    swatch: 'bg-slate-500',
-  },
-  stone: {
-    actionButton: 'text-stone-200 border-stone-400/35 bg-stone-400/15',
-    checkboxAccent: 'accent-stone-400',
-    swatch: 'bg-stone-400',
-  },
-  zinc: {
-    actionButton: 'text-zinc-200 border-zinc-400/35 bg-zinc-400/15',
-    checkboxAccent: 'accent-zinc-400',
-    swatch: 'bg-zinc-400',
-  },
-  white: {
-    actionButton: 'text-white border-white/25 bg-white/10',
-    checkboxAccent: 'accent-white',
-    swatch: 'bg-white',
-  },
-  copper: {
-    actionButton: 'text-amber-300 border-amber-700/40 bg-amber-700/20',
-    checkboxAccent: 'accent-amber-500',
-    swatch: 'bg-amber-700',
-  },
-};
-
-const COLOR_SCHEME_CHOICES = [
-  { id: 'classic-blue', label: 'Classic Blue', vibe: 'Classy' },
-  { id: 'emerald', label: 'Emerald', vibe: 'Classy' },
-  { id: 'amber', label: 'Amber', vibe: 'Classy' },
-  { id: 'stone', label: 'Stone (Tan)', vibe: 'Classy' },
-  { id: 'slate', label: 'Slate (Charcoal)', vibe: 'Classy' },
-  { id: 'zinc', label: 'Zinc', vibe: 'Classy' },
-  { id: 'white', label: 'White', vibe: 'Classy' },
-  { id: 'copper', label: 'Copper (Brown)', vibe: 'Classy' },
-  { id: 'electric-blue', label: 'Electric Blue', vibe: 'Wild' },
-  { id: 'neon-green', label: 'Neon Green', vibe: 'Wild' },
-  { id: 'neon-red', label: 'Neon Red', vibe: 'Wild' },
-];
 
 const toleranceSwatchClass = (id) => {
   const hit = TOLERANCE_COLOR_CHOICES.find((c) => c.id === id);
@@ -544,11 +540,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     { id: 'events', label: 'Events' },
   ];
 
-  const colorSchemeId = String(config?.ui?.colorScheme || 'electric-blue');
-  const scheme = UI_COLOR_SCHEMES[colorSchemeId] || UI_COLOR_SCHEMES['electric-blue'];
+  const accentColorId = String(config?.ui?.accentColorId || 'neon-blue');
+  const scheme = getUiScheme(accentColorId);
 
   const allowlistSave = useAsyncSave(saveAllowlists);
-  const colorSchemeSave = useAsyncSave((colorScheme) => saveColorScheme(colorScheme, selectedPanelName || null));
+  const accentColorSave = useAsyncSave((nextAccentColorId) => saveAccentColorId(nextAccentColorId, selectedPanelName || null));
   const alertSoundsSave = useAsyncSave(saveAlertSounds);
   const homeValueSave = useAsyncSave(saveColorizeHomeValues);
   const homeBackgroundSave = useAsyncSave((homeBackground) => saveHomeBackground(homeBackground, selectedPanelName || null));
@@ -560,6 +556,10 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const primaryTextOpacitySave = useAsyncSave((primaryTextOpacityPct) => savePrimaryTextOpacityPct(primaryTextOpacityPct, selectedPanelName || null));
   const primaryTextSizeSave = useAsyncSave((primaryTextSizePct) => savePrimaryTextSizePct(primaryTextSizePct, selectedPanelName || null));
   const primaryTextColorSave = useAsyncSave((primaryTextColorId) => savePrimaryTextColorId(primaryTextColorId, selectedPanelName || null));
+  const glowColorSave = useAsyncSave((glowColorId) => saveGlowColorId(glowColorId, selectedPanelName || null));
+  const iconColorSave = useAsyncSave((iconColorId) => saveIconColorId(iconColorId, selectedPanelName || null));
+  const iconOpacitySave = useAsyncSave((iconOpacityPct) => saveIconOpacityPct(iconOpacityPct, selectedPanelName || null));
+  const iconSizeSave = useAsyncSave((iconSizePct) => saveIconSizePct(iconSizePct, selectedPanelName || null));
   const cardScaleSave = useAsyncSave((cardScalePct) => saveCardScalePct(cardScalePct, selectedPanelName || null));
   const homeRoomColsSave = useAsyncSave((homeRoomColumnsXl) => saveHomeRoomColumnsXl(homeRoomColumnsXl, selectedPanelName || null));
   const sensorColorsSave = useAsyncSave(saveSensorIndicatorColors);
@@ -730,6 +730,32 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return '';
   }, [config?.ui?.primaryTextColorId]);
 
+  const glowColorFromConfig = useMemo(() => {
+    const raw = String(config?.ui?.glowColorId ?? '').trim();
+    if (!raw) return '';
+    if (TOLERANCE_COLOR_CHOICES.some((c) => c.id === raw)) return raw;
+    return '';
+  }, [config?.ui?.glowColorId]);
+
+  const iconColorFromConfig = useMemo(() => {
+    const raw = String(config?.ui?.iconColorId ?? '').trim();
+    if (!raw) return '';
+    if (TOLERANCE_COLOR_CHOICES.some((c) => c.id === raw)) return raw;
+    return '';
+  }, [config?.ui?.iconColorId]);
+
+  const iconOpacityFromConfig = useMemo(() => {
+    const raw = Number(config?.ui?.iconOpacityPct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(0, Math.min(100, Math.round(raw)));
+  }, [config?.ui?.iconOpacityPct]);
+
+  const iconSizeFromConfig = useMemo(() => {
+    const raw = Number(config?.ui?.iconSizePct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(50, Math.min(200, Math.round(raw)));
+  }, [config?.ui?.iconSizePct]);
+
   const cardScaleFromConfig = useMemo(() => {
     const raw = Number(config?.ui?.cardScalePct);
     if (!Number.isFinite(raw)) return 100;
@@ -773,6 +799,22 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [primaryTextColorDraft, setPrimaryTextColorDraft] = useState(() => '');
   const [primaryTextColorDirty, setPrimaryTextColorDirty] = useState(false);
   const [primaryTextColorError, setPrimaryTextColorError] = useState(null);
+
+  const [glowColorDraft, setGlowColorDraft] = useState(() => '');
+  const [glowColorDirty, setGlowColorDirty] = useState(false);
+  const [glowColorError, setGlowColorError] = useState(null);
+
+  const [iconColorDraft, setIconColorDraft] = useState(() => '');
+  const [iconColorDirty, setIconColorDirty] = useState(false);
+  const [iconColorError, setIconColorError] = useState(null);
+
+  const [iconOpacityDraft, setIconOpacityDraft] = useState(() => 100);
+  const [iconOpacityDirty, setIconOpacityDirty] = useState(false);
+  const [iconOpacityError, setIconOpacityError] = useState(null);
+
+  const [iconSizeDraft, setIconSizeDraft] = useState(() => 100);
+  const [iconSizeDirty, setIconSizeDirty] = useState(false);
+  const [iconSizeError, setIconSizeError] = useState(null);
 
   const [cardScaleDraft, setCardScaleDraft] = useState(() => 100);
   const [cardScaleDirty, setCardScaleDirty] = useState(false);
@@ -858,6 +900,26 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     if (primaryTextColorDirty) return;
     setPrimaryTextColorDraft(primaryTextColorFromConfig);
   }, [primaryTextColorDirty, primaryTextColorFromConfig]);
+
+  useEffect(() => {
+    if (glowColorDirty) return;
+    setGlowColorDraft(glowColorFromConfig);
+  }, [glowColorDirty, glowColorFromConfig]);
+
+  useEffect(() => {
+    if (iconColorDirty) return;
+    setIconColorDraft(iconColorFromConfig);
+  }, [iconColorDirty, iconColorFromConfig]);
+
+  useEffect(() => {
+    if (iconOpacityDirty) return;
+    setIconOpacityDraft(iconOpacityFromConfig);
+  }, [iconOpacityDirty, iconOpacityFromConfig]);
+
+  useEffect(() => {
+    if (iconSizeDirty) return;
+    setIconSizeDraft(iconSizeFromConfig);
+  }, [iconSizeDirty, iconSizeFromConfig]);
 
   useEffect(() => {
     if (cardScaleDirty) return;
@@ -1069,6 +1131,78 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
     return () => clearTimeout(t);
   }, [connected, primaryTextColorDirty, primaryTextColorDraft]);
+
+  // Autosave: Glow color.
+  useEffect(() => {
+    if (!connected) return;
+    if (!glowColorDirty) return;
+
+    const t = setTimeout(async () => {
+      setGlowColorError(null);
+      try {
+        await glowColorSave.run(glowColorDraft || null);
+        setGlowColorDirty(false);
+      } catch (err) {
+        setGlowColorError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, glowColorDirty, glowColorDraft]);
+
+  // Autosave: Icon color.
+  useEffect(() => {
+    if (!connected) return;
+    if (!iconColorDirty) return;
+
+    const t = setTimeout(async () => {
+      setIconColorError(null);
+      try {
+        await iconColorSave.run(iconColorDraft || null);
+        setIconColorDirty(false);
+      } catch (err) {
+        setIconColorError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, iconColorDirty, iconColorDraft]);
+
+  // Autosave: Icon opacity.
+  useEffect(() => {
+    if (!connected) return;
+    if (!iconOpacityDirty) return;
+
+    const t = setTimeout(async () => {
+      setIconOpacityError(null);
+      try {
+        await iconOpacitySave.run(iconOpacityDraft);
+        setIconOpacityDirty(false);
+      } catch (err) {
+        setIconOpacityError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, iconOpacityDirty, iconOpacityDraft]);
+
+  // Autosave: Icon size.
+  useEffect(() => {
+    if (!connected) return;
+    if (!iconSizeDirty) return;
+
+    const t = setTimeout(async () => {
+      setIconSizeError(null);
+      try {
+        await iconSizeSave.run(iconSizeDraft);
+        setIconSizeDirty(false);
+      } catch (err) {
+        setIconSizeError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, iconSizeDirty, iconSizeDraft]);
 
   // Autosave: Card scale.
   useEffect(() => {
@@ -1467,7 +1601,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
     setPanelCreateStatus('creating');
     try {
-      const res = await createPanelProfile(name);
+      const res = await createPanelProfile(name, selectedPanelName);
       const created = String(res?.name ?? name).trim() || name;
       if (ctx?.setPanelName) ctx.setPanelName(created);
       setNewPanelName('');
@@ -1650,13 +1784,66 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               Appearance
             </div>
             <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-              Color Scheme
+              Home & UI
             </div>
             <div className="mt-1 text-xs text-white/45">
-              Pick a single accent color for the UI.
+              Adjust the Home look & feel.
             </div>
 
-            <div className="mt-4 utility-group p-4">
+            <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="utility-group p-4 lg:col-span-2">
+                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                  UI accent
+                </div>
+                <div className="mt-1 text-xs text-white/45">
+                  Sets the accent used across the app.
+                </div>
+
+                {accentColorSave.error ? (
+                  <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {accentColorSave.error}</div>
+                ) : null}
+
+                <div className="mt-2 text-xs text-white/45">
+                  {statusText(accentColorSave.status)}
+                </div>
+
+                <div className="mt-4">
+                    <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {TOLERANCE_COLOR_CHOICES.filter((c) => c.id !== 'none').map((choice) => {
+                        const isSelected = choice.id === accentColorId;
+                        return (
+                          <button
+                            key={choice.id}
+                            type="button"
+                            disabled={!connected || busy || accentColorSave.status === 'saving'}
+                            onClick={async () => {
+                              try {
+                                await accentColorSave.run(choice.id);
+                              } catch {
+                                // handled by controller
+                              }
+                            }}
+                            className={`rounded-xl border px-3 py-3 text-left transition-colors ${isSelected ? 'border-white/30 bg-white/10' : 'border-white/10 bg-black/20 hover:bg-white/5'} ${(!connected || busy || accentColorSave.status === 'saving') ? 'opacity-50' : ''}`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`h-3.5 w-3.5 rounded-full ${choice.swatch}`} />
+                              <div className="min-w-0">
+                                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/80 truncate">
+                                  {choice.label}
+                                </div>
+                                {isSelected ? (
+                                  <div className="mt-1 text-[10px] text-white/40">Selected</div>
+                                ) : null}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                </div>
+              </div>
+
+              <div className="utility-group p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
@@ -1719,7 +1906,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               ) : null}
             </div>
 
-            <div className="mt-4 utility-group p-4">
+            <div className="utility-group p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
@@ -1782,7 +1969,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               ) : null}
             </div>
 
-            <div className="mt-4 utility-group p-4">
+            <div className="utility-group p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
@@ -1951,7 +2138,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               </div>
             </div>
 
-            <div className="mt-4 utility-group p-4">
+            <div className="utility-group p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
@@ -2120,14 +2307,211 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               </div>
             </div>
 
-            <div className="mt-4 utility-group p-4">
+            <div className="utility-group p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                    Glow
+                  </div>
+                  <div className="mt-1 text-xs text-white/45">
+                    Optional override for the animated accent glow.
+                  </div>
+                </div>
+
+                <select
+                  value={glowColorDraft}
+                  disabled={!connected || busy}
+                  onChange={(e) => {
+                    const v = String(e.target.value || '').trim();
+                    setGlowColorError(null);
+                    setGlowColorDirty(true);
+                    setGlowColorDraft(v);
+                  }}
+                  className="w-[220px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                >
+                  <option value="">Inherit (UI accent)</option>
+                  {TOLERANCE_COLOR_CHOICES.filter((c) => c.id !== 'none').map((c) => (
+                    <option key={c.id} value={c.id}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="text-xs text-white/45">
+                  {glowColorDirty ? 'Pending changes…' : 'Saved'}
+                </div>
+                <div className="text-xs text-white/45">
+                  {statusText(glowColorSave.status)}
+                </div>
+              </div>
+
+              {glowColorError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {glowColorError}</div>
+              ) : null}
+            </div>
+
+            <div className="utility-group p-4">
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                Icons
+              </div>
+              <div className="mt-1 text-xs text-white/45">
+                Optional override for metric icons on Home.
+              </div>
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                  Color
+                </div>
+                <select
+                  value={iconColorDraft}
+                  disabled={!connected || busy}
+                  onChange={(e) => {
+                    const v = String(e.target.value || '').trim();
+                    setIconColorError(null);
+                    setIconColorDirty(true);
+                    setIconColorDraft(v);
+                  }}
+                  className="w-[220px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                >
+                  <option value="">Default (scheme)</option>
+                  {TOLERANCE_COLOR_CHOICES.filter((c) => c.id !== 'none').map((c) => (
+                    <option key={c.id} value={c.id}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-white/10">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                      Opacity
+                    </div>
+                    <div className="mt-1 text-xs text-white/45">
+                      100% = default.
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={iconOpacityDraft}
+                      disabled={!connected || busy}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 100;
+                        setIconOpacityError(null);
+                        setIconOpacityDirty(true);
+                        setIconOpacityDraft(next);
+                      }}
+                      className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    />
+                    <div className="text-xs text-white/45">%</div>
+                  </div>
+                </div>
+
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={iconOpacityDraft}
+                  disabled={!connected || busy}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 100;
+                    setIconOpacityError(null);
+                    setIconOpacityDirty(true);
+                    setIconOpacityDraft(next);
+                  }}
+                  className="mt-3 w-full"
+                />
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-white/10">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                      Size
+                    </div>
+                    <div className="mt-1 text-xs text-white/45">
+                      100% = default.
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={50}
+                      max={200}
+                      step={1}
+                      value={iconSizeDraft}
+                      disabled={!connected || busy}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        const next = Number.isFinite(n) ? Math.max(50, Math.min(200, Math.round(n))) : 100;
+                        setIconSizeError(null);
+                        setIconSizeDirty(true);
+                        setIconSizeDraft(next);
+                      }}
+                      className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    />
+                    <div className="text-xs text-white/45">%</div>
+                  </div>
+                </div>
+
+                <input
+                  type="range"
+                  min={50}
+                  max={200}
+                  step={1}
+                  value={iconSizeDraft}
+                  disabled={!connected || busy}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    const next = Number.isFinite(n) ? Math.max(50, Math.min(200, Math.round(n))) : 100;
+                    setIconSizeError(null);
+                    setIconSizeDirty(true);
+                    setIconSizeDraft(next);
+                  }}
+                  className="mt-3 w-full"
+                />
+              </div>
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="text-xs text-white/45">
+                  {(iconColorDirty || iconOpacityDirty || iconSizeDirty) ? 'Pending changes…' : 'Saved'}
+                </div>
+                <div className="text-xs text-white/45">
+                  {[
+                    statusText(iconColorSave.status),
+                    statusText(iconOpacitySave.status),
+                    statusText(iconSizeSave.status),
+                  ].filter(Boolean).join(' · ')}
+                </div>
+              </div>
+
+              {iconColorError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {iconColorError}</div>
+              ) : null}
+              {iconOpacityError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {iconOpacityError}</div>
+              ) : null}
+              {iconSizeError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {iconSizeError}</div>
+              ) : null}
+            </div>
+
+            <div className="utility-group p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
                     Card spacing
                   </div>
                   <div className="mt-1 text-xs text-white/45">
-                    Scales Home card padding/spacing & icon sizes. 100% = default.
+                    Scales Home card padding/spacing. 100% = default.
                   </div>
                 </div>
 
@@ -2183,7 +2567,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               ) : null}
             </div>
 
-            <div className="mt-4 utility-group p-4">
+            <div className="utility-group p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
@@ -2246,55 +2630,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               ) : null}
             </div>
 
-            {colorSchemeSave.error ? (
-              <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {colorSchemeSave.error}</div>
-            ) : null}
-
-            <div className="mt-2 text-xs text-white/45">
-              {statusText(colorSchemeSave.status)}
-            </div>
-
-            <div className="mt-4">
-              {['Classy', 'Wild'].map((vibe) => (
-                <div key={vibe} className={vibe === 'Wild' ? 'mt-4' : ''}>
-                  <div className="text-[11px] uppercase tracking-[0.2em] text-white/55 font-semibold">
-                    {vibe}
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-2">
-                    {COLOR_SCHEME_CHOICES.filter((c) => c.vibe === vibe).map((choice) => {
-                      const isSelected = choice.id === colorSchemeId;
-                      const choiceScheme = UI_COLOR_SCHEMES[choice.id] || UI_COLOR_SCHEMES['electric-blue'];
-                      return (
-                        <button
-                          key={choice.id}
-                          type="button"
-                          disabled={!connected || busy || colorSchemeSave.status === 'saving'}
-                          onClick={async () => {
-                            try {
-                              await colorSchemeSave.run(choice.id);
-                            } catch {
-                              // handled by controller
-                            }
-                          }}
-                          className={`rounded-xl border px-3 py-3 text-left transition-colors ${isSelected ? 'border-white/30 bg-white/10' : 'border-white/10 bg-black/20 hover:bg-white/5'} ${(!connected || busy || colorSchemeSave.status === 'saving') ? 'opacity-50' : ''}`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className={`h-3.5 w-3.5 rounded-full ${choiceScheme.swatch}`} />
-                            <div className="min-w-0">
-                              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/80 truncate">
-                                {choice.label}
-                              </div>
-                              {isSelected ? (
-                                <div className="mt-1 text-[10px] text-white/40">Selected</div>
-                              ) : null}
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
             </div>
           </div>
         ) : null}

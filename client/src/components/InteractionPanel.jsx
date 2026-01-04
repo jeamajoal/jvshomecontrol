@@ -93,7 +93,7 @@ const SwitchTile = ({ label, disabled, busyOn, busyOff, busyToggle, canOn, canOf
         </div>
         <div className="shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center">
           {anyBusy ? (
-            <Loader2 className={`w-6 h-6 md:w-7 md:h-7 animate-spin ${uiScheme?.metricIcon || 'text-neon-blue'}`} />
+            <Loader2 className={`w-6 h-6 md:w-7 md:h-7 animate-spin jvs-icon ${uiScheme?.metricIcon || 'text-neon-blue'}`} />
           ) : (
             <Power className="w-6 h-6 md:w-7 md:h-7 text-white/60" />
           )}
@@ -202,8 +202,8 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
   const connected = connectedProp ?? ctx?.connected;
   const uiScheme = uiSchemeProp ?? ctx?.uiScheme;
   const resolvedUiScheme = useMemo(
-    () => uiScheme || getUiScheme(config?.ui?.colorScheme),
-    [uiScheme, config?.ui?.colorScheme],
+    () => uiScheme || getUiScheme(config?.ui?.accentColorId),
+    [uiScheme, config?.ui?.accentColorId],
   );
 
   const allowedControlIds = useMemo(() => {

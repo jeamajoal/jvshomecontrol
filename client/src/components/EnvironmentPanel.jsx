@@ -237,7 +237,7 @@ const MetricCard = ({
           style={scaledIconWrapStyle}
         >
           {React.createElement(IconComponent, {
-            className: `${isScaled ? '' : 'w-5 h-5 md:w-6 md:h-6'} ${uiScheme?.metricIcon || 'text-neon-blue'}`.trim(),
+            className: `${isScaled ? '' : 'w-5 h-5 md:w-6 md:h-6'} jvs-icon ${uiScheme?.metricIcon || 'text-neon-blue'}`.trim(),
             style: scaledIconStyle,
           })}
         </div>
@@ -285,7 +285,7 @@ const SwitchButton = ({ label, isOn, disabled, onToggle, busy, uiScheme }) => {
 
         <div className="shrink-0 self-start mt-1 md:mt-1.5 translate-x-1.5 translate-y-3.5 w-10 h-10 md:w-12 md:h-12 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center">
           {busy ? (
-            <Loader2 className={`w-5 h-5 md:w-6 md:h-6 animate-spin ${uiScheme?.metricIcon || 'text-neon-blue'}`} />
+            <Loader2 className={`w-5 h-5 md:w-6 md:h-6 animate-spin jvs-icon ${uiScheme?.metricIcon || 'text-neon-blue'}`} />
           ) : (
             <Power className={`w-5 h-5 md:w-6 md:h-6 ${isOn ? 'text-white' : 'text-white/60'}`} />
           )}
@@ -744,8 +744,8 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
   const metricRowRef = useRef(null);
 
   const resolvedUiScheme = useMemo(
-    () => uiScheme || getUiScheme(config?.ui?.colorScheme),
-    [uiScheme, config?.ui?.colorScheme],
+    () => uiScheme || getUiScheme(config?.ui?.accentColorId),
+    [uiScheme, config?.ui?.accentColorId],
   );
 
   const colorizeHomeValues = Boolean(config?.ui?.colorizeHomeValues);
