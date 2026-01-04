@@ -349,7 +349,13 @@ export const TOLERANCE_COLOR_STYLES = {
   },
 };
 
-export const TOLERANCE_COLOR_CHOICES = Object.values(TOLERANCE_COLOR_STYLES);
+export const TOLERANCE_COLOR_CHOICES = [
+  // Keep "None" at the top so it's easy to find.
+  TOLERANCE_COLOR_STYLES.none,
+  ...Object.keys(TOLERANCE_COLOR_STYLES)
+    .filter((id) => id !== 'none')
+    .map((id) => TOLERANCE_COLOR_STYLES[id]),
+].filter(Boolean);
 
 export const ALLOWED_TOLERANCE_COLOR_IDS = new Set(Object.keys(TOLERANCE_COLOR_STYLES));
 
