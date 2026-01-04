@@ -22,6 +22,35 @@ At a high level:
 - A public internet-facing control plane (it can be hardened, but the default posture assumes a trusted LAN)
 - A replacement for Hubitat/Google Home automations; it’s a UI and thin control layer on top
 
+## Device visibility & controls (allowlists + overrides)
+
+The UI is intentionally conservative about device control.
+
+- **Allowlists** decide which devices can appear on **Home** and **Controls**.
+	- Persisted keys: `ui.mainAllowedDeviceIds` and `ui.ctrlAllowedDeviceIds`
+	- These can be locked by server env vars (see Settings → Devices).
+- **Panel profiles** let you save different configs per tablet/panel.
+	- Persisted under `ui.panelProfiles[panelName]`
+	- The client merges global defaults + the selected panel profile.
+- **Visible rooms per panel** (optional):
+	- Persisted key: `ui.visibleRoomIds` (and per panel: `ui.panelProfiles[panelName].visibleRoomIds`)
+	- If the list is empty, it means “show all rooms”.
+- **Per-device overrides** (optional):
+	- **Display name override**: `ui.deviceLabelOverrides[deviceId] = "My Friendly Name"`
+	- **Command allowlist**: `ui.deviceCommandAllowlist[deviceId] = ["on","off",...]`
+	- Both also support per-panel versions under `ui.panelProfiles[panelName].deviceLabelOverrides` and `.deviceCommandAllowlist`.
+
+In Settings → Devices:
+
+- Leaving **Display Name** empty means “inherit”.
+- For **Commands**, clicking **Reset** means “inherit”. When inheriting, the UI defaults to showing all supported commands that the device actually exposes.
+
+Server endpoints used by the Settings UI:
+
+- `PUT /api/ui/allowed-device-ids`
+- `PUT /api/ui/visible-room-ids`
+- `PUT /api/ui/device-overrides`
+
 ## Related docs
 
 - Components and integrations: [02-Components.md](02-Components.md)
