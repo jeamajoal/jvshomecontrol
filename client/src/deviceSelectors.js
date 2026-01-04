@@ -42,6 +42,18 @@ export function getDeviceCommandAllowlist(config, deviceId) {
   return cleaned.length ? cleaned : [];
 }
 
+export function getDeviceHomeMetricAllowlist(config, deviceId) {
+  const id = asText(deviceId);
+  if (!id) return null;
+  const raw = (config?.ui?.deviceHomeMetricAllowlist && typeof config.ui.deviceHomeMetricAllowlist === 'object')
+    ? config.ui.deviceHomeMetricAllowlist
+    : {};
+  const arr = raw[id];
+  if (!Array.isArray(arr)) return null;
+  // Empty array is allowed (meaning: show no Home metrics from this device).
+  return arr.map((v) => String(v || '').trim()).filter(Boolean);
+}
+
 export function getDeviceStatus(statuses, deviceId) {
   const id = asText(deviceId);
   if (!id) return null;

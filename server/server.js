@@ -125,6 +125,10 @@ const ICON_SIZE_PCT_RANGE = Object.freeze({ min: 50, max: 200, def: 100 });
 // (We intentionally constrain this so config can't inject arbitrary commands into the UI.)
 const ALLOWED_PANEL_DEVICE_COMMANDS = new Set(['on', 'off', 'toggle', 'setLevel', 'refresh', 'push']);
 
+// Home metrics that can be shown on the Home dashboard per device.
+// (Used for multi-sensors where you want to hide/show specific attributes.)
+const ALLOWED_HOME_METRIC_KEYS = new Set(['temperature', 'humidity', 'illuminance', 'motion', 'contact', 'door']);
+
 // Default preset panel profiles that ship with the product.
 // These are always available as read-only templates.
 const DEFAULT_PANEL_PROFILES_PRESETS = Object.freeze({
@@ -851,6 +855,24 @@ function normalizePersistedConfig(raw) {
         return outMap;
     })();
 
+    const deviceHomeMetricAllowlist = (() => {
+        const rawMap = (uiRaw.deviceHomeMetricAllowlist && typeof uiRaw.deviceHomeMetricAllowlist === 'object')
+            ? uiRaw.deviceHomeMetricAllowlist
+            : {};
+        const outMap = {};
+        for (const [k, v] of Object.entries(rawMap)) {
+            const id = String(k || '').trim();
+            if (!id) continue;
+            if (!Array.isArray(v)) continue;
+            const keys = v
+                .map((c) => String(c || '').trim())
+                .filter((c) => c && ALLOWED_HOME_METRIC_KEYS.has(c));
+            // Empty array is allowed (meaning: show no Home metrics from this device).
+            outMap[id] = Array.from(new Set(keys)).slice(0, 16);
+        }
+        return outMap;
+    })();
+
     const rawAccent = String(uiRaw.accentColorId || uiRaw.colorScheme || '').trim();
     const accentColorId = normalizeAccentColorId(rawAccent);
 
@@ -1159,6 +1181,24 @@ function normalizePersistedConfig(raw) {
             return outMap;
         })();
 
+        const pDeviceHomeMetricAllowlist = (() => {
+            if (!Object.prototype.hasOwnProperty.call(p, 'deviceHomeMetricAllowlist')) return null;
+            const rawMap = (p.deviceHomeMetricAllowlist && typeof p.deviceHomeMetricAllowlist === 'object')
+                ? p.deviceHomeMetricAllowlist
+                : {};
+            const outMap = {};
+            for (const [k, v] of Object.entries(rawMap)) {
+                const id = String(k || '').trim();
+                if (!id) continue;
+                if (!Array.isArray(v)) continue;
+                const keys = v
+                    .map((c) => String(c || '').trim())
+                    .filter((c) => c && ALLOWED_HOME_METRIC_KEYS.has(c));
+                outMap[id] = Array.from(new Set(keys)).slice(0, 16);
+            }
+            return outMap;
+        })();
+
         const pHomeBgRaw = (p.homeBackground && typeof p.homeBackground === 'object') ? p.homeBackground : null;
         const pHomeBackground = pHomeBgRaw
             ? {
@@ -1194,6 +1234,7 @@ function normalizePersistedConfig(raw) {
             ...(pMainAllowedDeviceIds !== null ? { mainAllowedDeviceIds: pMainAllowedDeviceIds } : {}),
             ...(pDeviceLabelOverrides !== null ? { deviceLabelOverrides: pDeviceLabelOverrides } : {}),
             ...(pDeviceCommandAllowlist !== null ? { deviceCommandAllowlist: pDeviceCommandAllowlist } : {}),
+            ...(pDeviceHomeMetricAllowlist !== null ? { deviceHomeMetricAllowlist: pDeviceHomeMetricAllowlist } : {}),
             ...(PRESET_PANEL_PROFILE_NAMES.has(name) ? { _preset: true } : {}),
         };
 
@@ -1227,6 +1268,7 @@ function normalizePersistedConfig(raw) {
         homeVisibleDeviceIds,
         deviceLabelOverrides,
         deviceCommandAllowlist,
+        deviceHomeMetricAllowlist,
         accentColorId,
         colorizeHomeValues,
         colorizeHomeValuesOpacityPct,
@@ -1292,6 +1334,7 @@ function ensurePanelProfileExists(panelName) {
             mainAllowedDeviceIds: Array.isArray(ui.mainAllowedDeviceIds) ? ui.mainAllowedDeviceIds : [],
             deviceLabelOverrides: (ui.deviceLabelOverrides && typeof ui.deviceLabelOverrides === 'object') ? ui.deviceLabelOverrides : {},
             deviceCommandAllowlist: (ui.deviceCommandAllowlist && typeof ui.deviceCommandAllowlist === 'object') ? ui.deviceCommandAllowlist : {},
+            deviceHomeMetricAllowlist: (ui.deviceHomeMetricAllowlist && typeof ui.deviceHomeMetricAllowlist === 'object') ? ui.deviceHomeMetricAllowlist : {},
             accentColorId: ui.accentColorId,
             homeBackground: ui.homeBackground,
             cardOpacityScalePct: ui.cardOpacityScalePct,
@@ -2729,8 +2772,8 @@ app.put('/api/ui/visible-room-ids', (req, res) => {
     return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
 });
 
-// Update per-device UI overrides (label + command allowlist).
-// Expected payload: { deviceId: string, label?: string|null, commands?: string[]|null, panelName?: string }
+// Update per-device UI overrides (label + command allowlist + Home metric allowlist).
+// Expected payload: { deviceId: string, label?: string|null, commands?: string[]|null, homeMetrics?: string[]|null, panelName?: string }
 app.put('/api/ui/device-overrides', (req, res) => {
     const body = (req.body && typeof req.body === 'object') ? req.body : {};
     const deviceId = String(body.deviceId || '').trim();
@@ -2758,6 +2801,18 @@ app.put('/api/ui/device-overrides', (req, res) => {
         return res.status(400).json({ error: 'commands must be an array of strings (or null)' });
     }
 
+    const homeMetricsRaw = Object.prototype.hasOwnProperty.call(body, 'homeMetrics') ? body.homeMetrics : undefined;
+    const homeMetrics = (homeMetricsRaw === null || homeMetricsRaw === undefined)
+        ? null
+        : (Array.isArray(homeMetricsRaw)
+            ? homeMetricsRaw
+                .map((c) => String(c || '').trim())
+                .filter((c) => c && ALLOWED_HOME_METRIC_KEYS.has(c))
+            : null);
+    if (homeMetricsRaw !== undefined && homeMetricsRaw !== null && !Array.isArray(homeMetricsRaw)) {
+        return res.status(400).json({ error: 'homeMetrics must be an array of strings (or null)' });
+    }
+
     const panelName = normalizePanelName(body.panelName);
     if (panelName) {
         if (rejectIfPresetPanelProfile(panelName, res)) return;
@@ -2771,6 +2826,7 @@ app.put('/api/ui/device-overrides', (req, res) => {
             : {};
         const prevLabels = (prev.deviceLabelOverrides && typeof prev.deviceLabelOverrides === 'object') ? prev.deviceLabelOverrides : {};
         const prevCmds = (prev.deviceCommandAllowlist && typeof prev.deviceCommandAllowlist === 'object') ? prev.deviceCommandAllowlist : {};
+        const prevHome = (prev.deviceHomeMetricAllowlist && typeof prev.deviceHomeMetricAllowlist === 'object') ? prev.deviceHomeMetricAllowlist : {};
 
         const nextLabels = { ...prevLabels };
         if (label === null || label === '') delete nextLabels[deviceId];
@@ -2781,6 +2837,13 @@ app.put('/api/ui/device-overrides', (req, res) => {
             delete nextCmds[deviceId];
         } else {
             nextCmds[deviceId] = Array.from(new Set(commands)).slice(0, 32);
+        }
+
+        const nextHome = { ...prevHome };
+        if (homeMetrics === null) {
+            delete nextHome[deviceId];
+        } else {
+            nextHome[deviceId] = Array.from(new Set(homeMetrics)).slice(0, 16);
         }
 
         persistedConfig = normalizePersistedConfig({
@@ -2793,6 +2856,7 @@ app.put('/api/ui/device-overrides', (req, res) => {
                         ...prev,
                         deviceLabelOverrides: nextLabels,
                         deviceCommandAllowlist: nextCmds,
+                        deviceHomeMetricAllowlist: nextHome,
                     },
                 },
             },
@@ -2801,6 +2865,7 @@ app.put('/api/ui/device-overrides', (req, res) => {
         const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
         const prevLabels = (ui.deviceLabelOverrides && typeof ui.deviceLabelOverrides === 'object') ? ui.deviceLabelOverrides : {};
         const prevCmds = (ui.deviceCommandAllowlist && typeof ui.deviceCommandAllowlist === 'object') ? ui.deviceCommandAllowlist : {};
+        const prevHome = (ui.deviceHomeMetricAllowlist && typeof ui.deviceHomeMetricAllowlist === 'object') ? ui.deviceHomeMetricAllowlist : {};
 
         const nextLabels = { ...prevLabels };
         if (label === null || label === '') delete nextLabels[deviceId];
@@ -2813,12 +2878,20 @@ app.put('/api/ui/device-overrides', (req, res) => {
             nextCmds[deviceId] = Array.from(new Set(commands)).slice(0, 32);
         }
 
+        const nextHome = { ...prevHome };
+        if (homeMetrics === null) {
+            delete nextHome[deviceId];
+        } else {
+            nextHome[deviceId] = Array.from(new Set(homeMetrics)).slice(0, 16);
+        }
+
         persistedConfig = normalizePersistedConfig({
             ...(persistedConfig || {}),
             ui: {
                 ...ui,
                 deviceLabelOverrides: nextLabels,
                 deviceCommandAllowlist: nextCmds,
+                deviceHomeMetricAllowlist: nextHome,
             },
         });
     }
@@ -2840,6 +2913,7 @@ app.put('/api/ui/device-overrides', (req, res) => {
             visibleRoomIds: Array.isArray(persistedConfig?.ui?.visibleRoomIds) ? persistedConfig.ui.visibleRoomIds : [],
             deviceLabelOverrides: (persistedConfig?.ui?.deviceLabelOverrides && typeof persistedConfig.ui.deviceLabelOverrides === 'object') ? persistedConfig.ui.deviceLabelOverrides : {},
             deviceCommandAllowlist: (persistedConfig?.ui?.deviceCommandAllowlist && typeof persistedConfig.ui.deviceCommandAllowlist === 'object') ? persistedConfig.ui.deviceCommandAllowlist : {},
+            deviceHomeMetricAllowlist: (persistedConfig?.ui?.deviceHomeMetricAllowlist && typeof persistedConfig.ui.deviceHomeMetricAllowlist === 'object') ? persistedConfig.ui.deviceHomeMetricAllowlist : {},
             panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };

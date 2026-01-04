@@ -547,6 +547,11 @@ const statusText = (status) => {
   return '';
 };
 
+const asNumber = (value) => {
+  const num = typeof value === 'number' ? value : parseFloat(String(value));
+  return Number.isFinite(num) ? num : null;
+};
+
 const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: connectedProp, onOpenEvents }) => {
   const ctx = useAppState();
   const config = configProp ?? ctx?.config;
@@ -1533,6 +1538,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [deviceOverrideSaveState, setDeviceOverrideSaveState] = useState(() => ({}));
   const deviceOverrideTimersRef = useRef(new Map());
   const UI_DEVICE_COMMANDS = useMemo(() => (['on', 'off', 'toggle', 'setLevel', 'refresh', 'push']), []);
+  const UI_HOME_METRICS = useMemo(() => (['temperature', 'humidity', 'illuminance', 'motion', 'contact', 'door']), []);
 
   const [labelSaveState, setLabelSaveState] = useState(() => ({}));
   const labelSaveTimersRef = useRef(new Map());
@@ -1560,11 +1566,13 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
         const st = statuses?.[id] || null;
         const commands = Array.isArray(st?.commands) ? st.commands : [];
+        const capabilities = Array.isArray(d?.capabilities) ? d.capabilities.map((c) => String(c || '').trim()).filter(Boolean) : [];
 
         return {
           id,
           label: String(d?.label || st?.label || id),
           commands: Array.from(new Set(commands.map((c) => String(c || '').trim()).filter(Boolean))),
+          capabilities,
         };
       })
       .filter(Boolean);
@@ -1583,6 +1591,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return (v && typeof v === 'object') ? v : {};
   }, [config?.ui?.deviceCommandAllowlist]);
 
+  const effectiveDeviceHomeMetricAllowlist = useMemo(() => {
+    const v = config?.ui?.deviceHomeMetricAllowlist;
+    return (v && typeof v === 'object') ? v : {};
+  }, [config?.ui?.deviceHomeMetricAllowlist]);
+
   useEffect(() => {
     setDeviceOverrideDrafts((prev) => {
       const next = { ...prev };
@@ -1594,13 +1607,16 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
         const label = String(effectiveDeviceLabelOverrides?.[id] ?? '');
         const cmds = effectiveDeviceCommandAllowlist?.[id];
         const normalizedCmds = Array.isArray(cmds) ? cmds.map((c) => String(c)) : null;
+        const hm = effectiveDeviceHomeMetricAllowlist?.[id];
+        const normalizedHomeMetrics = Array.isArray(hm) ? hm.map((c) => String(c)) : null;
 
         if (!existing) {
-          next[id] = { label, commands: normalizedCmds };
+          next[id] = { label, commands: normalizedCmds, homeMetrics: normalizedHomeMetrics };
         } else {
           // Only fill in missing keys to avoid clobbering in-progress edits.
           if (existing.label === undefined) existing.label = label;
           if (existing.commands === undefined) existing.commands = normalizedCmds;
+          if (existing.homeMetrics === undefined) existing.homeMetrics = normalizedHomeMetrics;
         }
       }
 
@@ -1609,7 +1625,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
       }
       return next;
     });
-  }, [allDevices, effectiveDeviceLabelOverrides, effectiveDeviceCommandAllowlist]);
+  }, [allDevices, effectiveDeviceLabelOverrides, effectiveDeviceCommandAllowlist, effectiveDeviceHomeMetricAllowlist]);
 
   // When switching profiles, reset per-device override drafts to reflect the newly selected profile.
   // (Must live after the related useMemos to avoid TDZ errors.)
@@ -1626,14 +1642,16 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
         if (!id) continue;
         const label = String(effectiveDeviceLabelOverrides?.[id] ?? '');
         const cmds = effectiveDeviceCommandAllowlist?.[id];
+        const hm = effectiveDeviceHomeMetricAllowlist?.[id];
         next[id] = {
           label,
           commands: Array.isArray(cmds) ? cmds.map((c) => String(c)) : null,
+          homeMetrics: Array.isArray(hm) ? hm.map((c) => String(c)) : null,
         };
       }
       return next;
     });
-  }, [selectedPanelName, allDevices, effectiveDeviceLabelOverrides, effectiveDeviceCommandAllowlist]);
+  }, [selectedPanelName, allDevices, effectiveDeviceLabelOverrides, effectiveDeviceCommandAllowlist, effectiveDeviceHomeMetricAllowlist]);
 
   const manualRooms = useMemo(() => {
     const rooms = Array.isArray(config?.rooms) ? config.rooms : [];
@@ -1834,6 +1852,67 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
       setDeviceOverrideSaveState((prev) => ({
         ...prev,
         [id]: { ...(prev[id] || {}), commands: { status: 'error', error: e?.message || String(e) } },
+      }));
+    }
+  };
+
+  const toggleHomeMetric = async (device, metricKey, nextAllowed) => {
+    const id = String(device?.id || '').trim();
+    const key = String(metricKey || '').trim();
+    if (!id || !key) return;
+
+    const caps = Array.isArray(device?.capabilities) ? device.capabilities : [];
+    const attrs = statuses?.[id]?.attributes || {};
+
+    const available = (() => {
+      const out = new Set();
+      if (caps.includes('TemperatureMeasurement') || asNumber(attrs.temperature) !== null) out.add('temperature');
+      if (caps.includes('RelativeHumidityMeasurement') || asNumber(attrs.humidity) !== null) out.add('humidity');
+      if (caps.includes('IlluminanceMeasurement') || asNumber(attrs.illuminance) !== null) out.add('illuminance');
+      if (caps.includes('MotionSensor') || typeof attrs.motion === 'string') out.add('motion');
+      if (caps.includes('ContactSensor') || typeof attrs.contact === 'string') out.add('contact');
+      if (caps.includes('GarageDoorControl') || typeof attrs.door === 'string') out.add('door');
+      return Array.from(out);
+    })();
+
+    if (!available.includes(key)) return;
+
+    const existingArr = deviceOverrideDrafts?.[id]?.homeMetrics;
+    const baseSet = Array.isArray(existingArr)
+      ? new Set(existingArr.map((c) => String(c)))
+      : new Set(available);
+
+    if (nextAllowed) baseSet.add(key);
+    else baseSet.delete(key);
+
+    const nextArr = UI_HOME_METRICS.filter((k) => available.includes(k) && baseSet.has(k));
+    const isAll = nextArr.length === available.length;
+
+    setDeviceOverrideDrafts((prev) => ({
+      ...prev,
+      [id]: { ...(prev[id] || {}), homeMetrics: isAll ? null : nextArr },
+    }));
+
+    if (!connected) return;
+
+    setDeviceOverrideSaveState((prev) => ({
+      ...prev,
+      [id]: { ...(prev[id] || {}), homeMetrics: { status: 'saving', error: null } },
+    }));
+    try {
+      await saveDeviceOverrides({
+        deviceId: id,
+        homeMetrics: isAll ? null : nextArr,
+        ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
+      });
+      setDeviceOverrideSaveState((prev) => ({
+        ...prev,
+        [id]: { ...(prev[id] || {}), homeMetrics: { status: 'saved', error: null } },
+      }));
+    } catch (e) {
+      setDeviceOverrideSaveState((prev) => ({
+        ...prev,
+        [id]: { ...(prev[id] || {}), homeMetrics: { status: 'error', error: e?.message || String(e) } },
       }));
     }
   };
@@ -2039,11 +2118,27 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                     : {};
                   const displayNameDraft = String(draft.label ?? '');
                   const explicitCommands = Array.isArray(draft.commands) ? draft.commands.map((c) => String(c)) : null;
+                  const explicitHomeMetrics = Array.isArray(draft.homeMetrics) ? draft.homeMetrics.map((c) => String(c)) : null;
                   const availableAllowedCommands = UI_DEVICE_COMMANDS.filter((c) => Array.isArray(d.commands) && d.commands.includes(c));
+
+                  const attrs = statuses?.[String(d.id)]?.attributes || {};
+                  const availableHomeMetrics = (() => {
+                    const out = new Set();
+                    const caps = Array.isArray(d?.capabilities) ? d.capabilities : [];
+                    if (caps.includes('TemperatureMeasurement') || asNumber(attrs.temperature) !== null) out.add('temperature');
+                    if (caps.includes('RelativeHumidityMeasurement') || asNumber(attrs.humidity) !== null) out.add('humidity');
+                    if (caps.includes('IlluminanceMeasurement') || asNumber(attrs.illuminance) !== null) out.add('illuminance');
+                    if (caps.includes('MotionSensor') || typeof attrs.motion === 'string') out.add('motion');
+                    if (caps.includes('ContactSensor') || typeof attrs.contact === 'string') out.add('contact');
+                    if (caps.includes('GarageDoorControl') || typeof attrs.door === 'string') out.add('door');
+                    return Array.from(out);
+                  })();
 
                   const labelSave = deviceOverrideSaveState?.[d.id]?.label || null;
                   const cmdSave = deviceOverrideSaveState?.[d.id]?.commands || null;
+                  const homeMetricsSave = deviceOverrideSaveState?.[d.id]?.homeMetrics || null;
                   const isInheritCommands = explicitCommands === null;
+                  const isInheritHomeMetrics = explicitHomeMetrics === null;
 
                   return (
                     <div
@@ -2088,7 +2183,90 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                           Overrides
                         </div>
                         <div className="mt-1 text-xs text-white/45">
-                          Display name and which commands show on this panel.
+                          Display name, Home metrics, and which commands show on this panel.
+                        </div>
+
+                        <div className="mt-4">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                              Home Metrics
+                            </div>
+                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">
+                              {homeMetricsSave?.status === 'saving'
+                                ? 'Saving…'
+                                : (homeMetricsSave?.status === 'saved'
+                                  ? 'Saved'
+                                  : (homeMetricsSave?.status === 'error'
+                                    ? 'Error'
+                                    : (isInheritHomeMetrics ? 'Inherit' : 'Custom')))}
+                            </div>
+                          </div>
+
+                          {availableHomeMetrics.length ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {UI_HOME_METRICS.filter((k) => availableHomeMetrics.includes(k)).map((k) => {
+                                const checked = isInheritHomeMetrics ? true : explicitHomeMetrics.includes(k);
+                                const label = k === 'temperature' ? 'Temp'
+                                  : k === 'humidity' ? 'Humidity'
+                                  : k === 'illuminance' ? 'Lux'
+                                  : k === 'motion' ? 'Motion'
+                                  : k === 'contact' ? 'Contact'
+                                  : 'Door';
+                                return (
+                                  <label key={k} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      disabled={!connected || busy}
+                                      onChange={(e) => toggleHomeMetric(d, k, Boolean(e.target.checked))}
+                                    />
+                                    <span className="text-xs font-semibold text-white/80">{label}</span>
+                                  </label>
+                                );
+                              })}
+
+                              <button
+                                type="button"
+                                disabled={!connected || busy || isInheritHomeMetrics}
+                                onClick={async () => {
+                                  setDeviceOverrideDrafts((prev) => ({
+                                    ...prev,
+                                    [d.id]: { ...(prev[d.id] || {}), homeMetrics: null },
+                                  }));
+                                  if (!connected) return;
+                                  setDeviceOverrideSaveState((prev) => ({
+                                    ...prev,
+                                    [d.id]: { ...(prev[d.id] || {}), homeMetrics: { status: 'saving', error: null } },
+                                  }));
+                                  try {
+                                    await saveDeviceOverrides({
+                                      deviceId: String(d.id),
+                                      homeMetrics: null,
+                                      ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
+                                    });
+                                    setDeviceOverrideSaveState((prev) => ({
+                                      ...prev,
+                                      [d.id]: { ...(prev[d.id] || {}), homeMetrics: { status: 'saved', error: null } },
+                                    }));
+                                  } catch (e) {
+                                    setDeviceOverrideSaveState((prev) => ({
+                                      ...prev,
+                                      [d.id]: { ...(prev[d.id] || {}), homeMetrics: { status: 'error', error: e?.message || String(e) } },
+                                    }));
+                                  }
+                                }}
+                                className={`rounded-xl border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || isInheritHomeMetrics) ? 'opacity-50' : 'hover:bg-white/5'}`}
+                              >
+                                Reset
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="mt-2 text-xs text-white/45">No supported Home metrics found for this device.</div>
+                          )}
+
+                          {homeMetricsSave?.status === 'error' ? (
+                            <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {homeMetricsSave.error}</div>
+                          ) : null}
                         </div>
 
                         <label className="mt-3 block">

@@ -363,7 +363,7 @@ const pickOutsideDevices = (rooms) => {
   return all.filter((d) => isOutsideRoomName(d.label));
 };
 
-const computeRoomMetrics = (devices, allowedControlIds) => {
+const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlist) => {
   const temps = [];
   const hums = [];
   const lux = [];
@@ -376,19 +376,41 @@ const computeRoomMetrics = (devices, allowedControlIds) => {
 
   const switches = [];
 
+  const canUseMetric = (deviceId, key) => {
+    const id = String(deviceId || '').trim();
+    if (!id) return true;
+    const raw = (deviceHomeMetricAllowlist && typeof deviceHomeMetricAllowlist === 'object') ? deviceHomeMetricAllowlist : {};
+    const arr = raw[id];
+    if (!Array.isArray(arr)) return true; // inherit
+    return arr.map((v) => String(v || '').trim()).filter(Boolean).includes(key);
+  };
+
   for (const dev of devices) {
     const attrs = dev.status?.attributes || {};
 
-    const t = asNumber(attrs.temperature);
-    if (t !== null) temps.push(t);
+    const allowTemp = canUseMetric(dev.id, 'temperature');
+    const allowHum = canUseMetric(dev.id, 'humidity');
+    const allowLux = canUseMetric(dev.id, 'illuminance');
+    const allowMotion = canUseMetric(dev.id, 'motion');
+    const allowContact = canUseMetric(dev.id, 'contact');
+    const allowDoor = canUseMetric(dev.id, 'door');
 
-    const h = asNumber(attrs.humidity);
-    if (h !== null) hums.push(h);
+    if (allowTemp) {
+      const t = asNumber(attrs.temperature);
+      if (t !== null) temps.push(t);
+    }
 
-    const lx = asNumber(attrs.illuminance);
-    if (lx !== null) lux.push(lx);
+    if (allowHum) {
+      const h = asNumber(attrs.humidity);
+      if (h !== null) hums.push(h);
+    }
 
-    if (attrs.motion === 'active') {
+    if (allowLux) {
+      const lx = asNumber(attrs.illuminance);
+      if (lx !== null) lux.push(lx);
+    }
+
+    if (allowMotion && attrs.motion === 'active') {
       motionActive = true;
       motionActiveCount += 1;
     }
@@ -407,8 +429,8 @@ const computeRoomMetrics = (devices, allowedControlIds) => {
       }
     };
 
-    maybeCountDoorState(attrs.contact);
-    maybeCountDoorState(attrs.door);
+    if (allowContact) maybeCountDoorState(attrs.contact);
+    if (allowDoor) maybeCountDoorState(attrs.door);
 
     if (typeof attrs.switch === 'string' && allowedControlIds?.has(String(dev.id))) {
       switches.push({
@@ -425,6 +447,9 @@ const computeRoomMetrics = (devices, allowedControlIds) => {
     temperature: avg(temps),
     humidity: avg(hums),
     illuminance: avg(lux),
+    temperatureCount: temps.length,
+    humidityCount: hums.length,
+    illuminanceCount: lux.length,
     motionActive,
     motionActiveCount,
     doorCount,
@@ -507,7 +532,16 @@ const getDeviceCommandAllowlistForId = (deviceCommandAllowlist, deviceId) => {
   return arr.map((v) => String(v || '').trim()).filter(Boolean);
 };
 
-const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, deviceCommandAllowlist, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
+const getDeviceHomeMetricAllowlistForId = (deviceHomeMetricAllowlist, deviceId) => {
+  const id = String(deviceId || '').trim();
+  if (!id) return null;
+  const raw = (deviceHomeMetricAllowlist && typeof deviceHomeMetricAllowlist === 'object') ? deviceHomeMetricAllowlist : {};
+  const arr = raw[id];
+  if (!Array.isArray(arr)) return null;
+  return arr.map((v) => String(v || '').trim()).filter(Boolean);
+};
+
+const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, deviceCommandAllowlist, deviceHomeMetricAllowlist, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
 
   const scaleNumRaw = Number(contentScale);
@@ -515,10 +549,13 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
   const titleStyle = { fontSize: `calc(${Math.round(18 * scaleNum)}px * var(--jvs-primary-text-size-scale, 1))` };
   const badgeStyle = { fontSize: `${Math.round(10 * scaleNum)}px` };
 
-  const metrics = useMemo(() => computeRoomMetrics(devices, allowedControlIds), [devices, allowedControlIds]);
+  const metrics = useMemo(
+    () => computeRoomMetrics(devices, allowedControlIds, deviceHomeMetricAllowlist),
+    [devices, allowedControlIds, deviceHomeMetricAllowlist],
+  );
 
   const supportedActions = useMemo(() => {
-    const allow = new Set(['on', 'off', 'refresh', 'push']);
+    const allow = new Set(['on', 'off', 'toggle', 'refresh', 'push']);
     return devices
       .map((d) => ({
         id: d.id,
@@ -556,18 +593,20 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
   };
 
   const hasEnv =
-    metrics.temperature !== null ||
-    metrics.humidity !== null ||
-    metrics.illuminance !== null ||
-    devices.some((d) => d.status?.attributes?.motion) ||
-    devices.some((d) => typeof d.status?.attributes?.contact === 'string' || typeof d.status?.attributes?.door === 'string') ||
+    metrics.temperatureCount > 0 ||
+    metrics.humidityCount > 0 ||
+    metrics.illuminanceCount > 0 ||
     devices.some((d) => {
-      const caps = Array.isArray(d?.capabilities) ? d.capabilities : [];
-      return caps.includes('ContactSensor')
-        || caps.includes('MotionSensor')
-        || caps.includes('TemperatureMeasurement')
-        || caps.includes('RelativeHumidityMeasurement')
-        || caps.includes('IlluminanceMeasurement');
+      const per = getDeviceHomeMetricAllowlistForId(deviceHomeMetricAllowlist, d.id);
+      if (per !== null && !per.includes('motion')) return false;
+      return d.status?.attributes?.motion;
+    }) ||
+    devices.some((d) => {
+      const per = getDeviceHomeMetricAllowlistForId(deviceHomeMetricAllowlist, d.id);
+      const allowContact = per === null || per.includes('contact');
+      const allowDoor = per === null || per.includes('door');
+      return (allowContact && typeof d.status?.attributes?.contact === 'string')
+        || (allowDoor && typeof d.status?.attributes?.door === 'string');
     });
 
   const headerGlow = (metrics.motionActive || metrics.doorOpen)
@@ -601,7 +640,8 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
 
       {hasEnv ? (
         <div className="mt-4 grid grid-cols-2 lg:grid-cols-3 gap-3">
-          <MetricCard
+          {metrics.temperatureCount > 0 ? (
+            <MetricCard
             title="Temperature"
             value={formatTemp(metrics.temperature)}
             sub={metrics.temperature === null ? 'No sensor' : null}
@@ -616,8 +656,10 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             secondaryTextStrongClassName={secondaryTextColorClassName}
             scaled
             scale={scaleNum}
-          />
-          <MetricCard
+            />
+          ) : null}
+          {metrics.humidityCount > 0 ? (
+            <MetricCard
             title="Humidity"
             value={metrics.humidity === null ? '—' : formatPercent(metrics.humidity)}
             sub={metrics.humidity === null ? 'No sensor' : null}
@@ -636,8 +678,10 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             secondaryTextStrongClassName={secondaryTextColorClassName}
             scaled
             scale={scaleNum}
-          />
-          <MetricCard
+            />
+          ) : null}
+          {metrics.illuminanceCount > 0 ? (
+            <MetricCard
             title="Illuminance"
             value={metrics.illuminance === null ? '—' : formatLux(metrics.illuminance)}
             sub={metrics.illuminance === null ? 'No sensor' : null}
@@ -656,7 +700,8 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             secondaryTextStrongClassName={secondaryTextColorClassName}
             scaled
             scale={scaleNum}
-          />
+            />
+          ) : null}
         </div>
       ) : null}
 
@@ -703,6 +748,19 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
                       disabled={!connected}
                       busy={busyActions.has(`${d.id}:off`)}
                       onClick={() => runAction(d.id, 'off')}
+                      uiScheme={uiScheme}
+                      scaled
+                      scale={scaleNum}
+                    />
+                  ) : null}
+                  {!d.commands.includes('on') && !d.commands.includes('off') && d.commands.includes('toggle') ? (
+                    <ActionButton
+                      label="Toggle"
+                      icon={Power}
+                      accent="fixed"
+                      disabled={!connected}
+                      busy={busyActions.has(`${d.id}:toggle`)}
+                      onClick={() => runAction(d.id, 'toggle')}
                       uiScheme={uiScheme}
                       scaled
                       scale={scaleNum}
@@ -1167,6 +1225,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   colorizeHomeValuesOpacityPct={colorizeHomeValuesOpacityPct}
                   sensorIndicatorColors={sensorIndicatorColors}
                   deviceCommandAllowlist={config?.ui?.deviceCommandAllowlist}
+                  deviceHomeMetricAllowlist={config?.ui?.deviceHomeMetricAllowlist}
                   primaryTextColorClassName={primaryTextColorClass}
                   secondaryTextColorClassName={secondaryTextColorClass}
                   contentScale={roomContentScale}
