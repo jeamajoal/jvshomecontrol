@@ -7,7 +7,7 @@ import { API_HOST } from '../apiHost';
 const AdminPanel = ({ config, isOpen, onClose, uiScheme }) => {
     const [activeTab, setActiveTab] = useState('sensors');
 
-    const resolvedUiScheme = uiScheme || getUiScheme(config?.ui?.colorScheme);
+    const resolvedUiScheme = uiScheme || getUiScheme(config?.ui?.accentColorId);
 
     // Sensor Form State
     const [newSensor, setNewSensor] = useState({ id: '', roomId: '', label: '', type: 'entry', statusUri: '' });

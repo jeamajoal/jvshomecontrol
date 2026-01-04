@@ -20,6 +20,7 @@ REPO_URL="${REPO_URL:-https://github.com/jeamajoal/JVSHomeControl.git}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
 CONFIG_FILE_REL="${CONFIG_FILE_REL:-server/data/config.json}"
 CERT_DIR_REL="${CERT_DIR_REL:-server/data/certs}"
+BACKGROUNDS_DIR_REL="${BACKGROUNDS_DIR_REL:-server/data/backgrounds}"
 
 log() { echo "[install] $*"; }
 warn() { echo "[install][WARN] $*"; }
@@ -183,10 +184,15 @@ ensure_repo() {
   local cfg cert_dir
   cfg="${APP_DIR}/${CONFIG_FILE_REL}"
   cert_dir="${APP_DIR}/${CERT_DIR_REL}"
+  local backgrounds_dir
+  backgrounds_dir="${APP_DIR}/${BACKGROUNDS_DIR_REL}"
 
   local cfg_backup cert_backup_dir
   cfg_backup=""
   cert_backup_dir=""
+
+  local backgrounds_backup_dir
+  backgrounds_backup_dir=""
 
   if [[ -f "${cfg}" ]]; then
     local stamp
@@ -203,6 +209,15 @@ ensure_repo() {
     log "Backing up existing certs dir to ${cert_backup_dir}…"
     mkdir -p "${cert_backup_dir}"
     cp -a "${cert_dir}/." "${cert_backup_dir}/" || true
+  fi
+
+  if [[ -d "${backgrounds_dir}" ]]; then
+    local stamp
+    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    backgrounds_backup_dir="/tmp/jvshomecontrol.backgrounds.${stamp}"
+    log "Backing up existing backgrounds dir to ${backgrounds_backup_dir}…"
+    mkdir -p "${backgrounds_backup_dir}"
+    cp -a "${backgrounds_dir}/." "${backgrounds_backup_dir}/" || true
   fi
 
   if [[ -d "${APP_DIR}/.git" ]]; then
@@ -256,6 +271,16 @@ ensure_repo() {
 
     warn "Backup left in /tmp: ${cert_backup_dir}"
     warn "After confirming HTTPS is working, you should remove it (e.g. sudo rm -rf '${cert_backup_dir}')."
+  fi
+
+  if [[ -n "${backgrounds_backup_dir}" && -d "${backgrounds_backup_dir}" ]]; then
+    log "Restoring backgrounds dir to ${backgrounds_dir}…"
+    mkdir -p "${backgrounds_dir}"
+    cp -a "${backgrounds_backup_dir}/." "${backgrounds_dir}/" || true
+    chown -R "${APP_USER}:${APP_GROUP}" "${backgrounds_dir}" || true
+
+    warn "Backup left in /tmp: ${backgrounds_backup_dir}"
+    warn "After confirming backgrounds are present, you should remove it (e.g. sudo rm -rf '${backgrounds_backup_dir}')."
   fi
 }
 

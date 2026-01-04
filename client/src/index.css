@@ -6,6 +6,13 @@
   :root {
     /* Default accent (Electric Blue) — overridden at runtime from config */
     --accent-rgb: 0 212 255;
+
+    /* Accent glow (separate from UI accent); defaults to the UI accent. */
+    --jvs-glow-rgb: var(--accent-rgb);
+
+    /* Home icon styling */
+    --jvs-icon-opacity: 1;
+    --jvs-icon-size-scale: 1;
   }
 
   html, body, #root {
@@ -27,7 +34,113 @@
 }
 
 .glass-panel {
-  @apply bg-surface/30 backdrop-blur-xl border border-white/5 rounded-2xl shadow-2xl;
+  @apply bg-surface backdrop-blur-xl border border-white/5 rounded-2xl shadow-2xl;
+  --tw-bg-opacity: var(--jvs-glass-panel-bg-opacity, 0.30);
+  -webkit-backdrop-filter: blur(var(--jvs-glass-panel-blur-px, 24px));
+  backdrop-filter: blur(var(--jvs-glass-panel-blur-px, 24px));
+}
+
+/* Home: allow controlling the "secondary" (small/gray) text opacity via Settings. */
+.jvs-secondary-text {
+  opacity: var(--jvs-secondary-text-opacity, 0.45);
+}
+
+.jvs-secondary-text-strong {
+  opacity: var(--jvs-secondary-text-strong-opacity, 0.55);
+}
+
+/* Home: allow controlling the "primary" (main) text opacity via Settings. */
+.jvs-primary-text {
+  opacity: var(--jvs-primary-text-opacity, 1);
+}
+
+.jvs-primary-text-strong {
+  opacity: var(--jvs-primary-text-strong-opacity, 1);
+}
+
+/* Home: primary metric values scale (in addition to card scaling). */
+.jvs-home-primary-metric-value {
+  font-size: calc(1.875rem * var(--jvs-primary-text-size-scale, 1));
+  line-height: 1.05;
+}
+
+@media (min-width: 768px) {
+  .jvs-home-primary-metric-value {
+    font-size: calc(2.25rem * var(--jvs-primary-text-size-scale, 1));
+  }
+}
+
+/* Home: room titles scale (in addition to card scaling). */
+.jvs-home-room-title {
+  font-size: calc(1rem * var(--jvs-primary-text-size-scale, 1));
+}
+
+@media (min-width: 768px) {
+  .jvs-home-room-title {
+    font-size: calc(1.125rem * var(--jvs-primary-text-size-scale, 1));
+  }
+}
+
+/* Accent-tinted card background (used for active/selected states).
+   Uses the current scheme's --accent-rgb and is scaled via cardOpacityScalePct. */
+.jvs-accent-card-bg {
+  background-color: rgb(var(--accent-rgb) / var(--jvs-accent-card-bg-opacity, 0.10));
+}
+
+.jvs-icon {
+  opacity: var(--jvs-icon-opacity, 1);
+  transform: scale(var(--jvs-icon-size-scale, 1));
+  transform-origin: center;
+}
+
+/* Menu/Header surfaces should respect the same transparency setting so the Home background can be truly full-screen. */
+.jvs-header-bar {
+  @apply bg-black;
+  --tw-bg-opacity: var(--jvs-header-bg-opacity, 0.20);
+  -webkit-backdrop-filter: blur(var(--jvs-header-blur-px, 12px));
+  backdrop-filter: blur(var(--jvs-header-blur-px, 12px));
+}
+
+.jvs-menu-surface {
+  @apply bg-black;
+  --tw-bg-opacity: var(--jvs-menu-surface-bg-opacity, 0.20);
+  -webkit-backdrop-filter: blur(var(--jvs-menu-blur-px, 12px));
+  backdrop-filter: blur(var(--jvs-menu-blur-px, 12px));
+}
+
+.jvs-menu-row {
+  @apply bg-black;
+  --tw-bg-opacity: var(--jvs-menu-row-bg-opacity, 0.10);
+  -webkit-backdrop-filter: blur(var(--jvs-menu-blur-px, 12px));
+  backdrop-filter: blur(var(--jvs-menu-blur-px, 12px));
+}
+
+.jvs-menu-select {
+  @apply bg-black;
+  --tw-bg-opacity: var(--jvs-menu-select-bg-opacity, 0.10);
+}
+
+.jvs-menu-select-strong {
+  @apply bg-black;
+  --tw-bg-opacity: var(--jvs-menu-select-strong-bg-opacity, 0.30);
+}
+
+/* Home: allow configurable room-card columns on wide screens. */
+.jvs-home-rooms-grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+@media (min-width: 1024px) {
+  .jvs-home-rooms-grid {
+    grid-template-columns: repeat(var(--jvs-home-rooms-cols-desktop, 2), minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .jvs-home-rooms-grid {
+    grid-template-columns: repeat(var(--jvs-home-rooms-cols-desktop, 3), minmax(0, 1fr));
+  }
 }
 
 /* Utility pages (Settings / Events): slightly brighter and more structured. */
@@ -36,11 +149,15 @@
 }
 
 .utility-panel {
-  @apply rounded-2xl border border-white/20 bg-white/10 backdrop-blur-xl shadow-2xl;
+  @apply rounded-2xl border border-white/20 bg-white backdrop-blur-xl shadow-2xl;
+  --tw-bg-opacity: var(--jvs-utility-panel-bg-opacity, 0.10);
+  -webkit-backdrop-filter: blur(var(--jvs-utility-panel-blur-px, 24px));
+  backdrop-filter: blur(var(--jvs-utility-panel-blur-px, 24px));
 }
 
 .utility-group {
-  @apply rounded-2xl border-2 border-white/20 bg-black/20;
+  @apply rounded-2xl border-2 border-white/20 bg-black;
+  --tw-bg-opacity: var(--jvs-utility-group-bg-opacity, 0.20);
 }
 
 /* Make form controls easier to read/tap on tablets. */

@@ -134,57 +134,6 @@ const useClock = (intervalMs = 1000) => {
   return now;
 };
 
-const useFitScale = () => {
-  const viewportRef = useRef(null);
-  const contentRef = useRef(null);
-  const [scale, setScale] = useState(1);
-
-  useEffect(() => {
-    const viewportEl = viewportRef.current;
-    const contentEl = contentRef.current;
-    if (!viewportEl || !contentEl) return;
-
-    const compute = () => {
-      const isMdUp = typeof window !== 'undefined'
-        ? window.matchMedia('(min-width: 768px)').matches
-        : true;
-
-      if (!isMdUp) {
-        setScale(1);
-        return;
-      }
-
-      // Safety gutter to avoid sub-pixel rounding causing right-edge peeking
-      // on some fullscreen setups (e.g., Firefox/Linux).
-      const SAFE_GUTTER_PX = 8;
-      const vw = Math.max((viewportEl.clientWidth || 1) - SAFE_GUTTER_PX, 1);
-      const vh = Math.max((viewportEl.clientHeight || 1) - SAFE_GUTTER_PX, 1);
-      const cw = Math.max(contentEl.scrollWidth, contentEl.clientWidth, 1);
-      const ch = Math.max(contentEl.scrollHeight, contentEl.clientHeight, 1);
-
-      // Prefer readability over always fitting.
-      // Allow modest scale-up when there is extra space, but never shrink;
-      // if content grows (more sensors/rooms), we scroll instead.
-      const raw = Math.min(vw / cw, vh / ch) * 0.99;
-      const next = Math.min(Math.max(raw, 1), 1.15);
-      setScale((prev) => (Math.abs(prev - next) < 0.01 ? prev : next));
-    };
-
-    compute();
-    const ro = new ResizeObserver(compute);
-    ro.observe(viewportEl);
-    ro.observe(contentEl);
-    window.addEventListener('resize', compute);
-
-    return () => {
-      window.removeEventListener('resize', compute);
-      ro.disconnect();
-    };
-  }, []);
-
-  return { viewportRef, contentRef, scale };
-};
-
 const MetricCard = ({
   title,
   value,
@@ -194,37 +143,102 @@ const MetricCard = ({
   valueClassName,
   valueStyle,
   subClassName,
+  primaryTextColorClassName,
+  secondaryTextClassName,
+  secondaryTextStrongClassName,
   iconWrapClassName,
   className,
   uiScheme,
+  scaled,
+  scale,
 }) => {
-  const effectiveValueClassName = (valueClassName && String(valueClassName).trim().length)
-    ? valueClassName
-    : 'text-white';
+  const valueClassTrimmed = (valueClassName && String(valueClassName).trim().length)
+    ? String(valueClassName).trim()
+    : '';
+  const primaryColorTrimmed = (primaryTextColorClassName && String(primaryTextColorClassName).trim().length)
+    ? String(primaryTextColorClassName).trim()
+    : '';
+  const effectiveValueClassName = valueClassTrimmed
+    ? `${primaryColorTrimmed} ${valueClassTrimmed}`.trim()
+    : (primaryColorTrimmed || 'text-white');
+
+  const scaleNumRaw = Number(scale);
+  const scaleNum = Number.isFinite(scaleNumRaw) ? Math.max(0.5, Math.min(2, scaleNumRaw)) : 1;
+  const isScaled = scaled === true;
+
+  const scaledPaddingStyle = isScaled
+    ? { padding: `${Math.round(16 * scaleNum)}px` }
+    : undefined;
+
+  const secondaryTextScaleVar = 'var(--jvs-secondary-text-size-scale, 1)';
+  const titleFontPx = Math.round((isScaled ? 11 * scaleNum : 11));
+  const subFontPx = Math.round((isScaled ? 13 * scaleNum : 13));
+  const titleStyle = { fontSize: `calc(${titleFontPx}px * ${secondaryTextScaleVar})` };
+  const subStyle = { fontSize: `calc(${subFontPx}px * ${secondaryTextScaleVar})` };
+
+  const primaryTextScaleVar = 'var(--jvs-primary-text-size-scale, 1)';
+  const scaledValueStyle = isScaled
+    ? {
+        fontSize: `calc(${Math.round(34 * scaleNum)}px * ${primaryTextScaleVar})`,
+        lineHeight: 1.05,
+        ...(valueStyle || {}),
+      }
+    : valueStyle;
+
+
+  const scaledIconWrapStyle = isScaled
+    ? {
+        width: `${Math.round(48 * scaleNum)}px`,
+        height: `${Math.round(48 * scaleNum)}px`,
+        borderRadius: `${Math.round(16 * scaleNum)}px`,
+        marginTop: `${Math.round(4 * scaleNum)}px`,
+        transform: `translate(${Math.round(6 * scaleNum)}px, ${Math.round(14 * scaleNum)}px)`,
+      }
+    : undefined;
+
+  const scaledIconStyle = isScaled
+    ? {
+        width: `${Math.round(24 * scaleNum)}px`,
+        height: `${Math.round(24 * scaleNum)}px`,
+      }
+    : undefined;
 
   return (
-    <div className={`glass-panel p-4 md:p-5 border ${accentClassName} ${className || ''}`.trim()}>
+    <div
+      className={`glass-panel ${isScaled ? '' : 'p-4 md:p-5'} border ${accentClassName} ${className || ''}`.trim()}
+      style={scaledPaddingStyle}
+    >
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
-          <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+          <div
+            className={`uppercase tracking-[0.2em] jvs-secondary-text-strong font-semibold ${secondaryTextStrongClassName || ''}`.trim()}
+            style={titleStyle}
+          >
             {title}
           </div>
           <div
-            style={valueStyle}
-            className={`mt-2 text-3xl md:text-4xl font-extrabold tracking-tight truncate ${effectiveValueClassName}`.trim()}
+            style={scaledValueStyle}
+            className={`mt-2 jvs-primary-text-strong ${isScaled ? '' : 'jvs-home-primary-metric-value'} font-extrabold tracking-tight truncate ${effectiveValueClassName}`.trim()}
           >
             {value}
           </div>
           {sub ? (
-            <div className={subClassName || 'mt-1 text-xs text-white/45 truncate'}>{sub}</div>
+            <div
+              className={subClassName || `mt-1 jvs-secondary-text truncate ${secondaryTextClassName || ''}`}
+              style={subStyle}
+            >
+              {sub}
+            </div>
           ) : null}
         </div>
 
         <div
-          className={`shrink-0 self-start mt-1 md:mt-1.5 translate-x-1.5 translate-y-3.5 w-10 h-10 md:w-12 md:h-12 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center ${iconWrapClassName || ''}`.trim()}
+          className={`shrink-0 self-start ${isScaled ? '' : 'mt-1 md:mt-1.5 translate-x-1.5 translate-y-3.5 w-10 h-10 md:w-12 md:h-12 rounded-2xl'} border border-white/10 bg-black/30 flex items-center justify-center ${iconWrapClassName || ''}`.trim()}
+          style={scaledIconWrapStyle}
         >
           {React.createElement(IconComponent, {
-            className: `w-5 h-5 md:w-6 md:h-6 ${uiScheme?.metricIcon || 'text-neon-blue'}`,
+            className: `${isScaled ? '' : 'w-5 h-5 md:w-6 md:h-6'} jvs-icon ${uiScheme?.metricIcon || 'text-neon-blue'}`.trim(),
+            style: scaledIconStyle,
           })}
         </div>
       </div>
@@ -242,7 +256,7 @@ const getColorizeOpacityStyle = (enabled, opacityPct) => {
 
 const SwitchButton = ({ label, isOn, disabled, onToggle, busy, uiScheme }) => {
   const stateClass = isOn
-    ? `${uiScheme?.selectedCard || 'bg-neon-blue/15 border-neon-blue/40'} ${uiScheme?.selectedText || 'text-neon-blue'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
+    ? 'bg-white/10 border-white/20 text-white'
     : 'bg-white/5 border-white/10 text-white/70';
 
   return (
@@ -271,9 +285,9 @@ const SwitchButton = ({ label, isOn, disabled, onToggle, busy, uiScheme }) => {
 
         <div className="shrink-0 self-start mt-1 md:mt-1.5 translate-x-1.5 translate-y-3.5 w-10 h-10 md:w-12 md:h-12 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center">
           {busy ? (
-            <Loader2 className={`w-5 h-5 md:w-6 md:h-6 animate-spin ${uiScheme?.metricIcon || 'text-neon-blue'}`} />
+            <Loader2 className={`w-5 h-5 md:w-6 md:h-6 animate-spin jvs-icon ${uiScheme?.metricIcon || 'text-neon-blue'}`} />
           ) : (
-            <Power className={`w-5 h-5 md:w-6 md:h-6 ${isOn ? (uiScheme?.selectedText || 'text-neon-blue') : 'text-white/60'}`} />
+            <Power className={`w-5 h-5 md:w-6 md:h-6 ${isOn ? 'text-white' : 'text-white/60'}`} />
           )}
         </div>
       </div>
@@ -281,19 +295,41 @@ const SwitchButton = ({ label, isOn, disabled, onToggle, busy, uiScheme }) => {
   );
 };
 
-const ActionButton = ({ label, icon: IconComponent, disabled, busy, onClick, accent = 'blue', uiScheme }) => {
+const ActionButton = ({ label, icon: IconComponent, disabled, busy, onClick, accent = 'blue', uiScheme, scaled, scale }) => {
   const accentClass = accent === 'green'
     ? 'text-neon-green border-neon-green/30 bg-neon-green/10'
-    : (uiScheme?.actionButton || 'text-neon-blue border-neon-blue/30 bg-neon-blue/10');
+    : (accent === 'fixed'
+      ? 'text-white/80 border-white/15 bg-white/5'
+      : (uiScheme?.actionButton || 'text-neon-blue border-neon-blue/30 bg-neon-blue/10'));
+
+  const scaleNumRaw = Number(scale);
+  const scaleNum = Number.isFinite(scaleNumRaw) ? Math.max(0.5, Math.min(2, scaleNumRaw)) : 1;
+  const isScaled = scaled === true;
+
+  const scaledButtonStyle = isScaled
+    ? {
+        padding: `${Math.round(8 * scaleNum)}px ${Math.round(12 * scaleNum)}px`,
+        borderRadius: `${Math.round(12 * scaleNum)}px`,
+        fontSize: `${Math.round(12 * scaleNum)}px`,
+      }
+    : undefined;
+
+  const scaledIconStyle = isScaled
+    ? {
+        width: `${Math.round(16 * scaleNum)}px`,
+        height: `${Math.round(16 * scaleNum)}px`,
+      }
+    : undefined;
 
   return (
     <button
       type="button"
       disabled={disabled || busy}
       onClick={onClick}
+      style={scaledButtonStyle}
       className={`
-        rounded-xl border px-3 py-2
-        text-xs font-bold uppercase tracking-[0.18em]
+        rounded-xl border ${isScaled ? '' : 'px-3 py-2'}
+        ${isScaled ? '' : 'text-xs'} font-bold uppercase tracking-[0.18em]
         transition-colors
         active:scale-[0.99]
         ${accentClass}
@@ -302,9 +338,9 @@ const ActionButton = ({ label, icon: IconComponent, disabled, busy, onClick, acc
     >
       <span className="inline-flex items-center gap-2">
         {busy ? (
-          <Loader2 className="w-4 h-4 animate-spin" />
+          <Loader2 className={`${isScaled ? '' : 'w-4 h-4'} animate-spin`.trim()} style={scaledIconStyle} />
         ) : (
-          React.createElement(IconComponent, { className: 'w-4 h-4' })
+          React.createElement(IconComponent, { className: isScaled ? '' : 'w-4 h-4', style: scaledIconStyle })
         )}
         {label}
       </span>
@@ -462,8 +498,13 @@ async function sendDeviceCommand(deviceId, command, args = []) {
   }
 }
 
-const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors }) => {
+const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
+
+  const scaleNumRaw = Number(contentScale);
+  const scaleNum = Number.isFinite(scaleNumRaw) ? Math.max(0.5, Math.min(2, scaleNumRaw)) : 1;
+  const titleStyle = { fontSize: `calc(${Math.round(18 * scaleNum)}px * var(--jvs-primary-text-size-scale, 1))` };
+  const badgeStyle = { fontSize: `${Math.round(10 * scaleNum)}px` };
 
   const metrics = useMemo(() => computeRoomMetrics(devices, allowedControlIds), [devices, allowedControlIds]);
 
@@ -518,7 +559,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
     ? `${uiScheme?.selectedCard || 'border-primary/40'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
     : 'border-white/10';
 
-  const badgeBase = 'inline-flex items-center rounded-lg border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] border-white/10 bg-white/5';
+  const badgeBase = `inline-flex items-center rounded-lg border px-2 py-1 ${scaleNum === 1 ? 'text-[10px]' : ''} font-bold uppercase tracking-[0.18em] border-white/10 bg-white/5`;
 
   const motionBadgeText = getToleranceTextClassForColorId(
     normalizeToleranceColorId(sensorIndicatorColors?.motion, 'warning')
@@ -530,13 +571,16 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
   return (
     <section className={`glass-panel p-4 md:p-5 border ${headerGlow}`}>
       <div className="flex items-center justify-between gap-3">
-        <h2 className="min-w-0 text-base md:text-lg font-extrabold tracking-wide text-white truncate">
+        <h2
+          className={`min-w-0 jvs-primary-text-strong ${scaleNum === 1 ? 'jvs-home-room-title' : ''} font-extrabold tracking-wide truncate ${primaryTextColorClassName || 'text-white'}`.trim()}
+          style={scaleNum === 1 ? undefined : titleStyle}
+        >
           {roomName}
         </h2>
 
         <div className="shrink-0 flex items-center gap-2">
-          {metrics.motionActive ? <span className={`${badgeBase} ${motionBadgeText}`}>Motion</span> : null}
-          {metrics.doorOpen ? <span className={`${badgeBase} ${doorBadgeText}`}>Door</span> : null}
+          {metrics.motionActive ? <span className={`${badgeBase} ${motionBadgeText}`} style={scaleNum === 1 ? undefined : badgeStyle}>Motion</span> : null}
+          {metrics.doorOpen ? <span className={`${badgeBase} ${doorBadgeText}`} style={scaleNum === 1 ? undefined : badgeStyle}>Door</span> : null}
         </div>
       </div>
 
@@ -552,6 +596,11 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
             iconWrapClassName="bg-white/5"
             uiScheme={uiScheme}
+            primaryTextColorClassName={primaryTextColorClassName}
+            secondaryTextClassName={secondaryTextColorClassName}
+            secondaryTextStrongClassName={secondaryTextColorClassName}
+            scaled
+            scale={scaleNum}
           />
           <MetricCard
             title="Humidity"
@@ -562,11 +611,16 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             valueClassName={
               colorizeHomeValues
                 ? getColorizedValueClass('humidity', metrics.humidity, climateTolerances, climateToleranceColors, true)
-                : 'text-white'
+                : ''
             }
             valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
             iconWrapClassName="bg-white/5"
             uiScheme={uiScheme}
+            primaryTextColorClassName={primaryTextColorClassName}
+            secondaryTextClassName={secondaryTextColorClassName}
+            secondaryTextStrongClassName={secondaryTextColorClassName}
+            scaled
+            scale={scaleNum}
           />
           <MetricCard
             title="Illuminance"
@@ -577,47 +631,66 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             valueClassName={
               colorizeHomeValues
                 ? getColorizedValueClass('illuminance', metrics.illuminance, climateTolerances, climateToleranceColors, true)
-                : 'text-white'
+                : ''
             }
             valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
             iconWrapClassName="bg-white/5"
             uiScheme={uiScheme}
+            primaryTextColorClassName={primaryTextColorClassName}
+            secondaryTextClassName={secondaryTextColorClassName}
+            secondaryTextStrongClassName={secondaryTextColorClassName}
+            scaled
+            scale={scaleNum}
           />
         </div>
       ) : null}
 
       {supportedActions.length ? (
         <div className="mt-4">
-          <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/45 font-semibold mb-3">
+          <div
+            className={`text-[11px] md:text-xs uppercase tracking-[0.2em] jvs-secondary-text font-semibold mb-3 ${secondaryTextColorClassName}`.trim()}
+            style={{ fontSize: `calc(11px * var(--jvs-secondary-text-size-scale, 1))` }}
+          >
             Controls
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {supportedActions.map((d) => (
-              <div key={d.id} className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold truncate">
+              <div
+                key={d.id}
+                className={`glass-panel ${scaleNum === 1 ? 'p-4' : ''} border border-white/10`}
+                style={scaleNum === 1 ? undefined : { padding: `${Math.round(16 * scaleNum)}px` }}
+              >
+                <div
+                  className={`${scaleNum === 1 ? 'text-[11px] md:text-xs' : ''} uppercase tracking-[0.2em] jvs-secondary-text-strong font-semibold truncate ${secondaryTextColorClassName}`.trim()}
+                  style={{ fontSize: `calc(${Math.round(11 * scaleNum)}px * var(--jvs-secondary-text-size-scale, 1))` }}
+                >
                   {d.label}
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2">
+                <div className="mt-4 flex flex-wrap gap-2">
                   {d.commands.includes('on') ? (
                     <ActionButton
                       label="On"
                       icon={Power}
-                      accent="blue"
+                      accent="fixed"
                       disabled={!connected}
                       busy={busyActions.has(`${d.id}:on`)}
                       onClick={() => runAction(d.id, 'on')}
                       uiScheme={uiScheme}
+                      scaled
+                      scale={scaleNum}
                     />
                   ) : null}
                   {d.commands.includes('off') ? (
                     <ActionButton
                       label="Off"
                       icon={Power}
-                      accent="green"
+                      accent="fixed"
                       disabled={!connected}
                       busy={busyActions.has(`${d.id}:off`)}
                       onClick={() => runAction(d.id, 'off')}
                       uiScheme={uiScheme}
+                      scaled
+                      scale={scaleNum}
                     />
                   ) : null}
                   {d.commands.includes('refresh') ? (
@@ -629,6 +702,8 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
                       busy={busyActions.has(`${d.id}:refresh`)}
                       onClick={() => runAction(d.id, 'refresh')}
                       uiScheme={uiScheme}
+                      scaled
+                      scale={scaleNum}
                     />
                   ) : null}
                   {d.commands.includes('push') ? (
@@ -640,6 +715,8 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
                       busy={busyActions.has(`${d.id}:push`)}
                       onClick={() => runAction(d.id, 'push')}
                       uiScheme={uiScheme}
+                      scaled
+                      scale={scaleNum}
                     />
                   ) : null}
                 </div>
@@ -663,9 +740,12 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
   const connected = connectedProp ?? ctx?.connected;
   const uiScheme = uiSchemeProp ?? ctx?.uiScheme;
 
+  const viewportRef = useRef(null);
+  const metricRowRef = useRef(null);
+
   const resolvedUiScheme = useMemo(
-    () => uiScheme || getUiScheme(config?.ui?.colorScheme),
-    [uiScheme, config?.ui?.colorScheme],
+    () => uiScheme || getUiScheme(config?.ui?.accentColorId),
+    [uiScheme, config?.ui?.accentColorId],
   );
 
   const colorizeHomeValues = Boolean(config?.ui?.colorizeHomeValues);
@@ -745,10 +825,64 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     };
   }, [config?.ui?.sensorIndicatorColors]);
 
+  const homeBackground = useMemo(() => {
+    const raw = (config?.ui?.homeBackground && typeof config.ui.homeBackground === 'object')
+      ? config.ui.homeBackground
+      : {};
+
+    const enabled = raw.enabled === true;
+    const url = (raw.url === null || raw.url === undefined) ? null : String(raw.url).trim();
+    const opacityRaw = Number(raw.opacityPct);
+    const opacityPct = Number.isFinite(opacityRaw)
+      ? Math.max(0, Math.min(100, Math.round(opacityRaw)))
+      : 35;
+
+    if (!enabled || !url) return { enabled: false, url: null, opacityPct };
+    return { enabled: true, url, opacityPct };
+  }, [config?.ui?.homeBackground]);
+
+  const cardScalePct = useMemo(() => {
+    const raw = Number(config?.ui?.cardScalePct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(50, Math.min(200, Math.round(raw)));
+  }, [config?.ui?.cardScalePct]);
+
+  const secondaryTextColorId = useMemo(() => {
+    const raw = String(config?.ui?.secondaryTextColorId ?? '').trim();
+    if (!raw) return '';
+    return normalizeToleranceColorId(raw, 'neon-green');
+  }, [config?.ui?.secondaryTextColorId]);
+
+  const secondaryTextColorClass = useMemo(() => {
+    if (!secondaryTextColorId) return '';
+    return getToleranceTextClassForColorId(secondaryTextColorId);
+  }, [secondaryTextColorId]);
+
+  const primaryTextColorId = useMemo(() => {
+    const raw = String(config?.ui?.primaryTextColorId ?? '').trim();
+    if (!raw) return '';
+    return normalizeToleranceColorId(raw, 'neon-green');
+  }, [config?.ui?.primaryTextColorId]);
+
+  const primaryTextColorClass = useMemo(() => {
+    if (!primaryTextColorId) return '';
+    return getToleranceTextClassForColorId(primaryTextColorId);
+  }, [primaryTextColorId]);
+
+  const homeRoomColumnsXl = useMemo(() => {
+    const raw = Number(config?.ui?.homeRoomColumnsXl);
+    if (!Number.isFinite(raw)) return 3;
+    return Math.max(1, Math.min(6, Math.round(raw)));
+  }, [config?.ui?.homeRoomColumnsXl]);
+
   const allowedControlIds = useMemo(() => getAllowedDeviceIdSet(config, 'main'), [config]);
   const rooms = useMemo(() => buildRoomsWithStatuses(config, statuses), [config, statuses]);
   const now = useClock(1000);
-  const { viewportRef, contentRef, scale } = useFitScale();
+  const roomContentScale = useMemo(() => {
+    const raw = Number(cardScalePct);
+    if (!Number.isFinite(raw)) return 1;
+    return Math.max(0.5, Math.min(2, raw / 100));
+  }, [cardScalePct]);
 
   const [weather, setWeather] = useState(null);
   const [weatherError, setWeatherError] = useState(null);
@@ -855,31 +989,41 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     : outsideSensors.temperature;
 
   return (
-    <div ref={viewportRef} className="w-full h-full overflow-auto p-2 md:p-3">
-      <div
-        className="w-full h-full"
-        style={{
-          transform: `scale(${scale})`,
-          transformOrigin: 'top left',
-        }}
-      >
-        <div ref={contentRef} className="w-full">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+    <div ref={viewportRef} className="relative w-full h-full overflow-auto p-2 md:p-3">
+      {homeBackground.enabled && homeBackground.url ? (
+        <div
+          className="fixed inset-0 z-0 pointer-events-none"
+          style={{
+            backgroundImage: `url(${JSON.stringify(String(homeBackground.url))})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: homeBackground.opacityPct / 100,
+          }}
+        />
+      ) : null}
+
+      <div className="relative z-10 w-full">
+        <div className="w-full">
+          <div ref={metricRowRef} className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
             <MetricCard
               title="Time"
               value={formatTime(now)}
               sub={formatDate(now)}
-              subClassName="mt-1 text-[13px] text-white/45 truncate"
+              subClassName={`mt-1 text-[13px] jvs-secondary-text truncate ${secondaryTextColorClass}`.trim()}
               icon={Clock}
               accentClassName="border-white/10"
               uiScheme={resolvedUiScheme}
+              primaryTextColorClassName={primaryTextColorClass}
+              secondaryTextClassName={secondaryTextColorClass}
+              secondaryTextStrongClassName={secondaryTextColorClass}
             />
+
             <MetricCard
               title="Outside"
               value={formatTemp(outsideTempForValue)}
               sub={(
                 <div className="space-y-1">
-                  <div className="text-white/55">
+                  <div className={`jvs-secondary-text-strong ${secondaryTextColorClass}`.trim()}>
                     {asText(outsideDisplay.condition)
                       ? (
                         `${outsideDisplay.condition}${outsideDisplay.currentHumidity !== null ? ` • ${formatPercent(outsideDisplay.currentHumidity)}` : ''}`
@@ -891,7 +1035,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                       )}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-white/45">
+                  <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 jvs-secondary-text ${secondaryTextColorClass}`.trim()}>
                     {(outsideDisplay.todayHigh !== null || outsideDisplay.todayLow !== null) ? (
                       <span className="inline-flex items-center gap-1">
                         <Cloud className="w-3.5 h-3.5" />
@@ -923,12 +1067,15 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   </div>
                 </div>
               )}
-              subClassName="mt-2 text-[13px] text-white/45"
+              subClassName={`mt-2 text-[13px] jvs-secondary-text ${secondaryTextColorClass}`.trim()}
               icon={Cloud}
               accentClassName="border-white/10"
               valueClassName={getColorizedValueClass('temperature', outsideTempForValue, climateTolerances, climateToleranceColors, colorizeHomeValues)}
               valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
               uiScheme={resolvedUiScheme}
+              primaryTextColorClassName={primaryTextColorClass}
+              secondaryTextClassName={secondaryTextColorClass}
+              secondaryTextStrongClassName={secondaryTextColorClass}
             />
             <MetricCard
               title="Inside"
@@ -938,13 +1085,16 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   ? 'No sensors'
                   : `RH ${overall.humidity === null ? '—' : formatPercent(overall.humidity)} • Lux ${overall.illuminance === null ? '—' : formatLux(overall.illuminance)}`
               }
-              subClassName="mt-1 text-[13px] text-white/45 truncate"
+              subClassName={`mt-1 text-[13px] jvs-secondary-text truncate ${secondaryTextColorClass}`.trim()}
               icon={Thermometer}
               accentClassName="border-white/10"
               valueClassName={getColorizedValueClass('temperature', overall.temperature, climateTolerances, climateToleranceColors, colorizeHomeValues)}
               valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
               iconWrapClassName="bg-white/5"
               uiScheme={resolvedUiScheme}
+              primaryTextColorClassName={primaryTextColorClass}
+              secondaryTextClassName={secondaryTextColorClass}
+              secondaryTextStrongClassName={secondaryTextColorClass}
             />
             <MetricCard
               title="Home"
@@ -958,19 +1108,28 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   ? 'Disconnected'
                   : (`Motion: ${overall.motionActiveCount || 0} • Doors: ${overall.doorOpenCount || 0}${hubitatModeError ? ` • Mode unavailable (${hubitatModeError})` : ''}`)
               }
-              subClassName="mt-1 text-[13px] text-white/45 truncate"
+              subClassName={`mt-1 text-[13px] jvs-secondary-text truncate ${secondaryTextColorClass}`.trim()}
               icon={Activity}
               accentClassName={
                 connected
                   ? ((overall.motionActive || overall.doorOpen) ? `${resolvedUiScheme.selectedCard}` : 'border-white/10')
                   : 'border-danger/30'
               }
-              valueClassName={connected ? 'text-white' : 'text-neon-red'}
+              valueClassName={connected ? '' : 'text-neon-red'}
               uiScheme={resolvedUiScheme}
+              primaryTextColorClassName={primaryTextColorClass}
+              secondaryTextClassName={secondaryTextColorClass}
+              secondaryTextStrongClassName={secondaryTextColorClass}
             />
           </div>
 
-          <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="mt-4">
+            <div
+              className="jvs-home-rooms-grid gap-4"
+              style={{
+                '--jvs-home-rooms-cols-desktop': homeRoomColumnsXl,
+              }}
+            >
             {rooms.length ? (
               rooms.map((r) => (
                 <RoomPanel
@@ -985,14 +1144,18 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   colorizeHomeValues={colorizeHomeValues}
                   colorizeHomeValuesOpacityPct={colorizeHomeValuesOpacityPct}
                   sensorIndicatorColors={sensorIndicatorColors}
+                  primaryTextColorClassName={primaryTextColorClass}
+                  secondaryTextColorClassName={secondaryTextColorClass}
+                  contentScale={roomContentScale}
                 />
               ))
             ) : (
               <div className="glass-panel p-8 border border-white/10 text-center text-white/50 lg:col-span-2 xl:col-span-3">
                 <div className="text-sm uppercase tracking-[0.2em]">No data</div>
-                <div className="mt-2 text-xl font-extrabold text-white">Waiting for devices…</div>
+                <div className={`mt-2 text-xl font-extrabold jvs-primary-text-strong ${primaryTextColorClass || 'text-white'}`.trim()}>Waiting for devices…</div>
               </div>
             )}
+            </div>
           </div>
         </div>
       </div>
