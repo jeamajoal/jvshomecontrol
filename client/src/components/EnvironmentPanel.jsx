@@ -377,6 +377,10 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
 
   const switches = [];
 
+  let temperaturePossibleCount = 0;
+  let humidityPossibleCount = 0;
+  let illuminancePossibleCount = 0;
+
   const canUseMetric = (deviceId, key) => {
     const id = String(deviceId || '').trim();
     if (!id) return true;
@@ -388,6 +392,7 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
 
   for (const dev of devices) {
     const attrs = dev.status?.attributes || {};
+    const caps = Array.isArray(dev?.capabilities) ? dev.capabilities : [];
 
     const allowTemp = canUseMetric(dev.id, 'temperature');
     const allowHum = canUseMetric(dev.id, 'humidity');
@@ -397,16 +402,25 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
     const allowDoor = canUseMetric(dev.id, 'door');
 
     if (allowTemp) {
+      if (caps.includes('TemperatureMeasurement') || attrs.temperature !== undefined) {
+        temperaturePossibleCount += 1;
+      }
       const t = asNumber(attrs.temperature);
       if (t !== null) temps.push(t);
     }
 
     if (allowHum) {
+      if (caps.includes('RelativeHumidityMeasurement') || attrs.humidity !== undefined) {
+        humidityPossibleCount += 1;
+      }
       const h = asNumber(attrs.humidity);
       if (h !== null) hums.push(h);
     }
 
     if (allowLux) {
+      if (caps.includes('IlluminanceMeasurement') || attrs.illuminance !== undefined) {
+        illuminancePossibleCount += 1;
+      }
       const lx = asNumber(attrs.illuminance);
       if (lx !== null) lux.push(lx);
     }
@@ -451,6 +465,9 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
     temperatureCount: temps.length,
     humidityCount: hums.length,
     illuminanceCount: lux.length,
+    temperaturePossibleCount,
+    humidityPossibleCount,
+    illuminancePossibleCount,
     motionActive,
     motionActiveCount,
     doorCount,
@@ -635,13 +652,13 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
 
   const metricCards = useMemo(() => {
     const cards = [];
-    if (metrics.temperatureCount > 0) {
+    if (metrics.temperaturePossibleCount > 0) {
       cards.push(
         <MetricCard
           key="temperature"
           title="Temperature"
-          value={formatTemp(metrics.temperature)}
-          sub={metrics.temperature === null ? 'No sensor' : null}
+          value={metrics.temperature === null ? '—' : formatTemp(metrics.temperature)}
+          sub={metrics.temperature === null ? 'No reading' : null}
           icon={Thermometer}
           accentClassName="border-white/10"
           valueClassName={getColorizedValueClass('temperature', metrics.temperature, climateTolerances, climateToleranceColors, colorizeHomeValues)}
@@ -657,13 +674,13 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
       );
     }
 
-    if (metrics.humidityCount > 0) {
+    if (metrics.humidityPossibleCount > 0) {
       cards.push(
         <MetricCard
           key="humidity"
           title="Humidity"
           value={metrics.humidity === null ? '—' : formatPercent(metrics.humidity)}
-          sub={metrics.humidity === null ? 'No sensor' : null}
+          sub={metrics.humidity === null ? 'No reading' : null}
           icon={Droplets}
           accentClassName="border-white/10"
           valueClassName={
@@ -683,13 +700,13 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
       );
     }
 
-    if (metrics.illuminanceCount > 0) {
+    if (metrics.illuminancePossibleCount > 0) {
       cards.push(
         <MetricCard
           key="illuminance"
           title="Illuminance"
           value={metrics.illuminance === null ? '—' : formatLux(metrics.illuminance)}
-          sub={metrics.illuminance === null ? 'No sensor' : null}
+          sub={metrics.illuminance === null ? 'No reading' : null}
           icon={Sun}
           accentClassName="border-white/10"
           valueClassName={
