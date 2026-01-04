@@ -211,7 +211,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
   }, [config]);
 
   const rooms = useMemo(() => {
-    return buildRoomsWithStatuses(config, statuses);
+    return buildRoomsWithStatuses(config, statuses, { ignoreVisibleRooms: true });
   }, [config, statuses]);
 
   const [busy, setBusy] = useState(() => new Set());

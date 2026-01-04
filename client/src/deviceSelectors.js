@@ -83,7 +83,8 @@ export function getAllowedDeviceIdSet(config, scope = 'union') {
 export function buildRoomsWithStatuses(config, statuses, options = {}) {
   const rooms = Array.isArray(config?.rooms) ? config.rooms : [];
   const devices = Array.isArray(config?.sensors) ? config.sensors : [];
-  const visibleRoomIds = getVisibleRoomIdSet(config);
+  const ignoreVisibleRooms = Boolean(options && options.ignoreVisibleRooms);
+  const visibleRoomIds = ignoreVisibleRooms ? null : getVisibleRoomIdSet(config);
   const deviceIdSet = (options && options.deviceIdSet instanceof Set) ? options.deviceIdSet : null;
 
   const byRoomId = new Map();
