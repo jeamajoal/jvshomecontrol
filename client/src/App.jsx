@@ -79,7 +79,7 @@ function App() {
 
   useEffect(() => {
     try {
-      const raw = Number(config?.ui?.cardOpacityScalePct);
+      const raw = Number(effectiveConfig?.ui?.cardOpacityScalePct);
       const scalePct = Number.isFinite(raw) ? Math.max(0, Math.min(200, Math.round(raw))) : 100;
       const scale = scalePct / 100;
       const clamp01 = (n) => Math.max(0, Math.min(1, n));
@@ -91,16 +91,17 @@ function App() {
       document.documentElement.style.setProperty('--jvs-utility-group-bg-opacity', String(clamp01(0.20 * scale)));
       document.documentElement.style.setProperty('--jvs-accent-card-bg-opacity', String(clamp01(0.10 * scale)));
 
-      // Reduce the frosted-glass blur when cards are made more transparent.
-      // 100% => ~24px (current), 0% => 0px (fully clear).
+      // Backdrop blur looks "smeary" when we turn opacity down (especially on some GPUs/browsers).
+      // Keep the frosted-glass blur at 100%+, but disable blur entirely when making panels more transparent.
       const baseBlurPx = 24;
-      const blurPx = clamp(baseBlurPx * clamp01(scale), 0, baseBlurPx);
+      const blurScale = scale >= 1 ? scale : 0;
+      const blurPx = clamp(baseBlurPx * blurScale, 0, baseBlurPx);
       document.documentElement.style.setProperty('--jvs-glass-panel-blur-px', `${blurPx}px`);
       document.documentElement.style.setProperty('--jvs-utility-panel-blur-px', `${blurPx}px`);
 
       // Menu/header surfaces should also fade out so Home background can be full-screen.
       const baseMenuBlurPx = 12;
-      const menuBlurPx = clamp(baseMenuBlurPx * clamp01(scale), 0, baseMenuBlurPx);
+      const menuBlurPx = clamp(baseMenuBlurPx * blurScale, 0, baseMenuBlurPx);
       document.documentElement.style.setProperty('--jvs-header-bg-opacity', String(clamp01(0.20 * scale)));
       document.documentElement.style.setProperty('--jvs-menu-surface-bg-opacity', String(clamp01(0.20 * scale)));
       document.documentElement.style.setProperty('--jvs-menu-row-bg-opacity', String(clamp01(0.10 * scale)));
