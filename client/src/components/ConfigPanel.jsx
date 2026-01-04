@@ -440,6 +440,38 @@ async function saveHomeRoomColumnsXl(homeRoomColumnsXl, panelName) {
   return res.json().catch(() => ({}));
 }
 
+async function saveHomeRoomMetricColumns(homeRoomMetricColumns, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/home-room-metric-columns`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      homeRoomMetricColumns,
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Home metric columns save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function saveHomeRoomMetricKeys(homeRoomMetricKeys, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/home-room-metric-keys`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      homeRoomMetricKeys: Array.isArray(homeRoomMetricKeys) ? homeRoomMetricKeys : [],
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Home metric cards save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveSensorIndicatorColors(sensorIndicatorColors) {
   const res = await fetch(`${API_HOST}/api/ui/sensor-indicator-colors`, {
     method: 'PUT',
@@ -631,6 +663,8 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const iconSizeSave = useAsyncSave((iconSizePct) => saveIconSizePct(iconSizePct, selectedPanelName || null));
   const cardScaleSave = useAsyncSave((cardScalePct) => saveCardScalePct(cardScalePct, selectedPanelName || null));
   const homeRoomColsSave = useAsyncSave((homeRoomColumnsXl) => saveHomeRoomColumnsXl(homeRoomColumnsXl, selectedPanelName || null));
+  const homeRoomMetricColsSave = useAsyncSave((homeRoomMetricColumns) => saveHomeRoomMetricColumns(homeRoomMetricColumns, selectedPanelName || null));
+  const homeRoomMetricKeysSave = useAsyncSave((homeRoomMetricKeys) => saveHomeRoomMetricKeys(homeRoomMetricKeys, selectedPanelName || null));
   const sensorColorsSave = useAsyncSave(saveSensorIndicatorColors);
   const climateTolSave = useAsyncSave(saveClimateTolerances);
   const climateColorsSave = useAsyncSave(saveClimateToleranceColors);
@@ -837,6 +871,20 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return Math.max(1, Math.min(6, Math.round(raw)));
   }, [config?.ui?.homeRoomColumnsXl]);
 
+  const homeRoomMetricColumnsFromConfig = useMemo(() => {
+    const raw = Number(config?.ui?.homeRoomMetricColumns);
+    if (!Number.isFinite(raw)) return 0;
+    return Math.max(0, Math.min(3, Math.round(raw)));
+  }, [config?.ui?.homeRoomMetricColumns]);
+
+  const homeRoomMetricKeysFromConfig = useMemo(() => {
+    const allowed = new Set(['temperature', 'humidity', 'illuminance']);
+    const raw = Array.isArray(config?.ui?.homeRoomMetricKeys)
+      ? config.ui.homeRoomMetricKeys
+      : ['temperature', 'humidity', 'illuminance'];
+    return Array.from(new Set(raw.map((v) => String(v || '').trim()).filter((v) => allowed.has(v))));
+  }, [config?.ui?.homeRoomMetricKeys]);
+
   const [cardOpacityScaleDraft, setCardOpacityScaleDraft] = useState(() => 100);
   const [cardOpacityScaleDirty, setCardOpacityScaleDirty] = useState(false);
   const [cardOpacityScaleError, setCardOpacityScaleError] = useState(null);
@@ -892,6 +940,14 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [homeRoomColumnsXlDraft, setHomeRoomColumnsXlDraft] = useState(() => 3);
   const [homeRoomColumnsXlDirty, setHomeRoomColumnsXlDirty] = useState(false);
   const [homeRoomColumnsXlError, setHomeRoomColumnsXlError] = useState(null);
+
+  const [homeRoomMetricColumnsDraft, setHomeRoomMetricColumnsDraft] = useState(() => 0);
+  const [homeRoomMetricColumnsDirty, setHomeRoomMetricColumnsDirty] = useState(false);
+  const [homeRoomMetricColumnsError, setHomeRoomMetricColumnsError] = useState(null);
+
+  const [homeRoomMetricKeysDraft, setHomeRoomMetricKeysDraft] = useState(() => (['temperature', 'humidity', 'illuminance']));
+  const [homeRoomMetricKeysDirty, setHomeRoomMetricKeysDirty] = useState(false);
+  const [homeRoomMetricKeysError, setHomeRoomMetricKeysError] = useState(null);
 
   const homeBackgroundFromConfig = useMemo(() => {
     const raw = (config?.ui?.homeBackground && typeof config.ui.homeBackground === 'object')
@@ -999,6 +1055,16 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     if (homeRoomColumnsXlDirty) return;
     setHomeRoomColumnsXlDraft(homeRoomColumnsXlFromConfig);
   }, [homeRoomColumnsXlDirty, homeRoomColumnsXlFromConfig]);
+
+  useEffect(() => {
+    if (homeRoomMetricColumnsDirty) return;
+    setHomeRoomMetricColumnsDraft(homeRoomMetricColumnsFromConfig);
+  }, [homeRoomMetricColumnsDirty, homeRoomMetricColumnsFromConfig]);
+
+  useEffect(() => {
+    if (homeRoomMetricKeysDirty) return;
+    setHomeRoomMetricKeysDraft(homeRoomMetricKeysFromConfig);
+  }, [homeRoomMetricKeysDirty, homeRoomMetricKeysFromConfig]);
 
   useEffect(() => {
     if (homeBackgroundDirty) return;
@@ -1308,6 +1374,42 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
     return () => clearTimeout(t);
   }, [connected, homeRoomColumnsXlDirty, homeRoomColumnsXlDraft]);
+
+  // Autosave: Home room metric columns.
+  useEffect(() => {
+    if (!connected) return;
+    if (!homeRoomMetricColumnsDirty) return;
+
+    const t = setTimeout(async () => {
+      setHomeRoomMetricColumnsError(null);
+      try {
+        await homeRoomMetricColsSave.run(homeRoomMetricColumnsDraft);
+        setHomeRoomMetricColumnsDirty(false);
+      } catch (err) {
+        setHomeRoomMetricColumnsError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, homeRoomMetricColumnsDirty, homeRoomMetricColumnsDraft]);
+
+  // Autosave: Home room metric card selection.
+  useEffect(() => {
+    if (!connected) return;
+    if (!homeRoomMetricKeysDirty) return;
+
+    const t = setTimeout(async () => {
+      setHomeRoomMetricKeysError(null);
+      try {
+        await homeRoomMetricKeysSave.run(homeRoomMetricKeysDraft);
+        setHomeRoomMetricKeysDirty(false);
+      } catch (err) {
+        setHomeRoomMetricKeysError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, homeRoomMetricKeysDirty, homeRoomMetricKeysDraft]);
 
   // Autosave: Home background.
   useEffect(() => {
@@ -3253,6 +3355,105 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               {homeRoomColumnsXlError ? (
                 <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {homeRoomColumnsXlError}</div>
               ) : null}
+
+              <div className="mt-6 border-t border-white/10 pt-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                      Sub-card columns
+                    </div>
+                    <div className="mt-1 text-xs text-white/45">
+                      Controls the metric sub-card grid inside each room card.
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 flex items-center gap-2">
+                    <select
+                      value={homeRoomMetricColumnsDraft}
+                      disabled={!connected || busy}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        const next = Number.isFinite(n) ? Math.max(0, Math.min(3, Math.round(n))) : 0;
+                        setHomeRoomMetricColumnsError(null);
+                        setHomeRoomMetricColumnsDirty(true);
+                        setHomeRoomMetricColumnsDraft(next);
+                      }}
+                      className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    >
+                      <option value={0}>Auto</option>
+                      <option value={1}>1</option>
+                      <option value={2}>2</option>
+                      <option value={3}>3</option>
+                    </select>
+                    <div className="text-xs text-white/45">cols</div>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="text-xs text-white/45">
+                    {homeRoomMetricColumnsDirty ? 'Pending changes…' : 'Saved'}
+                  </div>
+                  <div className="text-xs text-white/45">
+                    {statusText(homeRoomMetricColsSave.status)}
+                  </div>
+                </div>
+
+                {homeRoomMetricColumnsError ? (
+                  <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {homeRoomMetricColumnsError}</div>
+                ) : null}
+              </div>
+
+              <div className="mt-6 border-t border-white/10 pt-4">
+                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                  Room metric cards
+                </div>
+                <div className="mt-1 text-xs text-white/45">
+                  These metrics render on every room; rooms without sensors show —.
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-4">
+                  {[
+                    { key: 'temperature', label: 'Temperature' },
+                    { key: 'humidity', label: 'Humidity' },
+                    { key: 'illuminance', label: 'Illuminance' },
+                  ].map((opt) => {
+                    const set = new Set(homeRoomMetricKeysDraft);
+                    const checked = set.has(opt.key);
+                    return (
+                      <label key={opt.key} className="flex items-center gap-2 select-none">
+                        <input
+                          type="checkbox"
+                          className={`h-5 w-5 ${scheme.checkboxAccent}`}
+                          disabled={!connected || busy}
+                          checked={checked}
+                          onChange={(e) => {
+                            const next = new Set(homeRoomMetricKeysDraft);
+                            if (e.target.checked) next.add(opt.key);
+                            else next.delete(opt.key);
+                            setHomeRoomMetricKeysError(null);
+                            setHomeRoomMetricKeysDirty(true);
+                            setHomeRoomMetricKeysDraft(Array.from(next));
+                          }}
+                        />
+                        <span className="text-xs text-white/70">{opt.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="text-xs text-white/45">
+                    {homeRoomMetricKeysDirty ? 'Pending changes…' : 'Saved'}
+                  </div>
+                  <div className="text-xs text-white/45">
+                    {statusText(homeRoomMetricKeysSave.status)}
+                  </div>
+                </div>
+
+                {homeRoomMetricKeysError ? (
+                  <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {homeRoomMetricKeysError}</div>
+                ) : null}
+              </div>
             </div>
 
             </div>

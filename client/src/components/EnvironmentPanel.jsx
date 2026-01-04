@@ -559,7 +559,7 @@ const getDeviceHomeMetricAllowlistForId = (deviceHomeMetricAllowlist, deviceId) 
   return arr.map((v) => String(v || '').trim()).filter(Boolean);
 };
 
-const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, deviceCommandAllowlist, deviceHomeMetricAllowlist, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
+const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, deviceCommandAllowlist, deviceHomeMetricAllowlist, homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
 
   const scaleNumRaw = Number(contentScale);
@@ -610,22 +610,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
     }
   };
 
-  const hasEnv =
-    metrics.temperatureCount > 0 ||
-    metrics.humidityCount > 0 ||
-    metrics.illuminanceCount > 0 ||
-    devices.some((d) => {
-      const per = getDeviceHomeMetricAllowlistForId(deviceHomeMetricAllowlist, d.id);
-      if (per !== null && !per.includes('motion')) return false;
-      return d.status?.attributes?.motion;
-    }) ||
-    devices.some((d) => {
-      const per = getDeviceHomeMetricAllowlistForId(deviceHomeMetricAllowlist, d.id);
-      const allowContact = per === null || per.includes('contact');
-      const allowDoor = per === null || per.includes('door');
-      return (allowContact && typeof d.status?.attributes?.contact === 'string')
-        || (allowDoor && typeof d.status?.attributes?.door === 'string');
-    });
+  const hasEnv = Array.isArray(homeRoomMetricKeys) && homeRoomMetricKeys.length > 0;
 
   const headerGlow = (metrics.motionActive || metrics.doorOpen)
     ? `${uiScheme?.selectedCard || 'border-primary/40'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
@@ -652,7 +637,12 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
 
   const metricCards = useMemo(() => {
     const cards = [];
-    if (metrics.temperaturePossibleCount > 0) {
+    const selectedKeys = Array.isArray(homeRoomMetricKeys)
+      ? homeRoomMetricKeys.map((k) => String(k || '').trim()).filter(Boolean)
+      : [];
+    const selected = new Set(selectedKeys);
+
+    if (selected.has('temperature')) {
       cards.push(
         <MetricCard
           key="temperature"
@@ -674,7 +664,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
       );
     }
 
-    if (metrics.humidityPossibleCount > 0) {
+    if (selected.has('humidity')) {
       cards.push(
         <MetricCard
           key="humidity"
@@ -700,7 +690,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
       );
     }
 
-    if (metrics.illuminancePossibleCount > 0) {
+    if (selected.has('illuminance')) {
       cards.push(
         <MetricCard
           key="illuminance"
@@ -727,12 +717,10 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
     }
     return cards;
   }, [
-    metrics.temperatureCount,
-    metrics.humidityCount,
-    metrics.illuminanceCount,
     metrics.temperature,
     metrics.humidity,
     metrics.illuminance,
+    homeRoomMetricKeys,
     climateTolerances,
     climateToleranceColors,
     colorizeHomeValues,
@@ -743,11 +731,24 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
     scaleNum,
   ]);
 
-  const metricGridClassName = metricCards.length <= 1
-    ? 'grid-cols-1'
-    : metricCards.length === 2
-      ? 'grid-cols-2'
-      : 'grid-cols-2 lg:grid-cols-3';
+  const metricGridClassName = useMemo(() => {
+    const count = metricCards.length;
+    if (count <= 1) return 'grid-cols-1';
+
+    const forcedRaw = Number(homeRoomMetricColumns);
+    const forced = Number.isFinite(forcedRaw) ? Math.max(0, Math.min(3, Math.round(forcedRaw))) : 0;
+    if (forced >= 1) {
+      const cols = Math.max(1, Math.min(forced, count));
+      return cols === 1 ? 'grid-cols-1' : cols === 2 ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3';
+    }
+
+    const roomColsRaw = Number(homeRoomColumnsXl);
+    const roomCols = Number.isFinite(roomColsRaw) ? Math.max(1, Math.min(6, Math.round(roomColsRaw))) : 3;
+
+    const cap = roomCols >= 5 ? 1 : roomCols >= 4 ? 2 : 3;
+    const cols = Math.max(1, Math.min(cap, count));
+    return cols === 1 ? 'grid-cols-1' : cols === 2 ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3';
+  }, [metricCards.length, homeRoomMetricColumns, homeRoomColumnsXl]);
 
   return (
     <section className={`glass-panel p-4 md:p-5 border ${headerGlow}`}>
@@ -1034,6 +1035,23 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     return Math.max(1, Math.min(6, Math.round(raw)));
   }, [config?.ui?.homeRoomColumnsXl]);
 
+  const homeRoomMetricColumns = useMemo(() => {
+    const raw = Number(config?.ui?.homeRoomMetricColumns);
+    if (!Number.isFinite(raw)) return 0;
+    return Math.max(0, Math.min(3, Math.round(raw)));
+  }, [config?.ui?.homeRoomMetricColumns]);
+
+  const homeRoomMetricKeys = useMemo(() => {
+    const allowed = new Set(['temperature', 'humidity', 'illuminance']);
+    const raw = Array.isArray(config?.ui?.homeRoomMetricKeys)
+      ? config.ui.homeRoomMetricKeys
+      : ['temperature', 'humidity', 'illuminance'];
+    const keys = raw
+      .map((v) => String(v || '').trim())
+      .filter((v) => allowed.has(v));
+    return Array.from(new Set(keys));
+  }, [config?.ui?.homeRoomMetricKeys]);
+
   // Controls remain restricted by explicit allowlists.
   // Home visibility (metrics/room cards) is controlled separately.
   const allowedControlIds = useMemo(() => getAllowedDeviceIdSet(config, 'ctrl'), [config]);
@@ -1312,6 +1330,9 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   sensorIndicatorColors={sensorIndicatorColors}
                   deviceCommandAllowlist={config?.ui?.deviceCommandAllowlist}
                   deviceHomeMetricAllowlist={config?.ui?.deviceHomeMetricAllowlist}
+                  homeRoomMetricKeys={homeRoomMetricKeys}
+                  homeRoomMetricColumns={homeRoomMetricColumns}
+                  homeRoomColumnsXl={homeRoomColumnsXl}
                   primaryTextColorClassName={primaryTextColorClass}
                   secondaryTextColorClassName={secondaryTextColorClass}
                   contentScale={roomContentScale}

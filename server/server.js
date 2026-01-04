@@ -129,6 +129,10 @@ const ALLOWED_PANEL_DEVICE_COMMANDS = new Set(['on', 'off', 'toggle', 'setLevel'
 // (Used for multi-sensors where you want to hide/show specific attributes.)
 const ALLOWED_HOME_METRIC_KEYS = new Set(['temperature', 'humidity', 'illuminance', 'motion', 'contact', 'door']);
 
+// Home room metric cards (sub-cards inside each room panel).
+// These are configured globally (or per panel profile) and rendered for every room.
+const ALLOWED_HOME_ROOM_METRIC_KEYS = new Set(['temperature', 'humidity', 'illuminance']);
+
 // Default preset panel profiles that ship with the product.
 // These are always available as read-only templates.
 const DEFAULT_PANEL_PROFILES_PRESETS = Object.freeze({
@@ -1008,6 +1012,23 @@ function normalizePersistedConfig(raw) {
     // Default matches current layout (3 columns).
     const homeRoomColumnsXl = clampInt(uiRaw.homeRoomColumnsXl, 1, 6, 3);
 
+    // Home room metric grid columns (sub-cards inside each room panel).
+    // 0 = auto (derived from room columns), 1-3 = forced columns.
+    const homeRoomMetricColumns = clampInt(uiRaw.homeRoomMetricColumns, 0, 3, 0);
+
+    // Home room metric cards to show (applies to every room).
+    // Default: show temperature/humidity/illuminance.
+    const homeRoomMetricKeys = (() => {
+        if (!Object.prototype.hasOwnProperty.call(uiRaw, 'homeRoomMetricKeys')) {
+            return ['temperature', 'humidity', 'illuminance'];
+        }
+        const raw = Array.isArray(uiRaw.homeRoomMetricKeys) ? uiRaw.homeRoomMetricKeys : [];
+        const keys = raw
+            .map((v) => String(v || '').trim())
+            .filter((v) => v && ALLOWED_HOME_ROOM_METRIC_KEYS.has(v));
+        return Array.from(new Set(keys));
+    })();
+
     // Glow/icon styling (Home page).
     // Color IDs use the same shared allowlist as tolerance/text colors.
     const glowColorIdRaw = String(uiRaw.glowColorId ?? '').trim();
@@ -1095,6 +1116,20 @@ function normalizePersistedConfig(raw) {
             : null;
         const pHomeRoomColumnsXl = Object.prototype.hasOwnProperty.call(p, 'homeRoomColumnsXl')
             ? clampInt(p.homeRoomColumnsXl, 1, 6, homeRoomColumnsXl)
+            : null;
+
+        const pHomeRoomMetricColumns = Object.prototype.hasOwnProperty.call(p, 'homeRoomMetricColumns')
+            ? clampInt(p.homeRoomMetricColumns, 0, 3, homeRoomMetricColumns)
+            : null;
+
+        const pHomeRoomMetricKeys = Object.prototype.hasOwnProperty.call(p, 'homeRoomMetricKeys')
+            ? (() => {
+                const raw = Array.isArray(p.homeRoomMetricKeys) ? p.homeRoomMetricKeys : [];
+                const keys = raw
+                    .map((v) => String(v || '').trim())
+                    .filter((v) => v && ALLOWED_HOME_ROOM_METRIC_KEYS.has(v));
+                return Array.from(new Set(keys));
+            })()
             : null;
 
         const pGlowColorIdRaw = Object.prototype.hasOwnProperty.call(p, 'glowColorId')
@@ -1224,6 +1259,8 @@ function normalizePersistedConfig(raw) {
             ...(pPrimaryTextColorId !== null ? { primaryTextColorId: pPrimaryTextColorId } : {}),
             ...(pCardScalePct !== null ? { cardScalePct: pCardScalePct } : {}),
             ...(pHomeRoomColumnsXl !== null ? { homeRoomColumnsXl: pHomeRoomColumnsXl } : {}),
+            ...(pHomeRoomMetricColumns !== null ? { homeRoomMetricColumns: pHomeRoomMetricColumns } : {}),
+            ...(pHomeRoomMetricKeys !== null ? { homeRoomMetricKeys: pHomeRoomMetricKeys } : {}),
             ...(pGlowColorId !== null ? { glowColorId: pGlowColorId } : {}),
             ...(pIconColorId !== null ? { iconColorId: pIconColorId } : {}),
             ...(pIconOpacityPct !== null ? { iconOpacityPct: pIconOpacityPct } : {}),
@@ -1302,6 +1339,10 @@ function normalizePersistedConfig(raw) {
         cardScalePct,
         // Home room columns at XL breakpoint.
         homeRoomColumnsXl,
+        // Home room metric sub-card columns (0=auto).
+        homeRoomMetricColumns,
+        // Home room metric cards to show.
+        homeRoomMetricKeys,
         // Accent glow + icon styling.
         glowColorId,
         iconColorId,
@@ -1400,13 +1441,15 @@ function loadPersistedConfig() {
             const hadPrimaryTextColorId = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'primaryTextColorId'));
             const hadCardScalePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'cardScalePct'));
             const hadHomeRoomColumnsXl = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeRoomColumnsXl'));
+            const hadHomeRoomMetricColumns = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeRoomMetricColumns'));
+            const hadHomeRoomMetricKeys = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeRoomMetricKeys'));
             const hadGlowColorId = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'glowColorId'));
             const hadIconColorId = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'iconColorId'));
             const hadIconOpacityPct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'iconOpacityPct'));
             const hadIconSizePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'iconSizePct'));
             persistedConfig = normalizePersistedConfig(raw);
             // If we added new fields for back-compat, write them back once.
-            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadColorizeHomeValuesOpacityPct || !hadClimateToleranceColors || !hadSensorIndicatorColors || !hadHomeBackground || !hadCardOpacityScalePct || !hadBlurScalePct || !hadSecondaryTextOpacityPct || !hadSecondaryTextSizePct || !hadSecondaryTextColorId || !hadPrimaryTextOpacityPct || !hadPrimaryTextSizePct || !hadPrimaryTextColorId || !hadCardScalePct || !hadHomeRoomColumnsXl || !hadGlowColorId || !hadIconColorId || !hadIconOpacityPct || !hadIconSizePct) {
+            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadColorizeHomeValuesOpacityPct || !hadClimateToleranceColors || !hadSensorIndicatorColors || !hadHomeBackground || !hadCardOpacityScalePct || !hadBlurScalePct || !hadSecondaryTextOpacityPct || !hadSecondaryTextSizePct || !hadSecondaryTextColorId || !hadPrimaryTextOpacityPct || !hadPrimaryTextSizePct || !hadPrimaryTextColorId || !hadCardScalePct || !hadHomeRoomColumnsXl || !hadHomeRoomMetricColumns || !hadHomeRoomMetricKeys || !hadGlowColorId || !hadIconColorId || !hadIconOpacityPct || !hadIconSizePct) {
                 lastPersistedSerialized = stableStringify(raw);
                 let label = 'migrate-ui-sensor-indicator-colors';
                 if (!hadAlertSounds) label = 'migrate-ui-alert-sounds';
@@ -1425,6 +1468,8 @@ function loadPersistedConfig() {
                 else if (!hadPrimaryTextColorId) label = 'migrate-ui-primary-text-color';
                 else if (!hadCardScalePct) label = 'migrate-ui-card-scale';
                 else if (!hadHomeRoomColumnsXl) label = 'migrate-ui-home-room-columns';
+                else if (!hadHomeRoomMetricColumns) label = 'migrate-ui-home-room-metric-columns';
+                else if (!hadHomeRoomMetricKeys) label = 'migrate-ui-home-room-metric-keys';
                 else if (!hadGlowColorId) label = 'migrate-ui-glow-color';
                 else if (!hadIconColorId) label = 'migrate-ui-icon-color';
                 else if (!hadIconOpacityPct) label = 'migrate-ui-icon-opacity';
@@ -2987,6 +3032,8 @@ app.post('/api/ui/panels', (req, res) => {
         primaryTextColorId: effectiveUi.primaryTextColorId,
         cardScalePct: effectiveUi.cardScalePct,
         homeRoomColumnsXl: effectiveUi.homeRoomColumnsXl,
+        homeRoomMetricColumns: effectiveUi.homeRoomMetricColumns,
+        homeRoomMetricKeys: Array.isArray(effectiveUi.homeRoomMetricKeys) ? effectiveUi.homeRoomMetricKeys : ['temperature', 'humidity', 'illuminance'],
         glowColorId: effectiveUi.glowColorId,
         iconColorId: effectiveUi.iconColorId,
         iconOpacityPct: effectiveUi.iconOpacityPct,
@@ -4279,6 +4326,148 @@ app.put('/api/ui/home-room-columns-xl', (req, res) => {
         ui: {
             ...(config?.ui || {}),
             homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update Home room metric grid columns (sub-cards inside each room panel).
+// Expected payload: { homeRoomMetricColumns: number(0-3), panelName?: string }
+// 0 = auto.
+app.put('/api/ui/home-room-metric-columns', (req, res) => {
+    const raw = req.body?.homeRoomMetricColumns;
+    const num = (typeof raw === 'number') ? raw : Number(raw);
+    if (!Number.isFinite(num)) {
+        return res.status(400).json({ error: 'Missing homeRoomMetricColumns (0-3)' });
+    }
+
+    const homeRoomMetricColumns = Math.max(0, Math.min(3, Math.round(num)));
+
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        homeRoomMetricColumns,
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-home-room-metric-columns-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            homeRoomMetricColumns,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-home-room-metric-columns');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            homeRoomMetricColumns: persistedConfig?.ui?.homeRoomMetricColumns,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update which room metric cards are shown on Home.
+// Expected payload: { homeRoomMetricKeys: string[], panelName?: string }
+app.put('/api/ui/home-room-metric-keys', (req, res) => {
+    const raw = req.body?.homeRoomMetricKeys;
+    if (!Array.isArray(raw)) {
+        return res.status(400).json({ error: 'Missing homeRoomMetricKeys (array)' });
+    }
+
+    const homeRoomMetricKeys = Array.from(new Set(
+        raw
+            .map((v) => String(v || '').trim())
+            .filter((v) => v && ALLOWED_HOME_ROOM_METRIC_KEYS.has(v)),
+    ));
+
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        homeRoomMetricKeys,
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-home-room-metric-keys-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            homeRoomMetricKeys,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-home-room-metric-keys');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            homeRoomMetricKeys: persistedConfig?.ui?.homeRoomMetricKeys,
             panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };
