@@ -1518,7 +1518,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                     Secondary text
                   </div>
                   <div className="mt-1 text-xs text-white/45">
-                    Controls the small gray text on Home (labels/subtitles).
+                    Transparency for the small gray text on Home (labels/subtitles).
                   </div>
                 </div>
 
