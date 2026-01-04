@@ -904,29 +904,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     setHomeBackgroundDraft(homeBackgroundFromConfig);
   }, [selectedPanelName]);
 
-  // When switching profiles, reset per-device override drafts to reflect the newly selected profile.
-  useEffect(() => {
-    const timers = deviceOverrideTimersRef.current;
-    for (const t of timers.values()) clearTimeout(t);
-    timers.clear();
-
-    setDeviceOverrideSaveState({});
-    setDeviceOverrideDrafts(() => {
-      const next = {};
-      for (const d of allSwitchLikeDevices) {
-        const id = String(d?.id || '').trim();
-        if (!id) continue;
-        const label = String(effectiveDeviceLabelOverrides?.[id] ?? '');
-        const cmds = effectiveDeviceCommandAllowlist?.[id];
-        next[id] = {
-          label,
-          commands: Array.isArray(cmds) ? cmds.map((c) => String(c)) : null,
-        };
-      }
-      return next;
-    });
-  }, [selectedPanelName, allSwitchLikeDevices, effectiveDeviceLabelOverrides, effectiveDeviceCommandAllowlist]);
-
   useEffect(() => {
     if (cardOpacityScaleDirty) return;
     setCardOpacityScaleDraft(cardOpacityScaleFromConfig);
@@ -1616,6 +1593,30 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
       return next;
     });
   }, [allSwitchLikeDevices, effectiveDeviceLabelOverrides, effectiveDeviceCommandAllowlist]);
+
+  // When switching profiles, reset per-device override drafts to reflect the newly selected profile.
+  // (Must live after the related useMemos to avoid TDZ errors.)
+  useEffect(() => {
+    const timers = deviceOverrideTimersRef.current;
+    for (const t of timers.values()) clearTimeout(t);
+    timers.clear();
+
+    setDeviceOverrideSaveState({});
+    setDeviceOverrideDrafts(() => {
+      const next = {};
+      for (const d of allSwitchLikeDevices) {
+        const id = String(d?.id || '').trim();
+        if (!id) continue;
+        const label = String(effectiveDeviceLabelOverrides?.[id] ?? '');
+        const cmds = effectiveDeviceCommandAllowlist?.[id];
+        next[id] = {
+          label,
+          commands: Array.isArray(cmds) ? cmds.map((c) => String(c)) : null,
+        };
+      }
+      return next;
+    });
+  }, [selectedPanelName]);
 
   const manualRooms = useMemo(() => {
     const rooms = Array.isArray(config?.rooms) ? config.rooms : [];
