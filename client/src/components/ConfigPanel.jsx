@@ -1533,20 +1533,18 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const mainLocked = Boolean(config?.ui?.mainAllowlistLocked);
   const ctrlLocked = Boolean(config?.ui?.ctrlAllowlistLocked);
 
-  const allSwitchLikeDevices = useMemo(() => {
+  const allDevices = useMemo(() => {
     const devices = (config?.sensors || [])
       .map((d) => {
-        const st = statuses?.[d.id] || null;
-        const attrs = st?.attributes || {};
+        const id = String(d?.id || '').trim();
+        if (!id) return null;
+
+        const st = statuses?.[id] || null;
         const commands = Array.isArray(st?.commands) ? st.commands : [];
 
-        const isSwitchAttr = typeof attrs.switch === 'string' && (attrs.switch === 'on' || attrs.switch === 'off');
-        const isSwitchCmd = commands.includes('on') || commands.includes('off') || commands.includes('toggle');
-        if (!isSwitchAttr && !isSwitchCmd) return null;
-
         return {
-          id: String(d.id),
-          label: d.label || st?.label || String(d.id),
+          id,
+          label: String(d?.label || st?.label || id),
           commands: Array.from(new Set(commands.map((c) => String(c || '').trim()).filter(Boolean))),
         };
       })
@@ -1569,7 +1567,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   useEffect(() => {
     setDeviceOverrideDrafts((prev) => {
       const next = { ...prev };
-      for (const d of allSwitchLikeDevices) {
+      for (const d of allDevices) {
         const id = String(d?.id || '').trim();
         if (!id) continue;
 
@@ -1588,11 +1586,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
       }
 
       for (const k of Object.keys(next)) {
-        if (!allSwitchLikeDevices.some((d) => String(d?.id) === k)) delete next[k];
+        if (!allDevices.some((d) => String(d?.id) === k)) delete next[k];
       }
       return next;
     });
-  }, [allSwitchLikeDevices, effectiveDeviceLabelOverrides, effectiveDeviceCommandAllowlist]);
+  }, [allDevices, effectiveDeviceLabelOverrides, effectiveDeviceCommandAllowlist]);
 
   // When switching profiles, reset per-device override drafts to reflect the newly selected profile.
   // (Must live after the related useMemos to avoid TDZ errors.)
@@ -1604,7 +1602,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     setDeviceOverrideSaveState({});
     setDeviceOverrideDrafts(() => {
       const next = {};
-      for (const d of allSwitchLikeDevices) {
+      for (const d of allDevices) {
         const id = String(d?.id || '').trim();
         if (!id) continue;
         const label = String(effectiveDeviceLabelOverrides?.[id] ?? '');
@@ -1616,7 +1614,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
       }
       return next;
     });
-  }, [selectedPanelName]);
+  }, [selectedPanelName, allDevices, effectiveDeviceLabelOverrides, effectiveDeviceCommandAllowlist]);
 
   const manualRooms = useMemo(() => {
     const rooms = Array.isArray(config?.rooms) ? config.rooms : [];
@@ -1992,8 +1990,8 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               className={`mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 ${isPresetSelected ? 'opacity-50 pointer-events-none' : ''}`}
               aria-disabled={isPresetSelected ? 'true' : 'false'}
             >
-              {allSwitchLikeDevices.length ? (
-                allSwitchLikeDevices.map((d) => {
+              {allDevices.length ? (
+                allDevices.map((d) => {
                   const isMain = mainAllowedIds.has(String(d.id));
                   const isCtrl = ctrlAllowedIds.has(String(d.id));
 
@@ -2166,7 +2164,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                   );
                 })
               ) : (
-                <div className="text-sm text-white/45">No switch devices discovered.</div>
+                <div className="text-sm text-white/45">No devices discovered.</div>
               )}
             </div>
 
