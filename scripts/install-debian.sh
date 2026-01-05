@@ -58,9 +58,10 @@ confirm() {
 }
 
 install_prereqs() {
-  log "Installing base packages (git/curl/ca-certificates)…"
+  log "Installing base packages (git/curl/ca-certificates/ffmpeg)…"
   apt-get update
-  apt-get install -y ca-certificates curl git
+  # ffmpeg is required for RTSP camera previews (server-side RTSP -> MPEG1 websocket).
+  apt-get install -y ca-certificates curl git ffmpeg
 
   if ! command -v git >/dev/null 2>&1; then
     die "git is required but was not found after install. Install git and re-run."
