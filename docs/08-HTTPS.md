@@ -64,3 +64,21 @@ Example:
 ```bash
 sudo systemctl restart jvshomecontrol
 ```
+
+## RTSP camera previews + HTTPS limitation
+
+RTSP camera previews are implemented as:
+
+- Server-side: `ffmpeg` reads `rtsp://...` and outputs MPEG1 video
+- Backend: Node serves that video over a **plain WebSocket** (`ws://...`) (via `node-rtsp-stream`)
+- Browser: the UI connects to that websocket to render the video
+
+Because the stream websocket is `ws://` (not `wss://`), browsers will block it when the dashboard is loaded over `https://`.
+Firefox typically reports this as: `DOMException: The operation is insecure`.
+
+Workarounds:
+
+- **Testing / easiest**: run the dashboard over HTTP (disable TLS): set `HTTP_ONLY=1` (or `HTTPS=0`) and restart the service.
+- **Production HTTPS**: run a reverse proxy (Caddy/Nginx) that terminates TLS and provides `wss://` for the stream websocket.
+
+Note: `ffmpeg` itself does not create websockets; only the Node server does.
