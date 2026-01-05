@@ -393,7 +393,26 @@ const RTSP_HLS_STARTUP_TIMEOUT_MS = (() => {
     return Math.max(2000, Math.min(60000, Math.floor(parsed)));
 })();
 
-const hlsStreams = new Map(); // cameraId -> { dir, playlistPath, ffmpeg, lastError, startedAtMs }
+const RTSP_HLS_DEBUG = (() => {
+    const raw = String(process.env.RTSP_HLS_DEBUG || '').trim().toLowerCase();
+    return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+})();
+
+const hlsStreams = new Map(); // cameraId -> { dir, playlistPath, ffmpeg, lastError, stderrTail, startedAtMs, ffmpegArgs }
+
+function redactRtspUrl(url) {
+    try {
+        const u = new URL(String(url));
+        if (u.username || u.password) {
+            u.username = u.username ? 'REDACTED' : '';
+            u.password = u.password ? 'REDACTED' : '';
+        }
+        return u.toString();
+    } catch {
+        // Fallback: strip user:pass@ if present.
+        return String(url || '').replace(/rtsp:\/\/[^@/]+@/i, 'rtsp://REDACTED@');
+    }
+}
 
 function safeCameraDirName(cameraId) {
     const id = String(cameraId || '').trim();
@@ -526,6 +545,7 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
     // - Transcode to H.264 yuv420p for broad playback support.
     // - Use small segments/list size to keep latency reasonable.
     const args = [
+        '-y',
         // Make RTSP sources with bad/missing timestamps behave.
         '-fflags', '+genpts',
         '-use_wallclock_as_timestamps', '1',
@@ -563,7 +583,9 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
         playlistPath,
         ffmpeg: cp,
         lastError: null,
+        stderrTail: [],
         startedAtMs: Date.now(),
+        ffmpegArgs: args,
     };
     hlsStreams.set(id, state);
 
@@ -573,10 +595,18 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
             console.error(`HLS ffmpeg spawn error: ${state.lastError}`);
         });
         cp.stderr?.on?.('data', (buf) => {
-            const s = String(buf || '').trim();
+            const s = String(buf || '');
             if (!s) return;
-            // Keep only the last chunk; avoids huge memory.
-            state.lastError = s.slice(-1000);
+            const lines = s.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+            if (!lines.length) return;
+            for (const line of lines) {
+                state.stderrTail.push(line);
+            }
+            // Keep last ~60 lines.
+            if (state.stderrTail.length > 60) {
+                state.stderrTail = state.stderrTail.slice(-60);
+            }
+            state.lastError = state.stderrTail[state.stderrTail.length - 1] || null;
         });
         cp.on('exit', (code) => {
             if (code && code !== 0) {
@@ -2865,12 +2895,26 @@ app.get('/api/cameras/:id/hls/ensure', async (req, res) => {
             await new Promise((r) => setTimeout(r, 150));
         }
 
+        const debugPayload = RTSP_HLS_DEBUG
+            ? {
+                ffmpeg: {
+                    bin: String(ffmpegPath || 'ffmpeg'),
+                    // Redact credentials in args (rtsp url).
+                    args: (Array.isArray(state.ffmpegArgs)
+                        ? state.ffmpegArgs.map((a) => (a === rtspUrl ? redactRtspUrl(rtspUrl) : a))
+                        : null),
+                },
+            }
+            : {};
+
         if (state.ffmpeg && state.ffmpeg.exitCode !== null && !fs.existsSync(state.playlistPath)) {
             return res.status(502).json({
                 ok: false,
                 error: 'hls_ffmpeg_exited',
                 exitCode: state.ffmpeg.exitCode,
                 lastError: state.lastError || null,
+                stderrTail: Array.isArray(state.stderrTail) ? state.stderrTail.slice(-30) : null,
+                ...debugPayload,
             });
         }
 
@@ -2880,6 +2924,8 @@ app.get('/api/cameras/:id/hls/ensure', async (req, res) => {
                 error: 'hls_start_timeout',
                 timeoutMs: RTSP_HLS_STARTUP_TIMEOUT_MS,
                 lastError: state.lastError || null,
+                stderrTail: Array.isArray(state.stderrTail) ? state.stderrTail.slice(-30) : null,
+                ...debugPayload,
             });
         }
 
