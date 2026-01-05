@@ -524,6 +524,29 @@ async function saveRoomCameraIds(roomId, cameraIds, panelName) {
   return res.json().catch(() => ({}));
 }
 
+async function saveTopCameras(cameraIds, size, panelName) {
+  const payload = {
+    ...(Array.isArray(cameraIds) ? { cameraIds } : {}),
+    ...(size ? { size } : {}),
+    ...(panelName ? { panelName } : {}),
+  };
+
+  const res = await fetch(`${API_HOST}/api/ui/top-cameras`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Top cameras save failed (${res.status})`);
+  }
+
+  return res.json();
+}
+
 async function fetchUiCameras() {
   const res = await fetch(`${API_HOST}/api/ui/cameras`);
   if (!res.ok) {
@@ -789,6 +812,10 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const homeRoomMetricKeysSave = useAsyncSave((homeRoomMetricKeys) => saveHomeRoomMetricKeys(homeRoomMetricKeys, selectedPanelName || null));
   const cameraPreviewsSave = useAsyncSave((payload) => saveCameraPreviews(payload, selectedPanelName || null));
   const visibleCamerasSave = useAsyncSave((visibleCameraIds) => saveVisibleCameraIds(visibleCameraIds, selectedPanelName || null));
+  const topCamerasSave = useAsyncSave((payload) => {
+    const next = (payload && typeof payload === 'object') ? payload : {};
+    return saveTopCameras(next.cameraIds, next.size, selectedPanelName || null);
+  });
   const roomCameraIdsSave = useAsyncSave((payload) => {
     const next = (payload && typeof payload === 'object') ? payload : {};
     return saveRoomCameraIds(next.roomId, next.cameraIds, selectedPanelName || null);
@@ -1027,6 +1054,17 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     const raw = (config?.ui?.roomCameraIds && typeof config.ui.roomCameraIds === 'object') ? config.ui.roomCameraIds : {};
     return raw;
   }, [config?.ui?.roomCameraIds]);
+
+  const topCameraIdsFromConfig = useMemo(() => {
+    const raw = Array.isArray(config?.ui?.topCameraIds) ? config.ui.topCameraIds : [];
+    return raw.map((v) => String(v || '').trim()).filter(Boolean);
+  }, [config?.ui?.topCameraIds]);
+
+  const topCameraSizeFromConfig = useMemo(() => {
+    const raw = String(config?.ui?.topCameraSize ?? '').trim().toLowerCase();
+    if (raw === 'sm' || raw === 'md' || raw === 'lg') return raw;
+    return 'md';
+  }, [config?.ui?.topCameraSize]);
 
   const homeCameraPreviewsEnabledFromConfig = useMemo(
     () => config?.ui?.homeCameraPreviewsEnabled === true,
@@ -3973,98 +4011,96 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                 {camerasFromConfig.length ? (
                   <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3">
                     <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-                      Room Cameras (this panel)
+                      Top Cameras (this panel)
                     </div>
                     <div className="mt-1 text-xs text-white/45">
-                      Choose which registered cameras show in each room.
+                      Select camera feeds to show across the top of the panel.
                     </div>
 
-                    {allRoomsForVisibility.length ? (
-                      <div className="mt-3 grid grid-cols-1 gap-3">
-                        {allRoomsForVisibility.map((r) => {
-                          const rid = String(r.id || '').trim();
-                          if (!rid) return null;
-                          const mapped = (roomCameraIdsFromConfig && typeof roomCameraIdsFromConfig === 'object') ? roomCameraIdsFromConfig : {};
-                          const hasExplicitAssignment = Object.prototype.hasOwnProperty.call(mapped, rid);
-                          const assigned = hasExplicitAssignment
-                            ? (Array.isArray(mapped[rid])
-                              ? mapped[rid].map((v) => String(v || '').trim()).filter(Boolean)
-                              : [])
-                            : camerasFromConfig
-                              .filter((c) => String(c?.defaultRoomId || '').trim() === rid)
-                              .map((c) => String(c?.id || '').trim())
+                    <div className="mt-3 grid grid-cols-1 gap-3">
+                      <label className="block">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45 truncate">
+                              Cameras
+                            </div>
+                            <div className="mt-1 text-[10px] text-white/35">
+                              {topCameraIdsFromConfig.length ? `${topCameraIdsFromConfig.length} selected` : 'None'}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={!connected || busy || topCamerasSave.status === 'saving'}
+                            onClick={() => {
+                              setError(null);
+                              topCamerasSave.run({ cameraIds: [] })
+                                .catch((err) => setError(err?.message || String(err)));
+                            }}
+                            className={`shrink-0 rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || topCamerasSave.status === 'saving') ? 'opacity-50' : 'hover:bg-white/5'}`}
+                          >
+                            None
+                          </button>
+                        </div>
+                        <select
+                          multiple
+                          value={topCameraIdsFromConfig}
+                          disabled={!connected || busy || topCamerasSave.status === 'saving'}
+                          onChange={(e) => {
+                            const selected = Array.from(e.target.selectedOptions)
+                              .map((o) => String(o.value || '').trim())
                               .filter(Boolean);
+                            setError(null);
+                            topCamerasSave.run({ cameraIds: selected })
+                              .catch((err) => setError(err?.message || String(err)));
+                          }}
+                          className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                          size={Math.min(6, Math.max(3, camerasFromConfig.length))}
+                        >
+                          {camerasFromConfig
+                            .filter((c) => c && typeof c === 'object')
+                            .map((c) => {
+                              const id = String(c?.id || '').trim();
+                              if (!id) return null;
+                              const label = String(c?.label || id).trim() || id;
+                              return (
+                                <option key={id} value={id}>
+                                  {label}
+                                </option>
+                              );
+                            })}
+                        </select>
+                      </label>
 
-                          return (
-                            <label key={rid} className="block">
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="min-w-0">
-                                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45 truncate">
-                                    {r.name}
-                                  </div>
-                                  <div className="mt-1 text-[10px] text-white/35">
-                                    {assigned.length ? `${assigned.length} selected` : 'None'}
-                                  </div>
-                                </div>
-                                <button
-                                  type="button"
-                                  disabled={!connected || busy || roomCameraIdsSave.status === 'saving'}
-                                  onClick={() => {
-                                    setError(null);
-                                    roomCameraIdsSave.run({ roomId: rid, cameraIds: [] })
-                                      .catch((err) => setError(err?.message || String(err)));
-                                  }}
-                                  className={`shrink-0 rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || roomCameraIdsSave.status === 'saving') ? 'opacity-50' : 'hover:bg-white/5'}`}
-                                >
-                                  None
-                                </button>
-                              </div>
-                              <select
-                                multiple
-                                value={assigned}
-                                disabled={!connected || busy || roomCameraIdsSave.status === 'saving'}
-                                onChange={(e) => {
-                                  const selected = Array.from(e.target.selectedOptions)
-                                    .map((o) => String(o.value || '').trim())
-                                    .filter(Boolean);
-                                  setError(null);
-                                  roomCameraIdsSave.run({ roomId: rid, cameraIds: selected })
-                                    .catch((err) => setError(err?.message || String(err)));
-                                }}
-                                className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
-                                size={Math.min(6, Math.max(3, camerasFromConfig.length))}
-                              >
-                                {camerasFromConfig
-                                  .filter((c) => c && typeof c === 'object')
-                                  .map((c) => {
-                                    const id = String(c?.id || '').trim();
-                                    if (!id) return null;
-                                    const label = String(c?.label || id).trim() || id;
-                                    return (
-                                      <option key={id} value={id}>
-                                        {label}
-                                      </option>
-                                    );
-                                  })}
-                              </select>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="mt-3 text-xs text-white/45">
-                        No rooms available.
-                      </div>
-                    )}
+                      <label className="block">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45 truncate">
+                          Size
+                        </div>
+                        <select
+                          value={topCameraSizeFromConfig}
+                          disabled={!connected || busy || topCamerasSave.status === 'saving'}
+                          onChange={(e) => {
+                            const size = String(e.target.value || '').trim().toLowerCase();
+                            setError(null);
+                            topCamerasSave.run({ size })
+                              .catch((err) => setError(err?.message || String(err)));
+                          }}
+                          className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                        >
+                          <option value="sm">Small</option>
+                          <option value="md">Medium</option>
+                          <option value="lg">Large</option>
+                        </select>
+                      </label>
+                    </div>
 
                     <div className="mt-3 flex items-center justify-between gap-3">
                       <div className="text-xs text-white/45">
-                        {statusText(roomCameraIdsSave.status)}
+                        {statusText(topCamerasSave.status)}
                       </div>
                     </div>
 
-                    {roomCameraIdsSave.error ? (
-                      <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {roomCameraIdsSave.error}</div>
+                    {topCamerasSave.error ? (
+                      <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {topCamerasSave.error}</div>
                     ) : null}
                   </div>
                 ) : null}

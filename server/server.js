@@ -1182,6 +1182,19 @@ function normalizePersistedConfig(raw) {
     const controlsCameraPreviewsEnabled = uiRaw.controlsCameraPreviewsEnabled === true;
     const cameraPreviewRefreshSeconds = clampInt(uiRaw.cameraPreviewRefreshSeconds, 2, 120, 10);
 
+    // Top-of-panel camera bar configuration.
+    // Empty list means "show none".
+    const topCameraIds = Array.isArray(uiRaw.topCameraIds)
+        ? uiRaw.topCameraIds.map((v) => String(v || '').trim()).filter(Boolean)
+        : [];
+
+    // Camera bar size: sm | md | lg
+    const topCameraSize = (() => {
+        const raw = String(uiRaw.topCameraSize ?? '').trim().toLowerCase();
+        if (raw === 'sm' || raw === 'md' || raw === 'lg') return raw;
+        return 'md';
+    })();
+
     // Camera visibility allowlist.
     // Empty list means "show all configured cameras".
     const visibleCameraIds = Array.isArray(uiRaw.visibleCameraIds)
@@ -1325,6 +1338,20 @@ function normalizePersistedConfig(raw) {
                 : [])
             : null;
 
+        const pTopCameraIds = Object.prototype.hasOwnProperty.call(p, 'topCameraIds')
+            ? (Array.isArray(p.topCameraIds)
+                ? p.topCameraIds.map((v) => String(v || '').trim()).filter(Boolean)
+                : [])
+            : null;
+
+        const pTopCameraSize = Object.prototype.hasOwnProperty.call(p, 'topCameraSize')
+            ? (() => {
+                const raw = String(p.topCameraSize ?? '').trim().toLowerCase();
+                if (raw === 'sm' || raw === 'md' || raw === 'lg') return raw;
+                return null;
+            })()
+            : null;
+
         const pGlowColorIdRaw = Object.prototype.hasOwnProperty.call(p, 'glowColorId')
             ? String(p.glowColorId ?? '').trim()
             : null;
@@ -1458,6 +1485,8 @@ function normalizePersistedConfig(raw) {
             ...(pControlsCameraPreviewsEnabled !== null ? { controlsCameraPreviewsEnabled: pControlsCameraPreviewsEnabled } : {}),
             ...(pCameraPreviewRefreshSeconds !== null ? { cameraPreviewRefreshSeconds: pCameraPreviewRefreshSeconds } : {}),
             ...(pVisibleCameraIds !== null ? { visibleCameraIds: pVisibleCameraIds } : {}),
+            ...(pTopCameraIds !== null ? { topCameraIds: pTopCameraIds } : {}),
+            ...(pTopCameraSize !== null ? { topCameraSize: pTopCameraSize } : {}),
             ...(pRoomCameraIds !== null ? { roomCameraIds: pRoomCameraIds } : {}),
             ...(pGlowColorId !== null ? { glowColorId: pGlowColorId } : {}),
             ...(pIconColorId !== null ? { iconColorId: pIconColorId } : {}),
@@ -1548,6 +1577,8 @@ function normalizePersistedConfig(raw) {
         controlsCameraPreviewsEnabled,
         cameraPreviewRefreshSeconds,
         visibleCameraIds,
+        topCameraIds,
+        topCameraSize,
         // Accent glow + icon styling.
         glowColorId,
         iconColorId,
@@ -1597,6 +1628,8 @@ function ensurePanelProfileExists(panelName) {
             controlsCameraPreviewsEnabled: ui.controlsCameraPreviewsEnabled,
             cameraPreviewRefreshSeconds: ui.cameraPreviewRefreshSeconds,
             visibleCameraIds: Array.isArray(ui.visibleCameraIds) ? ui.visibleCameraIds : [],
+            topCameraIds: Array.isArray(ui.topCameraIds) ? ui.topCameraIds : [],
+            topCameraSize: String(ui.topCameraSize ?? 'md').trim() || 'md',
             roomCameraIds: (ui.roomCameraIds && typeof ui.roomCameraIds === 'object') ? ui.roomCameraIds : {},
             glowColorId: ui.glowColorId,
             iconColorId: ui.iconColorId,
@@ -3627,6 +3660,93 @@ app.put('/api/ui/room-camera-ids', (req, res) => {
             mainAllowlistSource: nextAllowlists.main.source,
             mainAllowlistLocked: nextAllowlists.main.locked,
             roomCameraIds: (persistedConfig?.ui?.roomCameraIds && typeof persistedConfig.ui.roomCameraIds === 'object') ? persistedConfig.ui.roomCameraIds : {},
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update which cameras are shown in the top-of-panel camera bar, plus optional size.
+// Expected payload: { cameraIds?: string[]|null, size?: 'sm'|'md'|'lg'|null, panelName?: string }
+app.put('/api/ui/top-cameras', (req, res) => {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+
+    const cameraIds = Object.prototype.hasOwnProperty.call(body, 'cameraIds')
+        ? (Array.isArray(body.cameraIds)
+            ? body.cameraIds.map((v) => String(v || '').trim()).filter(Boolean)
+            : null)
+        : undefined;
+
+    if (cameraIds === null) {
+        return res.status(400).json({ error: 'Expected cameraIds to be an array when provided' });
+    }
+
+    const size = Object.prototype.hasOwnProperty.call(body, 'size')
+        ? String(body.size ?? '').trim().toLowerCase()
+        : undefined;
+
+    if (size !== undefined && size !== '' && size !== 'sm' && size !== 'md' && size !== 'lg') {
+        return res.status(400).json({ error: "Expected size to be one of: 'sm', 'md', 'lg'" });
+    }
+
+    const panelName = normalizePanelName(body.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        const prevProfile = (persistedConfig?.ui?.panelProfiles && persistedConfig.ui.panelProfiles[ensured] && typeof persistedConfig.ui.panelProfiles[ensured] === 'object')
+            ? persistedConfig.ui.panelProfiles[ensured]
+            : {};
+
+        const nextProfile = {
+            ...prevProfile,
+            ...(cameraIds !== undefined ? { topCameraIds: Array.from(new Set(cameraIds)) } : {}),
+            ...(size !== undefined ? { topCameraSize: (size || 'md') } : {}),
+        };
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: nextProfile,
+                },
+            },
+        });
+    } else {
+        const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...ui,
+                ...(cameraIds !== undefined ? { topCameraIds: Array.from(new Set(cameraIds)) } : {}),
+                ...(size !== undefined ? { topCameraSize: (size || 'md') } : {}),
+            },
+        });
+    }
+
+    persistConfigToDiskIfChanged('api-ui-top-cameras');
+
+    const nextAllowlists = getUiAllowlistsInfo();
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            ctrlAllowedDeviceIds: nextAllowlists.ctrl.ids,
+            mainAllowedDeviceIds: nextAllowlists.main.ids,
+            allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            ctrlAllowlistSource: nextAllowlists.ctrl.source,
+            ctrlAllowlistLocked: nextAllowlists.ctrl.locked,
+            mainAllowlistSource: nextAllowlists.main.source,
+            mainAllowlistLocked: nextAllowlists.main.locked,
+            topCameraIds: Array.isArray(persistedConfig?.ui?.topCameraIds) ? persistedConfig.ui.topCameraIds : [],
+            topCameraSize: String(persistedConfig?.ui?.topCameraSize ?? 'md').trim() || 'md',
             panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };
