@@ -550,15 +550,6 @@ const getDeviceCommandAllowlistForId = (deviceCommandAllowlist, deviceId) => {
   return arr.map((v) => String(v || '').trim()).filter(Boolean);
 };
 
-const getDeviceHomeMetricAllowlistForId = (deviceHomeMetricAllowlist, deviceId) => {
-  const id = String(deviceId || '').trim();
-  if (!id) return null;
-  const raw = (deviceHomeMetricAllowlist && typeof deviceHomeMetricAllowlist === 'object') ? deviceHomeMetricAllowlist : {};
-  const arr = raw[id];
-  if (!Array.isArray(arr)) return null;
-  return arr.map((v) => String(v || '').trim()).filter(Boolean);
-};
-
 const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, deviceCommandAllowlist, deviceHomeMetricAllowlist, homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
 
