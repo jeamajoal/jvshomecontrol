@@ -541,7 +541,6 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
         '-crf', String(process.env.RTSP_HLS_CRF || '20'),
         '-pix_fmt', 'yuv420p',
         // Force timestamps to advance consistently for HLS.
-        '-fps_mode', 'cfr',
         '-r', String(RTSP_HLS_OUTPUT_FPS),
         '-g', String(process.env.RTSP_HLS_GOP || (RTSP_HLS_SEGMENT_SECONDS * 25)),
         '-keyint_min', String(process.env.RTSP_HLS_GOP || (RTSP_HLS_SEGMENT_SECONDS * 25)),
@@ -552,7 +551,6 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
         '-hls_time', String(RTSP_HLS_SEGMENT_SECONDS),
         '-hls_list_size', String(RTSP_HLS_LIST_SIZE),
         '-hls_flags', 'delete_segments+append_list+omit_endlist',
-        '-reset_timestamps', '1',
         '-hls_segment_filename', segmentPattern,
         playlistPath,
     ];
