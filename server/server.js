@@ -5,7 +5,18 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const net = require('net');
 const { Server } = require('socket.io');
+
+let RtspStream = null;
+try {
+    // Optional: enables RTSP -> WS (MPEG1) streaming for browser playback.
+    // Requires ffmpeg installed on the host.
+    // eslint-disable-next-line global-require
+    RtspStream = require('node-rtsp-stream');
+} catch {
+    RtspStream = null;
+}
 
 let UndiciAgent = null;
 try {
@@ -342,6 +353,57 @@ const server = USE_HTTPS
     : http.createServer(app);
 
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
+
+// RTSP stream manager (node-rtsp-stream spins up its own WS server per camera).
+const RTSP_WS_BASE_PORT = (() => {
+    const raw = String(process.env.RTSP_WS_BASE_PORT || '').trim();
+    const parsed = raw ? Number(raw) : 9999;
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 9999;
+})();
+
+const rtspStreams = new Map(); // cameraId -> { wsPort, stream }
+
+function isPortAvailable(port) {
+    return new Promise((resolve) => {
+        const srv = net.createServer();
+        srv.once('error', () => resolve(false));
+        srv.once('listening', () => {
+            try {
+                srv.close(() => resolve(true));
+            } catch {
+                resolve(false);
+            }
+        });
+        try {
+            srv.listen(port, '0.0.0.0');
+        } catch {
+            resolve(false);
+        }
+    });
+}
+
+async function allocateRtspWsPort(preferred) {
+    const pref = Number(preferred);
+    if (Number.isFinite(pref) && pref > 0) {
+        // Accept configured port if available.
+        if (await isPortAvailable(Math.floor(pref))) return Math.floor(pref);
+    }
+
+    // Scan a small range starting at base.
+    for (let i = 0; i < 200; i += 1) {
+        const cand = RTSP_WS_BASE_PORT + i;
+        // eslint-disable-next-line no-await-in-loop
+        if (await isPortAvailable(cand)) return cand;
+    }
+    return null;
+}
+
+function buildWsUrlForPort(req, port) {
+    const host = req?.hostname || 'localhost';
+    // node-rtsp-stream serves plain ws (not wss). If you run the main app over https,
+    // browsers may block ws:// as mixed-content.
+    return `ws://${host}:${port}`;
+}
 
 // Hubitat Maker API
 // Public-repo posture: no built-in defaults or legacy env var fallbacks.
@@ -1029,19 +1091,25 @@ function normalizePersistedConfig(raw) {
         return Array.from(new Set(keys));
     })();
 
-    // --- Cameras (config-driven, per camera) ---
-    // Cameras are not standard Hubitat devices; this registry supports embedding previews via a server-side snapshot proxy.
+    // --- Cameras (registered devices, then assigned to rooms per panel) ---
+    // Cameras are not standard Hubitat devices; this registry supports:
+    // - Snapshot previews via server-side proxy
+    // - HTTP(S) embeds (iframe)
+    // - RTSP playback via node-rtsp-stream (requires ffmpeg)
     const cameras = (() => {
         const rawList = Array.isArray(uiRaw.cameras) ? uiRaw.cameras : [];
         const outList = [];
+
         for (const rawCam of rawList) {
             if (!rawCam || typeof rawCam !== 'object') continue;
             const id = String(rawCam.id || '').trim();
             if (!id) continue;
 
             const label = String(rawCam.label || id).trim().slice(0, 64) || id;
-            const roomId = String(rawCam.roomId || '').trim();
             const enabled = rawCam.enabled !== false;
+
+            // Legacy: roomId (old) -> defaultRoomId (new default assignment).
+            const defaultRoomId = String(rawCam.defaultRoomId || rawCam.roomId || '').trim();
 
             const snapRaw = (rawCam.snapshot && typeof rawCam.snapshot === 'object') ? rawCam.snapshot : {};
             const snapshotUrl = asFile(snapRaw.url);
@@ -1054,25 +1122,71 @@ function normalizePersistedConfig(raw) {
                 }
                 : null;
 
+            const embedRaw = (rawCam.embed && typeof rawCam.embed === 'object') ? rawCam.embed : {};
+            const embedUrl = asFile(embedRaw.url);
+
+            const rtspRaw = (rawCam.rtsp && typeof rawCam.rtsp === 'object') ? rawCam.rtsp : {};
+            const rtspUrl = String(rtspRaw.url || '').trim();
+            const rtspWsPort = Number.isFinite(Number(rtspRaw.wsPort)) ? Math.floor(Number(rtspRaw.wsPort)) : null;
+
             outList.push({
                 id,
                 label,
-                roomId,
                 enabled,
-                snapshot: {
-                    url: snapshotUrl,
-                    ...(basicAuth && (basicAuth.username || basicAuth.password) ? { basicAuth } : {}),
-                },
+                ...(defaultRoomId ? { defaultRoomId } : {}),
+                ...(snapshotUrl ? {
+                    snapshot: {
+                        url: snapshotUrl,
+                        ...(basicAuth && (basicAuth.username || basicAuth.password) ? { basicAuth } : {}),
+                    },
+                } : {}),
+                ...(embedUrl ? { embed: { url: embedUrl } } : {}),
+                ...(rtspUrl ? { rtsp: { url: rtspUrl, ...(rtspWsPort ? { wsPort: rtspWsPort } : {}) } } : {}),
             });
         }
 
         // Hard cap to avoid accidental huge payloads.
-        return outList.slice(0, 50);
+        return outList.slice(0, 100);
+    })();
+
+    // Room -> camera ids assignment.
+    // If omitted, client falls back to per-camera defaultRoomId.
+    const roomCameraIds = (() => {
+        if (uiRaw.roomCameraIds && typeof uiRaw.roomCameraIds === 'object') {
+            const rawMap = uiRaw.roomCameraIds;
+            const outMap = {};
+            for (const [ridRaw, idsRaw] of Object.entries(rawMap)) {
+                const rid = String(ridRaw || '').trim();
+                if (!rid) continue;
+                const ids = Array.isArray(idsRaw)
+                    ? idsRaw.map((v) => String(v || '').trim()).filter(Boolean)
+                    : [];
+                outMap[rid] = Array.from(new Set(ids));
+            }
+            return outMap;
+        }
+
+        // Back-compat: derive a default mapping from legacy/defaultRoomId values.
+        const outMap = {};
+        for (const cam of cameras) {
+            const rid = String(cam?.defaultRoomId || '').trim();
+            if (!rid) continue;
+            const id = String(cam?.id || '').trim();
+            if (!id) continue;
+            outMap[rid] = Array.from(new Set([...(outMap[rid] || []), id]));
+        }
+        return outMap;
     })();
 
     const homeCameraPreviewsEnabled = uiRaw.homeCameraPreviewsEnabled === true;
     const controlsCameraPreviewsEnabled = uiRaw.controlsCameraPreviewsEnabled === true;
     const cameraPreviewRefreshSeconds = clampInt(uiRaw.cameraPreviewRefreshSeconds, 2, 120, 10);
+
+    // Camera visibility allowlist.
+    // Empty list means "show all configured cameras".
+    const visibleCameraIds = Array.isArray(uiRaw.visibleCameraIds)
+        ? uiRaw.visibleCameraIds.map((v) => String(v || '').trim()).filter(Boolean)
+        : [];
 
     // Glow/icon styling (Home page).
     // Color IDs use the same shared allowlist as tolerance/text colors.
@@ -1187,6 +1301,28 @@ function normalizePersistedConfig(raw) {
 
         const pCameraPreviewRefreshSeconds = Object.prototype.hasOwnProperty.call(p, 'cameraPreviewRefreshSeconds')
             ? clampInt(p.cameraPreviewRefreshSeconds, 2, 120, cameraPreviewRefreshSeconds)
+            : null;
+
+        const pRoomCameraIds = Object.prototype.hasOwnProperty.call(p, 'roomCameraIds')
+            ? (() => {
+                const rawMap = (p.roomCameraIds && typeof p.roomCameraIds === 'object') ? p.roomCameraIds : {};
+                const outMap = {};
+                for (const [ridRaw, idsRaw] of Object.entries(rawMap)) {
+                    const rid = String(ridRaw || '').trim();
+                    if (!rid) continue;
+                    const ids = Array.isArray(idsRaw)
+                        ? idsRaw.map((v) => String(v || '').trim()).filter(Boolean)
+                        : [];
+                    outMap[rid] = Array.from(new Set(ids));
+                }
+                return outMap;
+            })()
+            : null;
+
+        const pVisibleCameraIds = Object.prototype.hasOwnProperty.call(p, 'visibleCameraIds')
+            ? (Array.isArray(p.visibleCameraIds)
+                ? p.visibleCameraIds.map((v) => String(v || '').trim()).filter(Boolean)
+                : [])
             : null;
 
         const pGlowColorIdRaw = Object.prototype.hasOwnProperty.call(p, 'glowColorId')
@@ -1321,6 +1457,8 @@ function normalizePersistedConfig(raw) {
             ...(pHomeCameraPreviewsEnabled !== null ? { homeCameraPreviewsEnabled: pHomeCameraPreviewsEnabled } : {}),
             ...(pControlsCameraPreviewsEnabled !== null ? { controlsCameraPreviewsEnabled: pControlsCameraPreviewsEnabled } : {}),
             ...(pCameraPreviewRefreshSeconds !== null ? { cameraPreviewRefreshSeconds: pCameraPreviewRefreshSeconds } : {}),
+            ...(pVisibleCameraIds !== null ? { visibleCameraIds: pVisibleCameraIds } : {}),
+            ...(pRoomCameraIds !== null ? { roomCameraIds: pRoomCameraIds } : {}),
             ...(pGlowColorId !== null ? { glowColorId: pGlowColorId } : {}),
             ...(pIconColorId !== null ? { iconColorId: pIconColorId } : {}),
             ...(pIconOpacityPct !== null ? { iconOpacityPct: pIconOpacityPct } : {}),
@@ -1405,9 +1543,11 @@ function normalizePersistedConfig(raw) {
         homeRoomMetricKeys,
         // Cameras (public fields are sanitized in /api/config; full snapshot URLs stay server-side).
         cameras,
+        roomCameraIds,
         homeCameraPreviewsEnabled,
         controlsCameraPreviewsEnabled,
         cameraPreviewRefreshSeconds,
+        visibleCameraIds,
         // Accent glow + icon styling.
         glowColorId,
         iconColorId,
@@ -1456,6 +1596,8 @@ function ensurePanelProfileExists(panelName) {
             homeCameraPreviewsEnabled: ui.homeCameraPreviewsEnabled,
             controlsCameraPreviewsEnabled: ui.controlsCameraPreviewsEnabled,
             cameraPreviewRefreshSeconds: ui.cameraPreviewRefreshSeconds,
+            visibleCameraIds: Array.isArray(ui.visibleCameraIds) ? ui.visibleCameraIds : [],
+            roomCameraIds: (ui.roomCameraIds && typeof ui.roomCameraIds === 'object') ? ui.roomCameraIds : {},
             glowColorId: ui.glowColorId,
             iconColorId: ui.iconColorId,
             iconOpacityPct: ui.iconOpacityPct,
@@ -2353,12 +2495,62 @@ function getPublicCamerasList() {
             const id = String(c?.id || '').trim();
             if (!id) return null;
             const label = String(c?.label || id).trim() || id;
-            const roomId = String(c?.roomId || '').trim();
             const enabled = c?.enabled !== false;
             const hasSnapshot = Boolean(c?.snapshot && typeof c.snapshot === 'object' && typeof c.snapshot.url === 'string' && c.snapshot.url.trim());
-            return { id, label, roomId, enabled, hasSnapshot };
+            const defaultRoomId = String(c?.defaultRoomId || c?.roomId || '').trim();
+            const embedUrl = (c?.embed && typeof c.embed === 'object' && typeof c.embed.url === 'string') ? String(c.embed.url).trim() : '';
+            const rtspUrl = (c?.rtsp && typeof c.rtsp === 'object' && typeof c.rtsp.url === 'string') ? String(c.rtsp.url).trim() : '';
+            const hasEmbed = Boolean(embedUrl);
+            const hasRtsp = Boolean(rtspUrl);
+            return {
+                id,
+                label,
+                enabled,
+                ...(defaultRoomId ? { defaultRoomId } : {}),
+                hasSnapshot,
+                hasEmbed,
+                ...(hasEmbed ? { embedUrl } : {}),
+                hasRtsp,
+            };
         })
         .filter(Boolean);
+}
+
+function getClientSafeConfig() {
+    const allowlists = getUiAllowlistsInfo();
+    const publicCameras = getPublicCamerasList();
+    return {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            // Do not leak snapshot URLs or credentials to the browser.
+            cameras: publicCameras,
+            ctrlAllowedDeviceIds: allowlists.ctrl.ids,
+            mainAllowedDeviceIds: allowlists.main.ids,
+            // Back-compat for older clients
+            allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+
+            ctrlAllowlistSource: allowlists.ctrl.source,
+            ctrlAllowlistLocked: allowlists.ctrl.locked,
+            mainAllowlistSource: allowlists.main.source,
+            mainAllowlistLocked: allowlists.main.locked,
+        },
+    };
+}
+
+// Ensure any socket "config_update" payloads are sanitized.
+// This avoids leaking camera snapshot URLs/auth via websockets.
+try {
+    const rawEmit = io.emit.bind(io);
+    // eslint-disable-next-line no-param-reassign
+    io.emit = (event, ...args) => {
+        if (event === 'config_update') {
+            return rawEmit('config_update', getClientSafeConfig());
+        }
+        return rawEmit(event, ...args);
+    };
+} catch {
+    // ignore
 }
 
 function getCameraById(cameraId) {
@@ -2377,6 +2569,61 @@ app.get('/', (req, res) => {
 
 app.get('/api/cameras', (req, res) => {
     res.json({ ok: true, cameras: getPublicCamerasList() });
+});
+
+// Ensure an RTSP camera has an active websocket stream.
+// Returns { wsUrl } for use with a client-side MPEG1 decoder (e.g. jsmpeg).
+app.get('/api/cameras/:id/rtsp/ensure', async (req, res) => {
+    try {
+        const cam = getCameraById(req.params.id);
+        if (!cam || cam.enabled === false) {
+            return res.status(404).json({ ok: false, error: 'Camera not found' });
+        }
+
+        const rtsp = (cam.rtsp && typeof cam.rtsp === 'object') ? cam.rtsp : {};
+        const streamUrl = String(rtsp.url || '').trim();
+        if (!streamUrl) {
+            return res.status(404).json({ ok: false, error: 'No RTSP configured' });
+        }
+        if (!/^rtsp:\/\//i.test(streamUrl)) {
+            return res.status(400).json({ ok: false, error: 'RTSP URL must start with rtsp://' });
+        }
+        if (!RtspStream) {
+            return res.status(501).json({ ok: false, error: 'RTSP streaming not available (node-rtsp-stream not installed)' });
+        }
+
+        const id = String(cam.id || '').trim();
+        const existing = rtspStreams.get(id);
+        if (existing && existing.wsPort) {
+            return res.json({ ok: true, wsUrl: buildWsUrlForPort(req, existing.wsPort) });
+        }
+
+        const preferredPort = rtsp.wsPort;
+        const wsPort = await allocateRtspWsPort(preferredPort);
+        if (!wsPort) {
+            return res.status(503).json({ ok: false, error: 'No free RTSP websocket ports available' });
+        }
+
+        let stream;
+        try {
+            stream = new RtspStream({
+                name: `camera-${id}`,
+                streamUrl,
+                wsPort,
+                ffmpegOptions: {
+                    '-stats': '',
+                    '-r': 25,
+                },
+            });
+        } catch (err) {
+            return res.status(500).json({ ok: false, error: err?.message || String(err) });
+        }
+
+        rtspStreams.set(id, { wsPort, stream });
+        return res.json({ ok: true, wsUrl: buildWsUrlForPort(req, wsPort) });
+    } catch (err) {
+        return res.status(500).json({ ok: false, error: err?.message || String(err) });
+    }
 });
 
 app.get('/api/cameras/:id/snapshot', async (req, res) => {
@@ -2455,25 +2702,7 @@ app.get('/api/config', (req, res) => {
     // Persist the latest discovered mapping/layout into config.json.
     // This makes config.json the stable source of truth.
     persistConfigToDiskIfChanged('api-config');
-    const allowlists = getUiAllowlistsInfo();
-    const publicCameras = getPublicCamerasList();
-    res.json({
-        ...config,
-        ui: {
-            ...(config?.ui || {}),
-            // Do not leak camera URLs or credentials to the browser.
-            cameras: publicCameras,
-            ctrlAllowedDeviceIds: allowlists.ctrl.ids,
-            mainAllowedDeviceIds: allowlists.main.ids,
-            // Back-compat for older clients
-            allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
-
-            ctrlAllowlistSource: allowlists.ctrl.source,
-            ctrlAllowlistLocked: allowlists.ctrl.locked,
-            mainAllowlistSource: allowlists.main.source,
-            mainAllowlistLocked: allowlists.main.locked,
-        },
-    });
+    res.json(getClientSafeConfig());
 });
 app.get('/api/status', (req, res) => res.json(sensorStatuses));
 
@@ -2531,6 +2760,57 @@ function emitConfigUpdateSafe() {
     } catch {
         // ignore
     }
+}
+
+function redactUrlPassword(rawUrl) {
+    const url = String(rawUrl || '').trim();
+    if (!url) return '';
+    try {
+        const u = new URL(url);
+        if (!u.password) return url;
+        u.password = '***';
+        return u.toString();
+    } catch {
+        // Not parseable by WHATWG URL (rtsp:// is usually parseable in Node, but be safe).
+        return url.replace(/:(?!\/\/)([^@/]+)@/, ':***@');
+    }
+}
+
+function redactCameraForUi(cam) {
+    if (!cam || typeof cam !== 'object') return null;
+    const id = String(cam.id || '').trim();
+    if (!id) return null;
+    const label = String(cam.label || id).trim() || id;
+    const enabled = cam.enabled !== false;
+    const defaultRoomId = String(cam.defaultRoomId || cam.roomId || '').trim();
+
+    const snap = (cam.snapshot && typeof cam.snapshot === 'object') ? cam.snapshot : null;
+    const snapUrl = snap ? String(snap.url || '').trim() : '';
+    const auth = snap && snap.basicAuth && typeof snap.basicAuth === 'object' ? snap.basicAuth : null;
+    const user = auth ? String(auth.username ?? '').trim() : '';
+    const hasPassword = Boolean(auth && String(auth.password ?? '').trim());
+
+    const embed = (cam.embed && typeof cam.embed === 'object') ? cam.embed : null;
+    const embedUrl = embed ? String(embed.url || '').trim() : '';
+
+    const rtsp = (cam.rtsp && typeof cam.rtsp === 'object') ? cam.rtsp : null;
+    const rtspUrl = rtsp ? redactUrlPassword(rtsp.url) : '';
+    const wsPort = rtsp && Number.isFinite(Number(rtsp.wsPort)) ? Math.floor(Number(rtsp.wsPort)) : null;
+
+    return {
+        id,
+        label,
+        enabled,
+        ...(defaultRoomId ? { defaultRoomId } : {}),
+        ...(snapUrl ? {
+            snapshot: {
+                url: snapUrl,
+                ...(user || hasPassword ? { basicAuth: { username: user, hasPassword } } : {}),
+            },
+        } : {}),
+        ...(embedUrl ? { embed: { url: embedUrl } } : {}),
+        ...(rtspUrl ? { rtsp: { url: rtspUrl, ...(wsPort ? { wsPort } : {}) } } : {}),
+    };
 }
 
 // Create/delete manual rooms (rooms not discovered via Maker API)
@@ -2739,6 +3019,216 @@ app.delete('/api/labels/:id', (req, res) => {
         emitConfigUpdateSafe();
     }
 
+    return res.json({ ok: true });
+});
+
+// --- Camera registry (Settings -> Cameras) ---
+// Note: snapshot/basicAuth passwords are never returned to the UI.
+app.get('/api/ui/cameras', (req, res) => {
+    const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+    const cams = Array.isArray(ui.cameras) ? ui.cameras : [];
+    return res.json({ ok: true, cameras: cams.map(redactCameraForUi).filter(Boolean) });
+});
+
+app.post('/api/ui/cameras', (req, res) => {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const rawCam = (body.camera && typeof body.camera === 'object') ? body.camera : {};
+    const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+    const existing = Array.isArray(ui.cameras) ? ui.cameras : [];
+
+    const requestedId = String(rawCam.id || '').trim();
+    const label = String(rawCam.label || requestedId || '').trim();
+    if (!label && !requestedId) {
+        return res.status(400).json({ ok: false, error: 'Camera requires id or label' });
+    }
+
+    const baseId = slugifyId(requestedId || label);
+    if (!baseId) {
+        return res.status(400).json({ ok: false, error: 'Invalid camera id/label' });
+    }
+
+    const used = new Set(existing.map((c) => String(c?.id || '').trim()).filter(Boolean));
+    let id = baseId;
+    let n = 2;
+    while (used.has(id)) {
+        id = `${baseId}_${n}`;
+        n += 1;
+    }
+
+    const cam = {
+        id,
+        label: label || id,
+        enabled: rawCam.enabled !== false,
+        defaultRoomId: String(rawCam.defaultRoomId || '').trim(),
+        snapshot: rawCam.snapshot,
+        embed: rawCam.embed,
+        rtsp: rawCam.rtsp,
+    };
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...ui,
+            cameras: [...existing, cam],
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-cameras-create');
+    rebuildRuntimeConfigFromPersisted();
+    io.emit('config_update', config);
+
+    const created = (Array.isArray(persistedConfig?.ui?.cameras) ? persistedConfig.ui.cameras : [])
+        .find((c) => String(c?.id || '').trim() === id);
+    return res.json({ ok: true, camera: redactCameraForUi(created) });
+});
+
+app.put('/api/ui/cameras/:id', (req, res) => {
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ ok: false, error: 'Missing id' });
+
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const rawCam = (body.camera && typeof body.camera === 'object') ? body.camera : {};
+
+    const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+    const existing = Array.isArray(ui.cameras) ? ui.cameras : [];
+    const idx = existing.findIndex((c) => String(c?.id || '').trim() === id);
+    if (idx === -1) return res.status(404).json({ ok: false, error: 'Camera not found' });
+
+    const prev = existing[idx] && typeof existing[idx] === 'object' ? existing[idx] : {};
+    const next = { ...prev };
+
+    if (Object.prototype.hasOwnProperty.call(rawCam, 'label')) {
+        next.label = String(rawCam.label || id).trim().slice(0, 64) || id;
+    }
+    if (Object.prototype.hasOwnProperty.call(rawCam, 'enabled')) {
+        next.enabled = rawCam.enabled !== false;
+    }
+    if (Object.prototype.hasOwnProperty.call(rawCam, 'defaultRoomId')) {
+        next.defaultRoomId = String(rawCam.defaultRoomId || '').trim();
+    }
+
+    // Snapshot settings (preserve password unless explicitly provided).
+    if (Object.prototype.hasOwnProperty.call(rawCam, 'snapshot')) {
+        const snapRaw = (rawCam.snapshot && typeof rawCam.snapshot === 'object') ? rawCam.snapshot : {};
+        const prevSnap = (prev.snapshot && typeof prev.snapshot === 'object') ? prev.snapshot : {};
+        const prevAuth = (prevSnap.basicAuth && typeof prevSnap.basicAuth === 'object') ? prevSnap.basicAuth : {};
+
+        const authRaw = (snapRaw.basicAuth && typeof snapRaw.basicAuth === 'object') ? snapRaw.basicAuth : {};
+        const hasPasswordField = Object.prototype.hasOwnProperty.call(authRaw, 'password');
+
+        const nextAuth = {
+            username: String(authRaw.username ?? prevAuth.username ?? '').trim(),
+            password: hasPasswordField ? String(authRaw.password ?? '').trim() : String(prevAuth.password ?? '').trim(),
+        };
+
+        const url = String(snapRaw.url ?? prevSnap.url ?? '').trim();
+        if (url) {
+            next.snapshot = {
+                url,
+                ...(nextAuth.username || nextAuth.password ? { basicAuth: nextAuth } : {}),
+            };
+        } else {
+            delete next.snapshot;
+        }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(rawCam, 'embed')) {
+        const embedRaw = (rawCam.embed && typeof rawCam.embed === 'object') ? rawCam.embed : {};
+        const url = String(embedRaw.url || '').trim();
+        if (url) next.embed = { url };
+        else delete next.embed;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(rawCam, 'rtsp')) {
+        const rtspRaw = (rawCam.rtsp && typeof rawCam.rtsp === 'object') ? rawCam.rtsp : {};
+        const url = String(rtspRaw.url || '').trim();
+        const wsPort = Number.isFinite(Number(rtspRaw.wsPort)) ? Math.floor(Number(rtspRaw.wsPort)) : undefined;
+        if (url) {
+            next.rtsp = { url, ...(wsPort ? { wsPort } : {}) };
+        } else {
+            delete next.rtsp;
+        }
+    }
+
+    const nextList = [...existing];
+    nextList[idx] = next;
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...ui,
+            cameras: nextList,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-cameras-update');
+    rebuildRuntimeConfigFromPersisted();
+    io.emit('config_update', config);
+
+    const updated = (Array.isArray(persistedConfig?.ui?.cameras) ? persistedConfig.ui.cameras : [])
+        .find((c) => String(c?.id || '').trim() === id);
+    return res.json({ ok: true, camera: redactCameraForUi(updated) });
+});
+
+app.delete('/api/ui/cameras/:id', (req, res) => {
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ ok: false, error: 'Missing id' });
+
+    const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+    const existing = Array.isArray(ui.cameras) ? ui.cameras : [];
+    const nextCameras = existing.filter((c) => String(c?.id || '').trim() !== id);
+    if (nextCameras.length === existing.length) {
+        return res.status(404).json({ ok: false, error: 'Camera not found' });
+    }
+
+    // Best-effort stop RTSP stream if running.
+    const active = rtspStreams.get(id);
+    if (active && active.stream && typeof active.stream.stop === 'function') {
+        try { active.stream.stop(); } catch { /* ignore */ }
+    }
+    rtspStreams.delete(id);
+
+    const cleanRoomMap = (rawMap) => {
+        const map = (rawMap && typeof rawMap === 'object') ? rawMap : {};
+        const out = {};
+        for (const [rid, arr] of Object.entries(map)) {
+            const nextArr = (Array.isArray(arr) ? arr : [])
+                .map((v) => String(v || '').trim())
+                .filter((v) => v && v !== id);
+            if (nextArr.length) out[rid] = Array.from(new Set(nextArr));
+        }
+        return out;
+    };
+
+    const cleanVisibleIds = (arr) => (Array.isArray(arr) ? arr : [])
+        .map((v) => String(v || '').trim())
+        .filter((v) => v && v !== id);
+
+    const profiles = (ui.panelProfiles && typeof ui.panelProfiles === 'object') ? ui.panelProfiles : {};
+    const nextProfiles = {};
+    for (const [name, p] of Object.entries(profiles)) {
+        if (!p || typeof p !== 'object') continue;
+        nextProfiles[name] = {
+            ...p,
+            ...(Object.prototype.hasOwnProperty.call(p, 'roomCameraIds') ? { roomCameraIds: cleanRoomMap(p.roomCameraIds) } : {}),
+            ...(Object.prototype.hasOwnProperty.call(p, 'visibleCameraIds') ? { visibleCameraIds: cleanVisibleIds(p.visibleCameraIds) } : {}),
+        };
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...ui,
+            cameras: nextCameras,
+            roomCameraIds: cleanRoomMap(ui.roomCameraIds),
+            visibleCameraIds: cleanVisibleIds(ui.visibleCameraIds),
+            panelProfiles: nextProfiles,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-cameras-delete');
+    rebuildRuntimeConfigFromPersisted();
+    io.emit('config_update', config);
     return res.json({ ok: true });
 });
 
@@ -2981,6 +3471,160 @@ app.put('/api/ui/visible-room-ids', (req, res) => {
             mainAllowlistSource: nextAllowlists.main.source,
             mainAllowlistLocked: nextAllowlists.main.locked,
             visibleRoomIds: Array.isArray(persistedConfig?.ui?.visibleRoomIds) ? persistedConfig.ui.visibleRoomIds : [],
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update which cameras are visible on this panel.
+// Expected payload: { visibleCameraIds: string[], panelName?: string }
+// Empty list means "show all cameras".
+app.put('/api/ui/visible-camera-ids', (req, res) => {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const visibleCameraIds = Array.isArray(body.visibleCameraIds)
+        ? body.visibleCameraIds.map((v) => String(v || '').trim()).filter(Boolean)
+        : null;
+
+    if (!Array.isArray(visibleCameraIds)) {
+        return res.status(400).json({ error: 'Expected { visibleCameraIds: string[] }' });
+    }
+
+    const panelName = normalizePanelName(body.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        visibleCameraIds,
+                    },
+                },
+            },
+        });
+    } else {
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                visibleCameraIds,
+            },
+        });
+    }
+
+    persistConfigToDiskIfChanged('api-ui-visible-camera-ids');
+
+    const nextAllowlists = getUiAllowlistsInfo();
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            ctrlAllowedDeviceIds: nextAllowlists.ctrl.ids,
+            mainAllowedDeviceIds: nextAllowlists.main.ids,
+            allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            ctrlAllowlistSource: nextAllowlists.ctrl.source,
+            ctrlAllowlistLocked: nextAllowlists.ctrl.locked,
+            mainAllowlistSource: nextAllowlists.main.source,
+            mainAllowlistLocked: nextAllowlists.main.locked,
+            visibleCameraIds: Array.isArray(persistedConfig?.ui?.visibleCameraIds) ? persistedConfig.ui.visibleCameraIds : [],
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update which cameras are assigned to a specific room on this panel.
+// Expected payload: { roomId: string, cameraIds: string[], panelName?: string }
+app.put('/api/ui/room-camera-ids', (req, res) => {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const roomId = String(body.roomId || '').trim();
+    if (!roomId) {
+        return res.status(400).json({ error: 'Expected { roomId: string, cameraIds: string[] }' });
+    }
+
+    const cameraIds = Array.isArray(body.cameraIds)
+        ? body.cameraIds.map((v) => String(v || '').trim()).filter(Boolean)
+        : null;
+
+    if (!Array.isArray(cameraIds)) {
+        return res.status(400).json({ error: 'Expected { roomId: string, cameraIds: string[] }' });
+    }
+
+    const uniq = Array.from(new Set(cameraIds));
+
+    const panelName = normalizePanelName(body.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        const prevProfile = (persistedConfig?.ui?.panelProfiles && persistedConfig.ui.panelProfiles[ensured] && typeof persistedConfig.ui.panelProfiles[ensured] === 'object')
+            ? persistedConfig.ui.panelProfiles[ensured]
+            : {};
+        const prevMap = (prevProfile.roomCameraIds && typeof prevProfile.roomCameraIds === 'object') ? prevProfile.roomCameraIds : {};
+        const nextMap = { ...prevMap };
+        if (uniq.length) nextMap[roomId] = uniq;
+        else delete nextMap[roomId];
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...prevProfile,
+                        roomCameraIds: nextMap,
+                    },
+                },
+            },
+        });
+    } else {
+        const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+        const prevMap = (ui.roomCameraIds && typeof ui.roomCameraIds === 'object') ? ui.roomCameraIds : {};
+        const nextMap = { ...prevMap };
+        if (uniq.length) nextMap[roomId] = uniq;
+        else delete nextMap[roomId];
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...ui,
+                roomCameraIds: nextMap,
+            },
+        });
+    }
+
+    persistConfigToDiskIfChanged('api-ui-room-camera-ids');
+
+    const nextAllowlists = getUiAllowlistsInfo();
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            ctrlAllowedDeviceIds: nextAllowlists.ctrl.ids,
+            mainAllowedDeviceIds: nextAllowlists.main.ids,
+            allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            ctrlAllowlistSource: nextAllowlists.ctrl.source,
+            ctrlAllowlistLocked: nextAllowlists.ctrl.locked,
+            mainAllowlistSource: nextAllowlists.main.source,
+            mainAllowlistLocked: nextAllowlists.main.locked,
+            roomCameraIds: (persistedConfig?.ui?.roomCameraIds && typeof persistedConfig.ui.roomCameraIds === 'object') ? persistedConfig.ui.roomCameraIds : {},
             panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };
@@ -4647,6 +5291,89 @@ app.put('/api/ui/home-room-metric-keys', (req, res) => {
 
     return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
 });
+
+    // Update camera preview settings.
+    // Expected payload: { homeCameraPreviewsEnabled: boolean, controlsCameraPreviewsEnabled: boolean, cameraPreviewRefreshSeconds: number(2-120), panelName?: string }
+    app.put('/api/ui/camera-previews', (req, res) => {
+        const hasHome = typeof req.body?.homeCameraPreviewsEnabled === 'boolean';
+        const hasControls = typeof req.body?.controlsCameraPreviewsEnabled === 'boolean';
+        if (!hasHome || !hasControls) {
+            return res.status(400).json({ error: 'Missing homeCameraPreviewsEnabled and/or controlsCameraPreviewsEnabled (boolean)' });
+        }
+
+        const rawSeconds = req.body?.cameraPreviewRefreshSeconds;
+        const num = (typeof rawSeconds === 'number') ? rawSeconds : Number(rawSeconds);
+        if (!Number.isFinite(num)) {
+            return res.status(400).json({ error: 'Missing cameraPreviewRefreshSeconds (2-120)' });
+        }
+
+        const homeCameraPreviewsEnabled = req.body?.homeCameraPreviewsEnabled === true;
+        const controlsCameraPreviewsEnabled = req.body?.controlsCameraPreviewsEnabled === true;
+        const cameraPreviewRefreshSeconds = Math.max(2, Math.min(120, Math.round(num)));
+
+        const panelName = normalizePanelName(req.body?.panelName);
+        if (panelName) {
+            if (rejectIfPresetPanelProfile(panelName, res)) return;
+            const ensured = ensurePanelProfileExists(panelName);
+            if (!ensured) {
+                return res.status(400).json({ error: 'Invalid panelName' });
+            }
+
+            persistedConfig = normalizePersistedConfig({
+                ...(persistedConfig || {}),
+                ui: {
+                    ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                    panelProfiles: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                        [ensured]: {
+                            ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                            homeCameraPreviewsEnabled,
+                            controlsCameraPreviewsEnabled,
+                            cameraPreviewRefreshSeconds,
+                        },
+                    },
+                },
+            });
+
+            persistConfigToDiskIfChanged('api-ui-camera-previews-panel');
+
+            config = {
+                ...config,
+                ui: {
+                    ...(config?.ui || {}),
+                    panelProfiles: persistedConfig?.ui?.panelProfiles,
+                },
+            };
+            io.emit('config_update', config);
+            return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                homeCameraPreviewsEnabled,
+                controlsCameraPreviewsEnabled,
+                cameraPreviewRefreshSeconds,
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-camera-previews');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                homeCameraPreviewsEnabled: persistedConfig?.ui?.homeCameraPreviewsEnabled,
+                controlsCameraPreviewsEnabled: persistedConfig?.ui?.controlsCameraPreviewsEnabled,
+                cameraPreviewRefreshSeconds: persistedConfig?.ui?.cameraPreviewRefreshSeconds,
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    });
 
 // Update UI climate tolerances from the kiosk.
 // Expected payload: { climateTolerances: { temperatureF: { cold, comfy, warm }, humidityPct: { dry, comfy, humid }, illuminanceLux: { dark, dim, bright } } }

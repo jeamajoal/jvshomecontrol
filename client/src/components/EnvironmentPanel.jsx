@@ -18,6 +18,7 @@ import { getUiScheme } from '../uiScheme';
 import { useAppState } from '../appState';
 import { buildRoomsWithStatuses, getHomeVisibleDeviceIdSet } from '../deviceSelectors';
 import { API_HOST } from '../apiHost';
+import RtspPlayer from './RtspPlayer';
 import {
   normalizeToleranceColorId,
   getToleranceTextClass as getToleranceTextClassForColorId,
@@ -558,7 +559,7 @@ const getDeviceHomeMetricAllowlistForId = (deviceHomeMetricAllowlist, deviceId) 
   return arr.map((v) => String(v || '').trim()).filter(Boolean);
 };
 
-const RoomPanel = ({ roomId, roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, deviceCommandAllowlist, deviceHomeMetricAllowlist, homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, cameras = [], homeCameraPreviewsEnabled = false, cameraPreviewRefreshSeconds = 10, now = Date.now(), primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
+const RoomPanel = ({ roomId, roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, deviceCommandAllowlist, deviceHomeMetricAllowlist, homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, cameras = [], roomCameraIds = {}, visibleCameraIds = [], homeCameraPreviewsEnabled = false, cameraPreviewRefreshSeconds = 10, now = Date.now(), primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
   const [cameraBrokenIds, setCameraBrokenIds] = useState(() => new Set());
 
@@ -755,22 +756,57 @@ const RoomPanel = ({ roomId, roomName, devices, connected, uiScheme, climateTole
     const rid = String(roomId || '').trim();
     if (!rid) return [];
 
+    const allow = Array.isArray(visibleCameraIds)
+      ? visibleCameraIds.map((v) => String(v || '').trim()).filter(Boolean)
+      : [];
+    const allowSet = new Set(allow);
+    const allowAll = allowSet.size === 0;
+
     const list = Array.isArray(cameras) ? cameras : [];
-    return list
-      .map((c) => {
+    const byId = new Map(list.map((c) => [String(c?.id || '').trim(), c]));
+
+    const mapped = (roomCameraIds && typeof roomCameraIds === 'object') ? roomCameraIds : {};
+    const assignedIds = Array.isArray(mapped[rid])
+      ? mapped[rid].map((v) => String(v || '').trim()).filter(Boolean)
+      : [];
+
+    // If there are no explicit assignments, fall back to legacy behavior
+    // (cameras registered with defaultRoomId).
+    const idsToShow = assignedIds.length
+      ? assignedIds
+      : list
+        .filter((c) => String(c?.defaultRoomId || '').trim() === rid)
+        .map((c) => String(c?.id || '').trim())
+        .filter(Boolean);
+
+    return idsToShow
+      .map((id) => {
+        const c = byId.get(id);
         if (!c || typeof c !== 'object') return null;
-        const id = String(c.id || '').trim();
-        if (!id) return null;
+        const cid = String(c.id || '').trim();
+        if (!cid) return null;
+        const label = String(c.label || cid).trim() || cid;
+        const enabled = c.enabled !== false;
+        const hasSnapshot = c.hasSnapshot === true;
+        const hasEmbed = c.hasEmbed === true && typeof c.embedUrl === 'string' && c.embedUrl.trim();
+        const embedUrl = hasEmbed ? String(c.embedUrl).trim() : '';
+        const hasRtsp = c.hasRtsp === true;
+        const hasAnyPreview = Boolean(hasEmbed || hasRtsp || hasSnapshot);
+
+        if (!enabled || !hasAnyPreview) return null;
+        if (!allowAll && !allowSet.has(cid)) return null;
+
         return {
-          id,
-          label: String(c.label || id).trim(),
-          roomId: String(c.roomId || '').trim(),
-          enabled: c.enabled !== false,
-          hasSnapshot: c.hasSnapshot === true,
+          id: cid,
+          label,
+          hasSnapshot,
+          hasEmbed,
+          embedUrl,
+          hasRtsp,
         };
       })
-      .filter((c) => c && c.enabled && c.hasSnapshot && c.roomId === rid);
-  }, [cameras, roomId, homeCameraPreviewsEnabled]);
+      .filter(Boolean);
+  }, [cameras, roomId, roomCameraIds, homeCameraPreviewsEnabled, visibleCameraIds]);
 
   const cameraRefreshMs = useMemo(() => {
     const raw = Number(cameraPreviewRefreshSeconds);
@@ -843,8 +879,19 @@ const RoomPanel = ({ roomId, roomName, devices, connected, uiScheme, climateTole
                   <div className={`text-[11px] uppercase tracking-[0.2em] font-semibold ${primaryTextColorClassName || 'text-white/80'} truncate`.trim()}>
                     {cam.label || cam.id}
                   </div>
-                  <div className="mt-2 overflow-hidden rounded-xl border border-white/10 bg-black/30">
-                    {!broken ? (
+                  <div className="mt-2 overflow-hidden rounded-xl bg-black/30">
+                    {cam.hasEmbed ? (
+                      <iframe
+                        src={cam.embedUrl}
+                        title={cam.label || cam.id}
+                        className="w-full aspect-video"
+                        style={{ border: 0 }}
+                        allow="autoplay; fullscreen"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : cam.hasRtsp ? (
+                      <RtspPlayer cameraId={cam.id} />
+                    ) : (!broken ? (
                       <img
                         src={src}
                         alt={cam.label || cam.id}
@@ -861,7 +908,7 @@ const RoomPanel = ({ roomId, roomName, devices, connected, uiScheme, climateTole
                       <div className="w-full aspect-video flex items-center justify-center text-xs text-white/45">
                         Snapshot unavailable
                       </div>
-                    )}
+                    ))}
                   </div>
                 </div>
               );
@@ -1146,6 +1193,11 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     [config?.ui?.cameras],
   );
 
+  const visibleCameraIds = useMemo(
+    () => (Array.isArray(config?.ui?.visibleCameraIds) ? config.ui.visibleCameraIds : []),
+    [config?.ui?.visibleCameraIds],
+  );
+
   const homeVisibleDeviceIds = useMemo(() => getHomeVisibleDeviceIdSet(config), [config]);
   const rooms = useMemo(
     () => buildRoomsWithStatuses(config, statuses, { deviceIdSet: homeVisibleDeviceIds }),
@@ -1424,6 +1476,8 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   homeRoomMetricColumns={homeRoomMetricColumns}
                   homeRoomColumnsXl={homeRoomColumnsXl}
                   cameras={cameras}
+                  roomCameraIds={config?.ui?.roomCameraIds}
+                  visibleCameraIds={visibleCameraIds}
                   homeCameraPreviewsEnabled={homeCameraPreviewsEnabled}
                   cameraPreviewRefreshSeconds={cameraPreviewRefreshSeconds}
                   now={now}

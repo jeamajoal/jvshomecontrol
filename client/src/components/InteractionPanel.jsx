@@ -5,6 +5,7 @@ import { getUiScheme } from '../uiScheme';
 import { API_HOST } from '../apiHost';
 import { useAppState } from '../appState';
 import { buildRoomsWithStatuses } from '../deviceSelectors';
+import RtspPlayer from './RtspPlayer';
 
 const asNumber = (value) => {
   const num = typeof value === 'number' ? value : parseFloat(String(value));
@@ -226,6 +227,16 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
     [config?.ui?.cameras],
   );
 
+  const roomCameraIds = useMemo(
+    () => ((config?.ui?.roomCameraIds && typeof config.ui.roomCameraIds === 'object') ? config.ui.roomCameraIds : {}),
+    [config?.ui?.roomCameraIds],
+  );
+
+  const visibleCameraIds = useMemo(
+    () => (Array.isArray(config?.ui?.visibleCameraIds) ? config.ui.visibleCameraIds : []),
+    [config?.ui?.visibleCameraIds],
+  );
+
   const [cameraTick, setCameraTick] = useState(0);
   useEffect(() => {
     if (!controlsCameraPreviewsEnabled) return;
@@ -308,22 +319,57 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
           <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
             {rooms.length ? (
               rooms.map(({ room, devices }) => {
-                const roomCameras = controlsCameraPreviewsEnabled
-                  ? cameras
-                    .map((c) => {
+                const allow = Array.isArray(visibleCameraIds)
+                  ? visibleCameraIds.map((v) => String(v || '').trim()).filter(Boolean)
+                  : [];
+                const allowSet = new Set(allow);
+                const allowAll = allowSet.size === 0;
+
+                const roomCameras = (() => {
+                  if (!controlsCameraPreviewsEnabled) return [];
+                  const rid = String(room.id || '').trim();
+                  if (!rid) return [];
+
+                  const byId = new Map(cameras.map((c) => [String(c?.id || '').trim(), c]));
+                  const assigned = Array.isArray(roomCameraIds?.[rid])
+                    ? roomCameraIds[rid].map((v) => String(v || '').trim()).filter(Boolean)
+                    : [];
+
+                  const idsToShow = assigned.length
+                    ? assigned
+                    : cameras
+                      .filter((c) => String(c?.defaultRoomId || '').trim() === rid)
+                      .map((c) => String(c?.id || '').trim())
+                      .filter(Boolean);
+
+                  return idsToShow
+                    .map((id) => {
+                      const c = byId.get(id);
                       if (!c || typeof c !== 'object') return null;
-                      const id = String(c.id || '').trim();
-                      if (!id) return null;
+                      const cid = String(c.id || '').trim();
+                      if (!cid) return null;
+                      const label = String(c.label || cid).trim() || cid;
+                      const enabled = c.enabled !== false;
+                      const hasSnapshot = c.hasSnapshot === true;
+                      const hasEmbed = c.hasEmbed === true && typeof c.embedUrl === 'string' && c.embedUrl.trim();
+                      const embedUrl = hasEmbed ? String(c.embedUrl).trim() : '';
+                      const hasRtsp = c.hasRtsp === true;
+                      const hasAnyPreview = Boolean(hasEmbed || hasRtsp || hasSnapshot);
+
+                      if (!enabled || !hasAnyPreview) return null;
+                      if (!allowAll && !allowSet.has(cid)) return null;
+
                       return {
-                        id,
-                        label: String(c.label || id).trim(),
-                        roomId: String(c.roomId || '').trim(),
-                        enabled: c.enabled !== false,
-                        hasSnapshot: c.hasSnapshot === true,
+                        id: cid,
+                        label,
+                        hasSnapshot,
+                        hasEmbed,
+                        embedUrl,
+                        hasRtsp,
                       };
                     })
-                    .filter((c) => c && c.enabled && c.hasSnapshot && c.roomId === String(room.id || '').trim())
-                  : [];
+                    .filter(Boolean);
+                })();
 
                 const controllables = devices
                   .map((d) => {
@@ -360,12 +406,25 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                             <div className="text-[11px] uppercase tracking-[0.2em] font-semibold text-white/80 truncate">
                               {cam.label || cam.id}
                             </div>
-                            <div className="mt-2 overflow-hidden rounded-xl border border-white/10 bg-black/30">
-                              <img
-                                src={`${API_HOST}/api/cameras/${encodeURIComponent(cam.id)}/snapshot?t=${cameraTick}`}
-                                alt={cam.label || cam.id}
-                                className="w-full aspect-video object-cover"
-                              />
+                            <div className="mt-2 overflow-hidden rounded-xl bg-black/30">
+                              {cam.hasEmbed ? (
+                                <iframe
+                                  src={cam.embedUrl}
+                                  title={cam.label || cam.id}
+                                  className="w-full aspect-video"
+                                  style={{ border: 0 }}
+                                  allow="autoplay; fullscreen"
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : cam.hasRtsp ? (
+                                <RtspPlayer cameraId={cam.id} />
+                              ) : (
+                                <img
+                                  src={`${API_HOST}/api/cameras/${encodeURIComponent(cam.id)}/snapshot?t=${cameraTick}`}
+                                  alt={cam.label || cam.id}
+                                  className="w-full aspect-video object-cover"
+                                />
+                              )}
                             </div>
                           </div>
                         ))}

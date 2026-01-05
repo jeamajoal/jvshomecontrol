@@ -472,6 +472,106 @@ async function saveHomeRoomMetricKeys(homeRoomMetricKeys, panelName) {
   return res.json().catch(() => ({}));
 }
 
+async function saveCameraPreviews(payload, panelName) {
+  const next = payload && typeof payload === 'object' ? payload : {};
+  const res = await fetch(`${API_HOST}/api/ui/camera-previews`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      homeCameraPreviewsEnabled: next.homeCameraPreviewsEnabled === true,
+      controlsCameraPreviewsEnabled: next.controlsCameraPreviewsEnabled === true,
+      cameraPreviewRefreshSeconds: next.cameraPreviewRefreshSeconds,
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Camera preview save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function saveVisibleCameraIds(visibleCameraIds, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/visible-camera-ids`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      visibleCameraIds: Array.isArray(visibleCameraIds) ? visibleCameraIds : [],
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Visible cameras save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function saveRoomCameraIds(roomId, cameraIds, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/room-camera-ids`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      roomId,
+      cameraIds: Array.isArray(cameraIds) ? cameraIds : [],
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Room cameras save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function fetchUiCameras() {
+  const res = await fetch(`${API_HOST}/api/ui/cameras`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Camera registry fetch failed (${res.status})`);
+  }
+  const data = await res.json().catch(() => ({}));
+  const cams = Array.isArray(data?.cameras) ? data.cameras : [];
+  return cams;
+}
+
+async function createUiCamera(camera) {
+  const res = await fetch(`${API_HOST}/api/ui/cameras`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ camera: camera || {} }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Camera create failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function updateUiCamera(cameraId, camera) {
+  const res = await fetch(`${API_HOST}/api/ui/cameras/${encodeURIComponent(cameraId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ camera: camera || {} }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Camera update failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function deleteUiCamera(cameraId) {
+  const res = await fetch(`${API_HOST}/api/ui/cameras/${encodeURIComponent(cameraId)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Camera delete failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveSensorIndicatorColors(sensorIndicatorColors) {
   const res = await fetch(`${API_HOST}/api/ui/sensor-indicator-colors`, {
     method: 'PUT',
@@ -620,12 +720,34 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [openMeteoError, setOpenMeteoError] = useState(null);
   const [openMeteoEnvOverrides, setOpenMeteoEnvOverrides] = useState(() => ({ lat: false, lon: false, timezone: false }));
 
+  const [uiCameras, setUiCameras] = useState([]);
+  const [uiCamerasStatus, setUiCamerasStatus] = useState('idle'); // idle | loading
+  const [uiCamerasError, setUiCamerasError] = useState(null);
+  const [cameraFormMode, setCameraFormMode] = useState('create'); // create | edit
+  const [cameraFormId, setCameraFormId] = useState('');
+  const [cameraForm, setCameraForm] = useState(() => ({
+    id: '',
+    label: '',
+    enabled: true,
+    defaultRoomId: '',
+    snapshotUrl: '',
+    snapshotUsername: '',
+    snapshotPassword: '',
+    snapshotUpdatePassword: false,
+    snapshotHadPassword: false,
+    embedUrl: '',
+    rtspUrl: '',
+    rtspWsPort: '',
+  }));
+  const [cameraFormError, setCameraFormError] = useState(null);
+
   const [activeTab, setActiveTab] = useState('appearance');
 
   const TABS = [
     { id: 'devices', label: 'Devices' },
     { id: 'appearance', label: 'Appearance' },
     { id: 'home', label: 'Home' },
+    { id: 'cameras', label: 'Cameras' },
     { id: 'sounds', label: 'Sounds' },
     { id: 'climate', label: 'Climate' },
     { id: 'events', label: 'Events' },
@@ -665,6 +787,12 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const homeRoomColsSave = useAsyncSave((homeRoomColumnsXl) => saveHomeRoomColumnsXl(homeRoomColumnsXl, selectedPanelName || null));
   const homeRoomMetricColsSave = useAsyncSave((homeRoomMetricColumns) => saveHomeRoomMetricColumns(homeRoomMetricColumns, selectedPanelName || null));
   const homeRoomMetricKeysSave = useAsyncSave((homeRoomMetricKeys) => saveHomeRoomMetricKeys(homeRoomMetricKeys, selectedPanelName || null));
+  const cameraPreviewsSave = useAsyncSave((payload) => saveCameraPreviews(payload, selectedPanelName || null));
+  const visibleCamerasSave = useAsyncSave((visibleCameraIds) => saveVisibleCameraIds(visibleCameraIds, selectedPanelName || null));
+  const roomCameraIdsSave = useAsyncSave((payload) => {
+    const next = (payload && typeof payload === 'object') ? payload : {};
+    return saveRoomCameraIds(next.roomId, next.cameraIds, selectedPanelName || null);
+  });
   const sensorColorsSave = useAsyncSave(saveSensorIndicatorColors);
   const climateTolSave = useAsyncSave(saveClimateTolerances);
   const climateColorsSave = useAsyncSave(saveClimateToleranceColors);
@@ -885,6 +1013,35 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return Array.from(new Set(raw.map((v) => String(v || '').trim()).filter((v) => allowed.has(v))));
   }, [config?.ui?.homeRoomMetricKeys]);
 
+  const camerasFromConfig = useMemo(
+    () => (Array.isArray(config?.ui?.cameras) ? config.ui.cameras : []),
+    [config?.ui?.cameras],
+  );
+
+  const visibleCameraIdsFromConfig = useMemo(() => {
+    const raw = Array.isArray(config?.ui?.visibleCameraIds) ? config.ui.visibleCameraIds : [];
+    return raw.map((v) => String(v || '').trim()).filter(Boolean);
+  }, [config?.ui?.visibleCameraIds]);
+
+  const roomCameraIdsFromConfig = useMemo(() => {
+    const raw = (config?.ui?.roomCameraIds && typeof config.ui.roomCameraIds === 'object') ? config.ui.roomCameraIds : {};
+    return raw;
+  }, [config?.ui?.roomCameraIds]);
+
+  const homeCameraPreviewsEnabledFromConfig = useMemo(
+    () => config?.ui?.homeCameraPreviewsEnabled === true,
+    [config?.ui?.homeCameraPreviewsEnabled],
+  );
+  const controlsCameraPreviewsEnabledFromConfig = useMemo(
+    () => config?.ui?.controlsCameraPreviewsEnabled === true,
+    [config?.ui?.controlsCameraPreviewsEnabled],
+  );
+  const cameraPreviewRefreshSecondsFromConfig = useMemo(() => {
+    const raw = Number(config?.ui?.cameraPreviewRefreshSeconds);
+    if (!Number.isFinite(raw)) return 10;
+    return Math.max(2, Math.min(120, Math.round(raw)));
+  }, [config?.ui?.cameraPreviewRefreshSeconds]);
+
   const [cardOpacityScaleDraft, setCardOpacityScaleDraft] = useState(() => 100);
   const [cardOpacityScaleDirty, setCardOpacityScaleDirty] = useState(false);
   const [cardOpacityScaleError, setCardOpacityScaleError] = useState(null);
@@ -949,6 +1106,18 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [homeRoomMetricKeysDirty, setHomeRoomMetricKeysDirty] = useState(false);
   const [homeRoomMetricKeysError, setHomeRoomMetricKeysError] = useState(null);
 
+  const [cameraPreviewsDraft, setCameraPreviewsDraft] = useState(() => ({
+    homeCameraPreviewsEnabled: false,
+    controlsCameraPreviewsEnabled: false,
+    cameraPreviewRefreshSeconds: 10,
+  }));
+  const [cameraPreviewsDirty, setCameraPreviewsDirty] = useState(false);
+  const [cameraPreviewsError, setCameraPreviewsError] = useState(null);
+
+  const [visibleCameraIdsDraft, setVisibleCameraIdsDraft] = useState(() => ([]));
+  const [visibleCameraIdsDirty, setVisibleCameraIdsDirty] = useState(false);
+  const [visibleCameraIdsError, setVisibleCameraIdsError] = useState(null);
+
   const homeBackgroundFromConfig = useMemo(() => {
     const raw = (config?.ui?.homeBackground && typeof config.ui.homeBackground === 'object')
       ? config.ui.homeBackground
@@ -984,6 +1153,24 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     setHomeBackgroundError(null);
     setHomeBackgroundDirty(false);
     setHomeBackgroundDraft(homeBackgroundFromConfig);
+  }, [selectedPanelName]);
+
+  // When switching profiles, ensure the camera preview editor reflects the selected profile.
+  useEffect(() => {
+    setCameraPreviewsError(null);
+    setCameraPreviewsDirty(false);
+    setCameraPreviewsDraft({
+      homeCameraPreviewsEnabled: homeCameraPreviewsEnabledFromConfig,
+      controlsCameraPreviewsEnabled: controlsCameraPreviewsEnabledFromConfig,
+      cameraPreviewRefreshSeconds: cameraPreviewRefreshSecondsFromConfig,
+    });
+  }, [selectedPanelName]);
+
+  // When switching profiles, ensure the visible cameras editor reflects the selected profile.
+  useEffect(() => {
+    setVisibleCameraIdsError(null);
+    setVisibleCameraIdsDirty(false);
+    setVisibleCameraIdsDraft(visibleCameraIdsFromConfig);
   }, [selectedPanelName]);
 
   useEffect(() => {
@@ -1065,6 +1252,25 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     if (homeRoomMetricKeysDirty) return;
     setHomeRoomMetricKeysDraft(homeRoomMetricKeysFromConfig);
   }, [homeRoomMetricKeysDirty, homeRoomMetricKeysFromConfig]);
+
+  useEffect(() => {
+    if (cameraPreviewsDirty) return;
+    setCameraPreviewsDraft({
+      homeCameraPreviewsEnabled: homeCameraPreviewsEnabledFromConfig,
+      controlsCameraPreviewsEnabled: controlsCameraPreviewsEnabledFromConfig,
+      cameraPreviewRefreshSeconds: cameraPreviewRefreshSecondsFromConfig,
+    });
+  }, [
+    cameraPreviewsDirty,
+    homeCameraPreviewsEnabledFromConfig,
+    controlsCameraPreviewsEnabledFromConfig,
+    cameraPreviewRefreshSecondsFromConfig,
+  ]);
+
+  useEffect(() => {
+    if (visibleCameraIdsDirty) return;
+    setVisibleCameraIdsDraft(visibleCameraIdsFromConfig);
+  }, [visibleCameraIdsDirty, visibleCameraIdsFromConfig]);
 
   useEffect(() => {
     if (homeBackgroundDirty) return;
@@ -1448,6 +1654,51 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return () => clearTimeout(t);
   }, [connected, homeBackgroundDirty, homeBackgroundDraft]);
 
+  // Autosave: Camera previews.
+  useEffect(() => {
+    if (!connected) return;
+    if (!cameraPreviewsDirty) return;
+
+    const t = setTimeout(async () => {
+      setCameraPreviewsError(null);
+      try {
+        const refreshRaw = Number(cameraPreviewsDraft.cameraPreviewRefreshSeconds);
+        const cameraPreviewRefreshSeconds = Number.isFinite(refreshRaw)
+          ? Math.max(2, Math.min(120, Math.round(refreshRaw)))
+          : 10;
+
+        await cameraPreviewsSave.run({
+          homeCameraPreviewsEnabled: cameraPreviewsDraft.homeCameraPreviewsEnabled === true,
+          controlsCameraPreviewsEnabled: cameraPreviewsDraft.controlsCameraPreviewsEnabled === true,
+          cameraPreviewRefreshSeconds,
+        });
+        setCameraPreviewsDirty(false);
+      } catch (e) {
+        setCameraPreviewsError(e?.message || String(e));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, cameraPreviewsDirty, cameraPreviewsDraft]);
+
+  // Autosave: Visible cameras.
+  useEffect(() => {
+    if (!connected) return;
+    if (!visibleCameraIdsDirty) return;
+
+    const t = setTimeout(async () => {
+      setVisibleCameraIdsError(null);
+      try {
+        await visibleCamerasSave.run(Array.isArray(visibleCameraIdsDraft) ? visibleCameraIdsDraft : []);
+        setVisibleCameraIdsDirty(false);
+      } catch (e) {
+        setVisibleCameraIdsError(e?.message || String(e));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, visibleCameraIdsDirty, visibleCameraIdsDraft]);
+
   // Autosave: Home sensor indicator colors.
   useEffect(() => {
     if (!connected) return;
@@ -1827,6 +2078,32 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'cameras') return;
+
+    let cancelled = false;
+    setUiCamerasError(null);
+    setUiCamerasStatus('loading');
+    fetchUiCameras()
+      .then((cams) => {
+        if (cancelled) return;
+        setUiCameras(Array.isArray(cams) ? cams : []);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setUiCamerasError(e?.message || String(e));
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setUiCamerasStatus('idle');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab]);
+
   useEffect(() => {
     let mounted = true;
     fetchOpenMeteoConfig()
@@ -3592,6 +3869,264 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
               <div className="mt-4 utility-group p-4">
                 <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                  Camera Previews
+                </div>
+                <div className="mt-1 text-xs text-white/45">
+                  Shows room camera snapshot tiles (from configured cameras).
+                </div>
+
+                {camerasFromConfig.length ? (
+                  <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                      Visible cameras on this panel
+                    </div>
+                    <div className="mt-1 text-xs text-white/45">
+                      If none are selected, all cameras are shown.
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {(() => {
+                        const allIds = camerasFromConfig
+                          .map((c) => String(c?.id || '').trim())
+                          .filter(Boolean);
+                        const allIdSet = new Set(allIds);
+                        const selected = new Set((Array.isArray(visibleCameraIdsDraft) ? visibleCameraIdsDraft : [])
+                          .map((v) => String(v || '').trim())
+                          .filter((v) => allIdSet.has(v)));
+                        const isAll = selected.size === 0;
+
+                        return camerasFromConfig.map((c) => {
+                          const id = String(c?.id || '').trim();
+                          if (!id) return null;
+                          const label = String(c?.label || id).trim() || id;
+                          const checked = isAll ? true : selected.has(id);
+                          return (
+                            <label key={id} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={!connected || busy || visibleCamerasSave.status === 'saving'}
+                                onChange={(e) => {
+                                  const nextChecked = e.target.checked === true;
+                                  const next = new Set(selected);
+
+                                  if (isAll) {
+                                    // If we're in "all" mode and user unchecks one, it becomes
+                                    // an explicit allowlist of all-but-that-one.
+                                    if (!nextChecked) {
+                                      for (const cid of allIds) next.add(cid);
+                                      next.delete(id);
+                                    }
+                                  } else {
+                                    if (nextChecked) next.add(id);
+                                    else next.delete(id);
+                                  }
+
+                                  // If they ended up selecting everything, collapse back to "all".
+                                  const normalized = (next.size === allIds.length) ? [] : Array.from(next);
+                                  setVisibleCameraIdsError(null);
+                                  setVisibleCameraIdsDirty(true);
+                                  setVisibleCameraIdsDraft(normalized);
+                                }}
+                              />
+                              <span className="min-w-0 truncate text-sm font-semibold text-white/85">{label}</span>
+                              {c?.enabled === false ? (
+                                <span className="ml-auto text-[10px] uppercase tracking-[0.18em] text-white/35">Disabled</span>
+                              ) : null}
+                              {c?.hasEmbed === true ? (
+                                <span className="ml-auto text-[10px] uppercase tracking-[0.18em] text-white/35">Embed</span>
+                              ) : null}
+                              {c?.hasRtsp === true ? (
+                                <span className="ml-auto text-[10px] uppercase tracking-[0.18em] text-white/35">RTSP</span>
+                              ) : null}
+                              {c?.hasSnapshot === true ? (
+                                <span className="ml-auto text-[10px] uppercase tracking-[0.18em] text-white/35">Snapshot</span>
+                              ) : null}
+                              {(c?.hasSnapshot !== true && c?.hasEmbed !== true && c?.hasRtsp !== true) ? (
+                                <span className="ml-auto text-[10px] uppercase tracking-[0.18em] text-white/35">No preview</span>
+                              ) : null}
+                            </label>
+                          );
+                        });
+                      })()}
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <div className="text-xs text-white/45">
+                        {visibleCameraIdsDirty ? 'Pending changes…' : (visibleCameraIdsDraft.length ? `${visibleCameraIdsDraft.length} selected` : 'All cameras')}
+                      </div>
+                      <div className="text-xs text-white/45">
+                        {statusText(visibleCamerasSave.status)}
+                      </div>
+                    </div>
+
+                    {visibleCameraIdsError ? (
+                      <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {visibleCameraIdsError}</div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="mt-3 text-xs text-white/45">
+                    No cameras registered yet. Add them in the <span className="text-white/70">Cameras</span> tab.
+                  </div>
+                )}
+
+                {camerasFromConfig.length ? (
+                  <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                      Room Cameras (this panel)
+                    </div>
+                    <div className="mt-1 text-xs text-white/45">
+                      Choose which registered cameras show in each room.
+                    </div>
+
+                    {allRoomsForVisibility.length ? (
+                      <div className="mt-3 grid grid-cols-1 gap-3">
+                        {allRoomsForVisibility.map((r) => {
+                          const rid = String(r.id || '').trim();
+                          if (!rid) return null;
+                          const assigned = Array.isArray(roomCameraIdsFromConfig?.[rid])
+                            ? roomCameraIdsFromConfig[rid].map((v) => String(v || '').trim()).filter(Boolean)
+                            : [];
+
+                          return (
+                            <label key={rid} className="block">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45 truncate">
+                                  {r.name}
+                                </div>
+                                <div className="text-[10px] text-white/35">
+                                  {assigned.length ? `${assigned.length} selected` : 'None'}
+                                </div>
+                              </div>
+                              <select
+                                multiple
+                                value={assigned}
+                                disabled={!connected || busy || roomCameraIdsSave.status === 'saving'}
+                                onChange={(e) => {
+                                  const selected = Array.from(e.target.selectedOptions)
+                                    .map((o) => String(o.value || '').trim())
+                                    .filter(Boolean);
+                                  setError(null);
+                                  roomCameraIdsSave.run({ roomId: rid, cameraIds: selected })
+                                    .catch((err) => setError(err?.message || String(err)));
+                                }}
+                                className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                                size={Math.min(6, Math.max(3, camerasFromConfig.length))}
+                              >
+                                {camerasFromConfig
+                                  .filter((c) => c && typeof c === 'object')
+                                  .map((c) => {
+                                    const id = String(c?.id || '').trim();
+                                    if (!id) return null;
+                                    const label = String(c?.label || id).trim() || id;
+                                    return (
+                                      <option key={id} value={id}>
+                                        {label}
+                                      </option>
+                                    );
+                                  })}
+                              </select>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="mt-3 text-xs text-white/45">
+                        No rooms available.
+                      </div>
+                    )}
+
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <div className="text-xs text-white/45">
+                        {statusText(roomCameraIdsSave.status)}
+                      </div>
+                    </div>
+
+                    {roomCameraIdsSave.error ? (
+                      <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {roomCameraIdsSave.error}</div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <label className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-black/20 px-3 py-3 select-none">
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Home</div>
+                      <div className="mt-1 text-xs text-white/45">Embed camera snapshots on Home.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      className={`h-5 w-5 ${scheme.checkboxAccent}`}
+                      disabled={!connected || busy}
+                      checked={cameraPreviewsDraft.homeCameraPreviewsEnabled === true}
+                      onChange={(e) => {
+                        setCameraPreviewsError(null);
+                        setCameraPreviewsDirty(true);
+                        setCameraPreviewsDraft((prev) => ({ ...prev, homeCameraPreviewsEnabled: e.target.checked === true }));
+                      }}
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-black/20 px-3 py-3 select-none">
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Controls</div>
+                      <div className="mt-1 text-xs text-white/45">Embed camera snapshots on Controls.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      className={`h-5 w-5 ${scheme.checkboxAccent}`}
+                      disabled={!connected || busy}
+                      checked={cameraPreviewsDraft.controlsCameraPreviewsEnabled === true}
+                      onChange={(e) => {
+                        setCameraPreviewsError(null);
+                        setCameraPreviewsDirty(true);
+                        setCameraPreviewsDraft((prev) => ({ ...prev, controlsCameraPreviewsEnabled: e.target.checked === true }));
+                      }}
+                    />
+                  </label>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="text-xs text-white/45">
+                    Refresh
+                  </div>
+                  <div className="shrink-0 flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={2}
+                      max={120}
+                      step={1}
+                      value={cameraPreviewsDraft.cameraPreviewRefreshSeconds}
+                      disabled={!connected || busy}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        const next = Number.isFinite(n) ? Math.max(2, Math.min(120, Math.round(n))) : 10;
+                        setCameraPreviewsError(null);
+                        setCameraPreviewsDirty(true);
+                        setCameraPreviewsDraft((prev) => ({ ...prev, cameraPreviewRefreshSeconds: next }));
+                      }}
+                      className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    />
+                    <div className="text-xs text-white/45">sec</div>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="text-xs text-white/45">
+                    {cameraPreviewsDirty ? 'Pending changes…' : 'Saved'}
+                  </div>
+                  <div className="text-xs text-white/45">
+                    {statusText(cameraPreviewsSave.status)}
+                  </div>
+                </div>
+
+                {cameraPreviewsError ? (
+                  <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {cameraPreviewsError}</div>
+                ) : null}
+              </div>
+
+              <div className="mt-4 utility-group p-4">
+                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
                   Sensor Badge Colors
                 </div>
                 <div className="mt-1 text-xs text-white/45">
@@ -3847,6 +4382,415 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
             {!connected ? (
               <div className="mt-3 text-xs text-white/45">Server offline: editing disabled.</div>
             ) : null}
+          </div>
+        ) : null}
+
+        {activeTab === 'cameras' ? (
+          <div className="mt-4 utility-panel p-4 md:p-6">
+            <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+              Settings
+            </div>
+            <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
+              Cameras
+            </div>
+            <div className="mt-1 text-xs text-white/45">
+              Register cameras once, then assign them to rooms per panel.
+            </div>
+
+            {!connected ? (
+              <div className="mt-2 text-xs text-white/45">Disconnected — camera changes can’t be saved.</div>
+            ) : null}
+
+            {uiCamerasError ? (
+              <div className="mt-2 text-[11px] text-neon-red break-words">Load failed: {uiCamerasError}</div>
+            ) : null}
+
+            <div className="mt-4 utility-group p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                  {cameraFormMode === 'edit' ? 'Edit Camera' : 'Add Camera'}
+                </div>
+                {cameraFormMode === 'edit' ? (
+                  <button
+                    type="button"
+                    disabled={!connected || busy}
+                    onClick={() => {
+                      setCameraFormMode('create');
+                      setCameraFormId('');
+                      setCameraFormError(null);
+                      setCameraForm({
+                        id: '',
+                        label: '',
+                        enabled: true,
+                        defaultRoomId: '',
+                        snapshotUrl: '',
+                        snapshotUsername: '',
+                        snapshotPassword: '',
+                        snapshotUpdatePassword: false,
+                        snapshotHadPassword: false,
+                        embedUrl: '',
+                        rtspUrl: '',
+                        rtspWsPort: '',
+                      });
+                    }}
+                    className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy) ? 'opacity-50' : 'hover:bg-white/5'}`}
+                  >
+                    New
+                  </button>
+                ) : null}
+              </div>
+
+              {cameraFormError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {cameraFormError}</div>
+              ) : null}
+
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label className="block">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                    ID (optional)
+                  </div>
+                  <input
+                    type="text"
+                    value={cameraForm.id}
+                    disabled={!connected || busy || cameraFormMode === 'edit'}
+                    onChange={(e) => setCameraForm((prev) => ({ ...prev, id: String(e.target.value) }))}
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    placeholder="front_porch"
+                  />
+                </label>
+
+                <label className="block">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                    Label
+                  </div>
+                  <input
+                    type="text"
+                    value={cameraForm.label}
+                    disabled={!connected || busy}
+                    onChange={(e) => setCameraForm((prev) => ({ ...prev, label: String(e.target.value) }))}
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    placeholder="Front Porch"
+                  />
+                </label>
+
+                <label className="block">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                    Default Room (optional)
+                  </div>
+                  <select
+                    value={cameraForm.defaultRoomId}
+                    disabled={!connected || busy}
+                    onChange={(e) => setCameraForm((prev) => ({ ...prev, defaultRoomId: String(e.target.value) }))}
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                  >
+                    <option value="">(none)</option>
+                    {allRoomsForVisibility.map((r) => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-3 select-none">
+                  <input
+                    type="checkbox"
+                    className={`h-5 w-5 ${scheme.checkboxAccent}`}
+                    checked={cameraForm.enabled === true}
+                    disabled={!connected || busy}
+                    onChange={(e) => setCameraForm((prev) => ({ ...prev, enabled: e.target.checked === true }))}
+                  />
+                  <div className="text-xs text-white/70">Enabled</div>
+                </label>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3">
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Snapshot</div>
+                <div className="mt-1 text-xs text-white/45">Used for image previews (proxy fetches on the server).</div>
+
+                <label className="block mt-3">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Snapshot URL</div>
+                  <input
+                    type="text"
+                    value={cameraForm.snapshotUrl}
+                    disabled={!connected || busy}
+                    onChange={(e) => setCameraForm((prev) => ({ ...prev, snapshotUrl: String(e.target.value) }))}
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    placeholder="http://camera/snapshot.jpg"
+                  />
+                </label>
+
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <label className="block">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Username</div>
+                    <input
+                      type="text"
+                      value={cameraForm.snapshotUsername}
+                      disabled={!connected || busy}
+                      onChange={(e) => setCameraForm((prev) => ({ ...prev, snapshotUsername: String(e.target.value) }))}
+                      className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      placeholder="(optional)"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Password</div>
+                      <label className="flex items-center gap-2 text-xs text-white/55 select-none">
+                        <input
+                          type="checkbox"
+                          checked={cameraForm.snapshotUpdatePassword === true}
+                          disabled={!connected || busy}
+                          onChange={(e) => setCameraForm((prev) => ({ ...prev, snapshotUpdatePassword: e.target.checked === true }))}
+                        />
+                        Update
+                      </label>
+                    </div>
+                    <input
+                      type="password"
+                      value={cameraForm.snapshotPassword}
+                      disabled={!connected || busy || cameraForm.snapshotUpdatePassword !== true}
+                      onChange={(e) => setCameraForm((prev) => ({ ...prev, snapshotPassword: String(e.target.value) }))}
+                      className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      placeholder={cameraForm.snapshotHadPassword ? '(stored)' : '(optional)'}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Embed (HTTP/S)</div>
+                <div className="mt-1 text-xs text-white/45">Renders as a borderless iframe.</div>
+                <label className="block mt-3">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Embed URL</div>
+                  <input
+                    type="text"
+                    value={cameraForm.embedUrl}
+                    disabled={!connected || busy}
+                    onChange={(e) => setCameraForm((prev) => ({ ...prev, embedUrl: String(e.target.value) }))}
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    placeholder="https://camera/live"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">RTSP</div>
+                <div className="mt-1 text-xs text-white/45">Streams via server-side RTSP → websocket (ffmpeg required on the server).</div>
+
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <label className="block md:col-span-2">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">RTSP URL</div>
+                    <input
+                      type="text"
+                      value={cameraForm.rtspUrl}
+                      disabled={!connected || busy}
+                      onChange={(e) => setCameraForm((prev) => ({ ...prev, rtspUrl: String(e.target.value) }))}
+                      className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      placeholder="rtsp://user:pass@192.168.1.50:554/stream"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">WS Port (optional)</div>
+                    <input
+                      type="number"
+                      value={cameraForm.rtspWsPort}
+                      disabled={!connected || busy}
+                      onChange={(e) => setCameraForm((prev) => ({ ...prev, rtspWsPort: String(e.target.value) }))}
+                      className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      placeholder="9999"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={!connected || busy || !String(cameraForm.label || cameraForm.id || '').trim()}
+                  onClick={async () => {
+                    setCameraFormError(null);
+                    setBusy(true);
+                    try {
+                      const idTrimmed = String(cameraForm.id || '').trim();
+                      const labelTrimmed = String(cameraForm.label || '').trim();
+
+                      if (!idTrimmed && !labelTrimmed) {
+                        setCameraFormError('Camera requires an id or label.');
+                        return;
+                      }
+
+                      const snapshotUrl = String(cameraForm.snapshotUrl || '').trim();
+                      const snapshotUser = String(cameraForm.snapshotUsername || '').trim();
+                      const snapshotHadPassword = cameraForm.snapshotHadPassword === true;
+                      const snapshotUpdatePassword = cameraForm.snapshotUpdatePassword === true;
+                      const snapshotPassword = String(cameraForm.snapshotPassword ?? '');
+
+                      const embedUrl = String(cameraForm.embedUrl || '').trim();
+                      const rtspUrl = String(cameraForm.rtspUrl || '').trim();
+                      const wsPortRaw = String(cameraForm.rtspWsPort || '').trim();
+                      const wsPortNum = wsPortRaw.length ? Number(wsPortRaw) : null;
+                      const wsPort = (wsPortNum !== null && Number.isFinite(wsPortNum) && wsPortNum > 0) ? Math.floor(wsPortNum) : null;
+
+                      const payload = {
+                        ...(cameraFormMode === 'create' && idTrimmed ? { id: idTrimmed } : {}),
+                        label: labelTrimmed || idTrimmed,
+                        enabled: cameraForm.enabled !== false,
+                        defaultRoomId: String(cameraForm.defaultRoomId || '').trim(),
+                        ...(snapshotUrl ? {
+                          snapshot: {
+                            url: snapshotUrl,
+                            ...((snapshotUser || snapshotUpdatePassword || snapshotHadPassword) ? {
+                              basicAuth: {
+                                ...(snapshotUser ? { username: snapshotUser } : {}),
+                                ...(snapshotUpdatePassword ? { password: snapshotPassword } : {}),
+                              },
+                            } : {}),
+                          },
+                        } : {}),
+                        ...(embedUrl ? { embed: { url: embedUrl } } : {}),
+                        ...(rtspUrl ? { rtsp: { url: rtspUrl, ...(wsPort ? { wsPort } : {}) } } : {}),
+                      };
+
+                      if (cameraFormMode === 'edit') {
+                        await updateUiCamera(cameraFormId, payload);
+                      } else {
+                        await createUiCamera(payload);
+                      }
+
+                      const cams = await fetchUiCameras();
+                      setUiCameras(Array.isArray(cams) ? cams : []);
+
+                      setCameraFormMode('create');
+                      setCameraFormId('');
+                      setCameraForm({
+                        id: '',
+                        label: '',
+                        enabled: true,
+                        defaultRoomId: '',
+                        snapshotUrl: '',
+                        snapshotUsername: '',
+                        snapshotPassword: '',
+                        snapshotUpdatePassword: false,
+                        snapshotHadPassword: false,
+                        embedUrl: '',
+                        rtspUrl: '',
+                        rtspWsPort: '',
+                      });
+                    } catch (e) {
+                      setCameraFormError(e?.message || String(e));
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                  className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || !String(cameraForm.label || cameraForm.id || '').trim()) ? 'opacity-50' : 'hover:bg-white/5'}`}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 utility-group p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                  Registered Cameras
+                </div>
+                <div className="text-xs text-white/45">
+                  {uiCamerasStatus === 'loading' ? 'Loading…' : `${uiCameras.length} total`}
+                </div>
+              </div>
+
+              {uiCameras.length ? (
+                <div className="mt-3 grid grid-cols-1 gap-2">
+                  {uiCameras.map((c) => {
+                    const id = String(c?.id || '').trim();
+                    if (!id) return null;
+                    const label = String(c?.label || id).trim() || id;
+                    const enabled = c?.enabled !== false;
+                    const snap = (c?.snapshot && typeof c.snapshot === 'object') ? c.snapshot : null;
+                    const hasSnapshot = Boolean(snap && String(snap.url || '').trim());
+                    const hasEmbed = Boolean(c?.embed && typeof c.embed === 'object' && String(c.embed.url || '').trim());
+                    const hasRtsp = Boolean(c?.rtsp && typeof c.rtsp === 'object' && String(c.rtsp.url || '').trim());
+
+                    return (
+                      <div key={id} className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-semibold text-white/85 truncate">{label}</div>
+                          <div className="mt-1 text-[11px] text-white/45 truncate">
+                            <span className="text-white/55">{id}</span>
+                            {enabled ? '' : ' • Disabled'}
+                            {hasSnapshot ? ' • Snapshot' : ''}
+                            {hasEmbed ? ' • Embed' : ''}
+                            {hasRtsp ? ' • RTSP' : ''}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={!connected || busy}
+                          onClick={() => {
+                            const snapAuth = snap && snap.basicAuth && typeof snap.basicAuth === 'object' ? snap.basicAuth : null;
+                            const snapUser = snapAuth ? String(snapAuth.username ?? '') : '';
+                            const snapHadPassword = Boolean(snapAuth && snapAuth.hasPassword === true);
+                            const embed = (c?.embed && typeof c.embed === 'object') ? c.embed : null;
+                            const rtsp = (c?.rtsp && typeof c.rtsp === 'object') ? c.rtsp : null;
+
+                            setCameraFormMode('edit');
+                            setCameraFormId(id);
+                            setCameraFormError(null);
+                            setCameraForm({
+                              id,
+                              label,
+                              enabled,
+                              defaultRoomId: String(c?.defaultRoomId || '').trim(),
+                              snapshotUrl: snap ? String(snap.url || '') : '',
+                              snapshotUsername: snapUser,
+                              snapshotPassword: '',
+                              snapshotUpdatePassword: false,
+                              snapshotHadPassword: snapHadPassword,
+                              embedUrl: embed ? String(embed.url || '') : '',
+                              rtspUrl: rtsp ? String(rtsp.url || '') : '',
+                              rtspWsPort: (rtsp && Number.isFinite(Number(rtsp.wsPort))) ? String(Math.floor(Number(rtsp.wsPort))) : '',
+                            });
+                          }}
+                          className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy) ? 'opacity-50' : 'hover:bg-white/5'}`}
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={!connected || busy}
+                          onClick={async () => {
+                            setCameraFormError(null);
+                            setBusy(true);
+                            try {
+                              await deleteUiCamera(id);
+                              const cams = await fetchUiCameras();
+                              setUiCameras(Array.isArray(cams) ? cams : []);
+                              if (cameraFormMode === 'edit' && cameraFormId === id) {
+                                setCameraFormMode('create');
+                                setCameraFormId('');
+                              }
+                            } catch (e) {
+                              setCameraFormError(e?.message || String(e));
+                            } finally {
+                              setBusy(false);
+                            }
+                          }}
+                          className={`rounded-xl border border-neon-red/30 bg-black/10 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-neon-red/90 transition-colors ${(!connected || busy) ? 'opacity-50' : 'hover:bg-neon-red/10'}`}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="mt-3 text-xs text-white/45">
+                  No cameras registered yet.
+                </div>
+              )}
+            </div>
           </div>
         ) : null}
 

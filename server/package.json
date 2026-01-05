@@ -13,6 +13,7 @@
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
     "express": "^4.18.2",
+    "node-rtsp-stream": "^0.0.9",
     "selfsigned": "^2.4.1",
     "socket.io": "^4.7.2",
     "undici": "^6.22.0"
