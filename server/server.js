@@ -370,6 +370,15 @@ const RTSP_HLS_LIST_SIZE = (() => {
     return Math.max(3, Math.min(20, Math.round(parsed)));
 })();
 
+const RTSP_HLS_OUTPUT_FPS = (() => {
+    // Some RTSP sources provide broken/non-advancing timestamps (PTS), which can prevent
+    // the HLS muxer from ever cutting segments. For those, forcing CFR makes time advance.
+    const raw = String(process.env.RTSP_HLS_OUTPUT_FPS || process.env.RTSP_HLS_FPS || '').trim();
+    const parsed = raw ? Number(raw) : 15;
+    if (!Number.isFinite(parsed)) return 15;
+    return Math.max(1, Math.min(60, Math.round(parsed)));
+})();
+
 const RTSP_HLS_RTSP_TRANSPORT = (() => {
     const raw = String(process.env.RTSP_HLS_RTSP_TRANSPORT || '').trim().toLowerCase();
     // Keep TCP as the safe default (NAT/Wi-Fi/firewalls). Allow UDP for low-latency setups.
@@ -469,6 +478,9 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
         '-preset', 'veryfast',
         '-crf', String(process.env.RTSP_HLS_CRF || '20'),
         '-pix_fmt', 'yuv420p',
+        // Force timestamps to advance consistently for HLS.
+        '-fps_mode', 'cfr',
+        '-r', String(RTSP_HLS_OUTPUT_FPS),
         '-g', String(process.env.RTSP_HLS_GOP || (RTSP_HLS_SEGMENT_SECONDS * 25)),
         '-keyint_min', String(process.env.RTSP_HLS_GOP || (RTSP_HLS_SEGMENT_SECONDS * 25)),
         '-sc_threshold', '0',
@@ -2767,10 +2779,20 @@ app.get('/api/cameras/:id/hls/ensure', async (req, res) => {
             return res.status(500).json({ ok: false, error: 'failed_to_start_hls' });
         }
 
+        const hasAnySegment = () => {
+            try {
+                const entries = fs.readdirSync(state.dir, { withFileTypes: true });
+                return entries.some((e) => e.isFile() && /^seg_\d+\.ts$/i.test(e.name));
+            } catch {
+                return false;
+            }
+        };
+
         // Wait until playlist appears (or timeout).
         const deadline = Date.now() + RTSP_HLS_STARTUP_TIMEOUT_MS;
         while (Date.now() < deadline) {
             if (fs.existsSync(state.playlistPath)) break;
+            if (hasAnySegment()) break;
             if (state.ffmpeg && state.ffmpeg.exitCode !== null) break;
             await new Promise((r) => setTimeout(r, 150));
         }
