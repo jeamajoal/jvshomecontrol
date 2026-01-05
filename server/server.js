@@ -418,9 +418,60 @@ function cleanupHlsDir(dir) {
             if (!/^seg_\d+\.ts$/i.test(name)) continue;
             try { fs.unlinkSync(path.join(dir, name)); } catch { /* ignore */ }
         }
-        try { fs.unlinkSync(path.join(dir, 'playlist.m3u8')); } catch { /* ignore */ }
+        // Remove playlist file if present.
+        const playlistCandidate = path.join(dir, 'playlist.m3u8');
+        try { fs.unlinkSync(playlistCandidate); } catch { /* ignore */ }
+
+        // If something created a directory/special node at playlist.m3u8, remove it.
+        // (Some environments/filesystems may report EINVAL when ffmpeg tries to open it.)
+        try {
+            if (fs.existsSync(playlistCandidate)) {
+                const st = fs.statSync(playlistCandidate);
+                if (!st.isFile()) {
+                    fs.rmSync(playlistCandidate, { recursive: true, force: true });
+                }
+            }
+        } catch {
+            // ignore
+        }
     } catch {
         // ignore
+    }
+}
+
+function verifyHlsOutputWritable(dir, playlistPath) {
+    // Best-effort preflight so we can return a clear error before spawning ffmpeg.
+    // Returns null when OK, otherwise an error string.
+    try {
+        ensureDir(dir);
+        try {
+            const st = fs.statSync(dir);
+            if (!st.isDirectory()) return `HLS output path is not a directory: ${dir}`;
+        } catch {
+            // If it doesn't exist, ensureDir should have created it.
+        }
+
+        // If playlistPath exists but isn't a regular file, clean it up.
+        try {
+            if (fs.existsSync(playlistPath)) {
+                const st = fs.statSync(playlistPath);
+                if (!st.isFile()) {
+                    fs.rmSync(playlistPath, { recursive: true, force: true });
+                }
+            }
+        } catch {
+            // ignore
+        }
+
+        // Write test
+        const probe = path.join(dir, '.write_probe');
+        fs.writeFileSync(probe, 'ok');
+        fs.unlinkSync(probe);
+        return null;
+    } catch (err) {
+        const code = err?.code || err?.name;
+        const msg = err?.message || String(err);
+        return `${code || 'write_error'}: ${msg}`;
     }
 }
 
@@ -458,6 +509,17 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
 
     const playlistPath = path.join(dir, 'playlist.m3u8');
     const segmentPattern = path.join(dir, 'seg_%d.ts');
+
+    const outputCheck = verifyHlsOutputWritable(dir, playlistPath);
+    if (outputCheck) {
+        return {
+            dir,
+            playlistPath,
+            ffmpeg: null,
+            lastError: `HLS output not writable: ${outputCheck}`,
+            startedAtMs: Date.now(),
+        };
+    }
 
     // Good defaults for compatibility and quality.
     // - Generate sane timestamps even if the RTSP source has broken/non-monotonic PTS.
@@ -2777,6 +2839,14 @@ app.get('/api/cameras/:id/hls/ensure', async (req, res) => {
         const state = startHlsStream(cameraId, rtspUrl, ffmpegPath);
         if (!state) {
             return res.status(500).json({ ok: false, error: 'failed_to_start_hls' });
+        }
+
+        if (!state.ffmpeg) {
+            return res.status(502).json({
+                ok: false,
+                error: 'hls_output_not_writable',
+                detail: state.lastError || null,
+            });
         }
 
         const hasAnySegment = () => {
