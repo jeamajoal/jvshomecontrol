@@ -1045,11 +1045,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return raw.map((v) => String(v || '').trim()).filter(Boolean);
   }, [config?.ui?.visibleCameraIds]);
 
-  const roomCameraIdsFromConfig = useMemo(() => {
-    const raw = (config?.ui?.roomCameraIds && typeof config.ui.roomCameraIds === 'object') ? config.ui.roomCameraIds : {};
-    return raw;
-  }, [config?.ui?.roomCameraIds]);
-
   const topCameraIdsFromConfig = useMemo(() => {
     const raw = Array.isArray(config?.ui?.topCameraIds) ? config.ui.topCameraIds : [];
     return raw.map((v) => String(v || '').trim()).filter(Boolean);
