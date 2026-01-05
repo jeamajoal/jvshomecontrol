@@ -64,3 +64,32 @@ Example:
 ```bash
 sudo systemctl restart jvshomecontrol
 ```
+
+## HLS (recommended for HTTPS)
+
+For customer-friendly RTSP playback under HTTPS, the server can also expose RTSP cameras as HLS over the same origin (`https://...`), avoiding the browser restriction on `ws://`.
+
+How it works:
+
+- Server spawns `ffmpeg` to read RTSP and write an HLS playlist (`.m3u8`) plus segment files (`.ts`).
+- UI plays the HLS stream using native HLS when available (Safari/iOS), otherwise via `hls.js`.
+
+Endpoints:
+
+- `GET /api/cameras/:id/hls/ensure` → returns `{ playlistUrl }`
+- `GET /api/cameras/:id/hls/playlist.m3u8`
+- `GET /api/cameras/:id/hls/seg_#.ts`
+
+Requirements:
+
+- `ffmpeg` must be installed and available on the server.
+
+Optional tuning env vars:
+
+- `RTSP_HLS_SEGMENT_SECONDS` (default `2`, clamp `1..6`)
+- `RTSP_HLS_LIST_SIZE` (default `6`, clamp `3..20`)
+- `RTSP_HLS_OUTPUT_FPS` (default `15`, clamp `1..60`) — forces a constant output FPS to avoid HLS stalls from broken RTSP timestamps
+- `RTSP_HLS_STARTUP_TIMEOUT_MS` (default `15000`, clamp `2000..60000`)
+- `RTSP_HLS_CRF` (default `20`, lower = higher quality)
+- `RTSP_HLS_GOP` (default `segmentSeconds * 25`)
+- `RTSP_HLS_RTSP_TRANSPORT` (default: `tcp`, options: `tcp` or `udp`)

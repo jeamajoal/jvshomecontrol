@@ -24,11 +24,32 @@
     "primaryTextColorId": null,
     "cardScalePct": 100,
     "homeRoomColumnsXl": 3,
+    "homeCameraPreviewsEnabled": false,
+    "controlsCameraPreviewsEnabled": false,
+    "cameraPreviewRefreshSeconds": 10,
+    "cameras": [
+      {
+        "id": "front-door",
+        "label": "Front Door",
+        "roomId": "outside",
+        "enabled": true,
+        "snapshot": {
+          "url": "http://192.168.1.50/cgi-bin/snapshot.cgi",
+          "basicAuth": {
+            "username": "admin",
+            "password": "changeme"
+          }
+        }
+      }
+    ],
     "homeBackground": {
       "enabled": false,
       "url": null,
       "opacityPct": 35
     },
+    "visibleRoomIds": [],
+    "deviceLabelOverrides": {},
+    "deviceCommandAllowlist": {},
     "panelProfiles": {
       "Neon Glass": {
         "accentColorId": "neon-blue",
@@ -44,7 +65,14 @@
         "secondaryTextSizePct": 105,
         "secondaryTextColorId": "slate",
         "cardScalePct": 105,
-        "homeRoomColumnsXl": 3
+        "homeRoomColumnsXl": 3,
+        "visibleRoomIds": [],
+        "deviceLabelOverrides": {
+          "123": "Kitchen Lights"
+        },
+        "deviceCommandAllowlist": {
+          "123": ["on", "off", "toggle"]
+        }
       },
       "Stealth Slate": {
         "accentColorId": "slate",

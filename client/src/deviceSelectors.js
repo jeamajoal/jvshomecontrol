@@ -4,6 +4,56 @@ const asText = (value) => {
   return s.length ? s : null;
 };
 
+export function getHomeVisibleDeviceIdSet(config) {
+  const ids = Array.isArray(config?.ui?.homeVisibleDeviceIds)
+    ? config.ui.homeVisibleDeviceIds.map((v) => String(v || '').trim()).filter(Boolean)
+    : [];
+  // Empty means "show all".
+  return ids.length ? new Set(ids) : null;
+}
+
+function getVisibleRoomIdSet(config) {
+  const ids = Array.isArray(config?.ui?.visibleRoomIds)
+    ? config.ui.visibleRoomIds.map((v) => String(v || '').trim()).filter(Boolean)
+    : [];
+  return ids.length ? new Set(ids) : null;
+}
+
+function getDeviceLabelOverride(config, deviceId) {
+  const id = asText(deviceId);
+  if (!id) return null;
+  const raw = (config?.ui?.deviceLabelOverrides && typeof config.ui.deviceLabelOverrides === 'object')
+    ? config.ui.deviceLabelOverrides
+    : {};
+  const v = raw[id];
+  const s = asText(v);
+  return s;
+}
+
+export function getDeviceCommandAllowlist(config, deviceId) {
+  const id = asText(deviceId);
+  if (!id) return null;
+  const raw = (config?.ui?.deviceCommandAllowlist && typeof config.ui.deviceCommandAllowlist === 'object')
+    ? config.ui.deviceCommandAllowlist
+    : {};
+  const arr = raw[id];
+  if (!Array.isArray(arr)) return null;
+  const cleaned = arr.map((v) => String(v || '').trim()).filter(Boolean);
+  return cleaned.length ? cleaned : [];
+}
+
+export function getDeviceHomeMetricAllowlist(config, deviceId) {
+  const id = asText(deviceId);
+  if (!id) return null;
+  const raw = (config?.ui?.deviceHomeMetricAllowlist && typeof config.ui.deviceHomeMetricAllowlist === 'object')
+    ? config.ui.deviceHomeMetricAllowlist
+    : {};
+  const arr = raw[id];
+  if (!Array.isArray(arr)) return null;
+  // Empty array is allowed (meaning: show no Home metrics from this device).
+  return arr.map((v) => String(v || '').trim()).filter(Boolean);
+}
+
 export function getDeviceStatus(statuses, deviceId) {
   const id = asText(deviceId);
   if (!id) return null;
@@ -30,9 +80,12 @@ export function getAllowedDeviceIdSet(config, scope = 'union') {
   return new Set(getAllowedDeviceIds(config, scope).map((v) => String(v)));
 }
 
-export function buildRoomsWithStatuses(config, statuses) {
+export function buildRoomsWithStatuses(config, statuses, options = {}) {
   const rooms = Array.isArray(config?.rooms) ? config.rooms : [];
   const devices = Array.isArray(config?.sensors) ? config.sensors : [];
+  const ignoreVisibleRooms = Boolean(options && options.ignoreVisibleRooms);
+  const visibleRoomIds = ignoreVisibleRooms ? null : getVisibleRoomIdSet(config);
+  const deviceIdSet = (options && options.deviceIdSet instanceof Set) ? options.deviceIdSet : null;
 
   const byRoomId = new Map();
   for (const r of rooms) {
@@ -47,9 +100,13 @@ export function buildRoomsWithStatuses(config, statuses) {
     const id = asText(dev?.id);
     if (!id) continue;
 
+    if (deviceIdSet && !deviceIdSet.has(id)) continue;
+
+    const labelOverride = getDeviceLabelOverride(config, id);
     const entry = {
       ...dev,
       status: getDeviceStatus(statuses, id),
+      label: labelOverride || String(dev?.label || getDeviceStatus(statuses, id)?.label || id),
     };
 
     const roomId = asText(dev?.roomId);
@@ -62,16 +119,21 @@ export function buildRoomsWithStatuses(config, statuses) {
     .map(({ room, devices: roomDevices }) => ({ room, devices: roomDevices }))
     .filter((r) => r.devices.length > 0);
 
-  if (unassigned.length) {
-    result.push({ room: { id: 'unassigned', name: 'Unassigned' }, devices: unassigned });
+  const filtered = visibleRoomIds
+    ? result.filter((r) => visibleRoomIds.has(asText(r?.room?.id) || ''))
+    : result;
+
+  if (unassigned.length && (!visibleRoomIds || visibleRoomIds.has('unassigned'))) {
+    filtered.push({ room: { id: 'unassigned', name: 'Unassigned' }, devices: unassigned });
   }
 
-  return result;
+  return filtered;
 }
 
 export function buildRoomsWithActivity(config, statuses) {
   const rooms = Array.isArray(config?.rooms) ? config.rooms : [];
   const devices = Array.isArray(config?.sensors) ? config.sensors : [];
+  const visibleRoomIds = getVisibleRoomIdSet(config);
 
   const byRoomId = new Map();
   for (const r of rooms) {
@@ -87,6 +149,7 @@ export function buildRoomsWithActivity(config, statuses) {
     if (!id) continue;
 
     const st = getDeviceStatus(statuses, id);
+    const labelOverride = getDeviceLabelOverride(config, id);
     const attrs = st?.attributes && typeof st.attributes === 'object' ? st.attributes : {};
 
     const motion = asText(attrs.motion);
@@ -97,7 +160,7 @@ export function buildRoomsWithActivity(config, statuses) {
 
     const entry = {
       id,
-      label: String(d?.label || st?.label || id),
+      label: String(labelOverride || d?.label || st?.label || id),
       motion,
       contact,
       lastUpdated: asText(st?.lastUpdated),
@@ -114,9 +177,13 @@ export function buildRoomsWithActivity(config, statuses) {
     .filter((r) => r.devices.length > 0)
     .sort((a, b) => String(a.room?.name || '').localeCompare(String(b.room?.name || '')));
 
-  if (unassigned.length) {
-    result.push({ room: { id: 'unassigned', name: 'Unassigned' }, devices: unassigned });
+  const filtered = visibleRoomIds
+    ? result.filter((r) => visibleRoomIds.has(asText(r?.room?.id) || ''))
+    : result;
+
+  if (unassigned.length && (!visibleRoomIds || visibleRoomIds.has('unassigned'))) {
+    filtered.push({ room: { id: 'unassigned', name: 'Unassigned' }, devices: unassigned });
   }
 
-  return result;
+  return filtered;
 }

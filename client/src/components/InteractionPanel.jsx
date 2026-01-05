@@ -4,7 +4,8 @@ import { Loader2, Power, SlidersHorizontal } from 'lucide-react';
 import { getUiScheme } from '../uiScheme';
 import { API_HOST } from '../apiHost';
 import { useAppState } from '../appState';
-import { buildRoomsWithStatuses, getAllowedDeviceIdSet } from '../deviceSelectors';
+import { buildRoomsWithStatuses } from '../deviceSelectors';
+import HlsPlayer from './HlsPlayer';
 
 const asNumber = (value) => {
   const num = typeof value === 'number' ? value : parseFloat(String(value));
@@ -206,13 +207,117 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
     [uiScheme, config?.ui?.accentColorId],
   );
 
-  const allowedControlIds = useMemo(() => {
-    return getAllowedDeviceIdSet(config, 'ctrl');
-  }, [config]);
-
   const rooms = useMemo(() => {
-    return buildRoomsWithStatuses(config, statuses);
+    return buildRoomsWithStatuses(config, statuses, { ignoreVisibleRooms: true });
   }, [config, statuses]);
+
+  const controlsCameraPreviewsEnabled = useMemo(
+    () => config?.ui?.controlsCameraPreviewsEnabled === true,
+    [config?.ui?.controlsCameraPreviewsEnabled],
+  );
+
+  const cameraPreviewRefreshSeconds = useMemo(() => {
+    const raw = Number(config?.ui?.cameraPreviewRefreshSeconds);
+    if (!Number.isFinite(raw)) return 10;
+    return Math.max(2, Math.min(120, Math.round(raw)));
+  }, [config?.ui?.cameraPreviewRefreshSeconds]);
+
+  const cameras = useMemo(
+    () => (Array.isArray(config?.ui?.cameras) ? config.ui.cameras : []),
+    [config?.ui?.cameras],
+  );
+
+  const topCameraIds = useMemo(
+    () => (Array.isArray(config?.ui?.topCameraIds) ? config.ui.topCameraIds.map((v) => String(v || '').trim()).filter(Boolean) : []),
+    [config?.ui?.topCameraIds],
+  );
+
+  const topCameraSize = useMemo(() => {
+    const raw = String(config?.ui?.topCameraSize ?? '').trim().toLowerCase();
+    if (raw === 'xs' || raw === 'sm' || raw === 'md' || raw === 'lg') return raw;
+    return 'md';
+  }, [config?.ui?.topCameraSize]);
+
+  const visibleCameraIds = useMemo(
+    () => (Array.isArray(config?.ui?.visibleCameraIds) ? config.ui.visibleCameraIds : []),
+    [config?.ui?.visibleCameraIds],
+  );
+
+  const [cameraBrokenIds, setCameraBrokenIds] = useState(() => new Set());
+
+  const [cameraTick, setCameraTick] = useState(0);
+  useEffect(() => {
+    if (!controlsCameraPreviewsEnabled) return;
+    const ms = Math.max(2, Math.min(120, Number(cameraPreviewRefreshSeconds) || 10)) * 1000;
+    const compute = () => setCameraTick(ms > 0 ? Math.floor(Date.now() / ms) : 0);
+    compute();
+    const id = setInterval(compute, ms);
+    return () => clearInterval(id);
+  }, [controlsCameraPreviewsEnabled, cameraPreviewRefreshSeconds]);
+
+  const topCameras = useMemo(() => {
+    if (!controlsCameraPreviewsEnabled) return [];
+    const ids = Array.isArray(topCameraIds) ? topCameraIds : [];
+    if (!ids.length) return [];
+
+    const allow = Array.isArray(visibleCameraIds)
+      ? visibleCameraIds.map((v) => String(v || '').trim()).filter(Boolean)
+      : [];
+    const allowSet = new Set(allow);
+    const allowAll = allowSet.size === 0;
+
+    const list = Array.isArray(cameras) ? cameras : [];
+    const byId = new Map(list.map((c) => [String(c?.id || '').trim(), c]));
+
+    return ids
+      .map((idRaw) => {
+        const id = String(idRaw || '').trim();
+        if (!id) return null;
+        const c = byId.get(id);
+        if (!c || typeof c !== 'object') return null;
+        const cid = String(c.id || '').trim();
+        if (!cid) return null;
+        const label = String(c.label || cid).trim() || cid;
+        const enabled = c.enabled !== false;
+        const hasSnapshot = c.hasSnapshot === true;
+        const hasEmbed = c.hasEmbed === true && typeof c.embedUrl === 'string' && c.embedUrl.trim();
+        const embedUrl = hasEmbed ? String(c.embedUrl).trim() : '';
+        const hasRtsp = c.hasRtsp === true;
+        const hasAnyPreview = Boolean(hasEmbed || hasRtsp || hasSnapshot);
+
+        if (!enabled || !hasAnyPreview) return null;
+        if (!allowAll && !allowSet.has(cid)) return null;
+
+        return {
+          id: cid,
+          label,
+          hasSnapshot,
+          hasEmbed,
+          embedUrl,
+          hasRtsp,
+        };
+      })
+      .filter(Boolean);
+  }, [cameras, controlsCameraPreviewsEnabled, topCameraIds, visibleCameraIds]);
+
+  const topCameraGridClassName = useMemo(() => {
+    if (topCameraSize === 'lg') return 'grid-cols-1';
+    if (topCameraSize === 'sm') return 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
+    if (topCameraSize === 'xs') return 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4';
+    return 'grid-cols-1 md:grid-cols-2';
+  }, [topCameraSize]);
+
+  const noArgUiCommands = useMemo(() => new Set([
+    // Common “safe” commands that typically take no args
+    'on', 'off', 'toggle',
+    'open', 'close',
+    'lock', 'unlock',
+    'start', 'stop', 'pause', 'play',
+    'refresh', 'poll',
+    'push',
+    // Common alarm/camera-ish actions
+    'siren', 'strobe', 'both',
+  ]), []);
 
   const [busy, setBusy] = useState(() => new Set());
 
@@ -271,23 +376,77 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
             </div>
           </div>
 
+          {topCameras.length ? (
+            <div className="mt-4 glass-panel border border-white/10 p-4 md:p-5">
+              <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+                Cameras
+              </div>
+              <div className={`mt-3 grid ${topCameraGridClassName} gap-3`}>
+                {topCameras.map((cam) => {
+                  const broken = cameraBrokenIds.has(cam.id);
+                  const src = `${API_HOST}/api/cameras/${encodeURIComponent(cam.id)}/snapshot?t=${cameraTick}`;
+                  return (
+                    <div key={cam.id} className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                      <div className="text-[11px] uppercase tracking-[0.2em] font-semibold text-white/80 truncate">
+                        {cam.label || cam.id}
+                      </div>
+                      <div className="mt-2 overflow-hidden rounded-xl bg-black/30">
+                        {cam.hasEmbed ? (
+                          <iframe
+                            src={cam.embedUrl}
+                            title={cam.label || cam.id}
+                            className="w-full aspect-video"
+                            style={{ border: 0 }}
+                            allow="autoplay; fullscreen"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : cam.hasRtsp ? (
+                          <HlsPlayer cameraId={cam.id} />
+                        ) : (!broken ? (
+                          <img
+                            src={src}
+                            alt={cam.label || cam.id}
+                            className="w-full aspect-video object-cover"
+                            onError={() => {
+                              setCameraBrokenIds((prev) => {
+                                const next = new Set(prev);
+                                next.add(cam.id);
+                                return next;
+                              });
+                            }}
+                          />
+                        ) : (
+                          <div className="w-full aspect-video flex items-center justify-center text-xs text-white/45">
+                            Snapshot unavailable
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
           <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
             {rooms.length ? (
               rooms.map(({ room, devices }) => {
                 const controllables = devices
                   .map((d) => {
                     const attrs = d.status?.attributes || {};
-                    const commands = Array.isArray(d.status?.commands) ? d.status.commands : [];
+                    const commandsRaw = Array.isArray(d.status?.commands) ? d.status.commands : [];
                     return {
                       id: d.id,
                       label: d.label,
                       attrs,
-                      commands,
+                      commands: commandsRaw,
                       state: d.status?.state,
                     };
                   })
-                  .filter((d) => allowedControlIds.has(String(d.id)))
-                  .filter((d) => d.commands.length || typeof d.attrs.switch === 'string' || typeof d.state === 'string');
+                  // IMPORTANT: include all devices that report any commands.
+                  // Some devices (thermostats, cameras, etc.) may only expose arg-based commands.
+                  // Those will still show up here, even if we can’t render full controls yet.
+                  .filter((d) => d.commands.length);
 
                 if (!controllables.length) return null;
 
@@ -314,7 +473,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
 
                         const isOn = sw === 'on';
 
-                        if (isSwitch && hasLevel) {
+                        if (isSwitch && hasLevel && d.commands.includes('setLevel')) {
                           return (
                             <LevelTile
                               key={d.id}
@@ -359,9 +518,19 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                         }
 
                         // Fallback: show safe action buttons if present
-                        const allow = new Set(['push', 'on', 'off']);
-                        const actions = d.commands.filter((c) => allow.has(c));
-                        if (!actions.length) return null;
+                        const actions = d.commands.filter((c) => noArgUiCommands.has(String(c)));
+                        if (!actions.length) {
+                          return (
+                            <div key={d.id} className="rounded-2xl border border-white/10 bg-black/20 p-4 md:p-5 opacity-80">
+                              <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold truncate">
+                                {d.label}
+                              </div>
+                              <div className="mt-2 text-xs text-white/45">
+                                Commands available (may require inputs): {d.commands.slice(0, 8).join(', ')}{d.commands.length > 8 ? '…' : ''}
+                              </div>
+                            </div>
+                          );
+                        }
 
                         return (
                           <div key={d.id} className="rounded-2xl border border-white/10 bg-black/20 p-4 md:p-5">

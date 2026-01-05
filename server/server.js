@@ -3,9 +3,14 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const http = require('http');
 const https = require('https');
+const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+// Legacy note: previous versions used `net` for RTSP websocket port allocation.
 const { Server } = require('socket.io');
+const crypto = require('crypto');
+
+
 
 let UndiciAgent = null;
 try {
@@ -120,6 +125,18 @@ const SECONDARY_TEXT_SIZE_PCT_RANGE = Object.freeze({ min: 50, max: 200, def: 10
 const PRIMARY_TEXT_SIZE_PCT_RANGE = Object.freeze({ min: 50, max: 200, def: 100 });
 const BLUR_SCALE_PCT_RANGE = Object.freeze({ min: 0, max: 200, def: 100 });
 const ICON_SIZE_PCT_RANGE = Object.freeze({ min: 50, max: 200, def: 100 });
+
+// Commands that can be rendered by the current UI panels.
+// (We intentionally constrain this so config can't inject arbitrary commands into the UI.)
+const ALLOWED_PANEL_DEVICE_COMMANDS = new Set(['on', 'off', 'toggle', 'setLevel', 'refresh', 'push']);
+
+// Home metrics that can be shown on the Home dashboard per device.
+// (Used for multi-sensors where you want to hide/show specific attributes.)
+const ALLOWED_HOME_METRIC_KEYS = new Set(['temperature', 'humidity', 'illuminance', 'motion', 'contact', 'door']);
+
+// Home room metric cards (sub-cards inside each room panel).
+// These are configured globally (or per panel profile) and rendered for every room.
+const ALLOWED_HOME_ROOM_METRIC_KEYS = new Set(['temperature', 'humidity', 'illuminance']);
 
 // Default preset panel profiles that ship with the product.
 // These are always available as read-only templates.
@@ -330,6 +347,320 @@ const server = USE_HTTPS
     : http.createServer(app);
 
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
+
+// --- RTSP -> HLS (HTTPS-friendly) ---
+// We intentionally implement HLS on the same origin as the app so customers don't
+// run into HTTPS+ws mixed-content issues.
+const RTSP_HLS_DIR = (() => {
+    const raw = String(process.env.RTSP_HLS_DIR || '').trim();
+    return raw || path.join(DATA_DIR, 'hls');
+})();
+
+const RTSP_HLS_SEGMENT_SECONDS = (() => {
+    const raw = String(process.env.RTSP_HLS_SEGMENT_SECONDS || '').trim();
+    const parsed = raw ? Number(raw) : 2;
+    if (!Number.isFinite(parsed)) return 2;
+    return Math.max(1, Math.min(6, Math.round(parsed)));
+})();
+
+const RTSP_HLS_LIST_SIZE = (() => {
+    const raw = String(process.env.RTSP_HLS_LIST_SIZE || '').trim();
+    const parsed = raw ? Number(raw) : 6;
+    if (!Number.isFinite(parsed)) return 6;
+    return Math.max(3, Math.min(20, Math.round(parsed)));
+})();
+
+const RTSP_HLS_OUTPUT_FPS = (() => {
+    // Some RTSP sources provide broken/non-advancing timestamps (PTS), which can prevent
+    // the HLS muxer from ever cutting segments. For those, forcing CFR makes time advance.
+    const raw = String(process.env.RTSP_HLS_OUTPUT_FPS || process.env.RTSP_HLS_FPS || '').trim();
+    const parsed = raw ? Number(raw) : 15;
+    if (!Number.isFinite(parsed)) return 15;
+    return Math.max(1, Math.min(60, Math.round(parsed)));
+})();
+
+const RTSP_HLS_PROBESIZE = (() => {
+    // Increase if ffmpeg can't determine codec parameters (e.g., MJPEG size) during startup.
+    const raw = String(process.env.RTSP_HLS_PROBESIZE || '').trim();
+    if (!raw) return '10M';
+    return raw;
+})();
+
+const RTSP_HLS_ANALYZEDURATION = (() => {
+    // Increase if ffmpeg needs more time to detect stream parameters.
+    const raw = String(process.env.RTSP_HLS_ANALYZEDURATION || '').trim();
+    if (!raw) return '10M';
+    return raw;
+})();
+
+const RTSP_HLS_RTSP_TRANSPORT = (() => {
+    const raw = String(process.env.RTSP_HLS_RTSP_TRANSPORT || '').trim().toLowerCase();
+    // Keep TCP as the safe default (NAT/Wi-Fi/firewalls). Allow UDP for low-latency setups.
+    if (raw === 'udp') return 'udp';
+    return 'tcp';
+})();
+
+const RTSP_HLS_STARTUP_TIMEOUT_MS = (() => {
+    const raw = String(process.env.RTSP_HLS_STARTUP_TIMEOUT_MS || '').trim();
+    const parsed = raw ? Number(raw) : 15000;
+    if (!Number.isFinite(parsed)) return 15000;
+    return Math.max(2000, Math.min(60000, Math.floor(parsed)));
+})();
+
+const RTSP_HLS_DEBUG = (() => {
+    const raw = String(process.env.RTSP_HLS_DEBUG || '').trim().toLowerCase();
+    return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+})();
+
+const hlsStreams = new Map(); // cameraId -> { dir, playlistPath, ffmpeg, lastError, stderrTail, startedAtMs, ffmpegArgs }
+
+function redactRtspUrl(url) {
+    try {
+        const u = new URL(String(url));
+        if (u.username || u.password) {
+            u.username = u.username ? 'REDACTED' : '';
+            u.password = u.password ? 'REDACTED' : '';
+        }
+        return u.toString();
+    } catch {
+        // Fallback: strip user:pass@ if present.
+        return String(url || '').replace(/rtsp:\/\/[^@/]+@/i, 'rtsp://REDACTED@');
+    }
+}
+
+function safeCameraDirName(cameraId) {
+    const id = String(cameraId || '').trim();
+    const hash = crypto.createHash('sha1').update(id).digest('hex').slice(0, 10);
+    const base = id.toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 32) || 'camera';
+    return `${base}_${hash}`;
+}
+
+function ensureDir(p) {
+    fs.mkdirSync(p, { recursive: true });
+}
+
+function cleanupHlsDir(dir) {
+    try {
+        if (!fs.existsSync(dir)) return;
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const ent of entries) {
+            if (!ent.isFile()) continue;
+            const name = ent.name;
+            if (name === 'playlist.m3u8') continue;
+            // Keep only expected segment files.
+            if (!/^seg_\d+\.ts$/i.test(name)) continue;
+            try { fs.unlinkSync(path.join(dir, name)); } catch { /* ignore */ }
+        }
+        // Remove playlist file if present.
+        const playlistCandidate = path.join(dir, 'playlist.m3u8');
+        try { fs.unlinkSync(playlistCandidate); } catch { /* ignore */ }
+
+        // If something created a directory/special node at playlist.m3u8, remove it.
+        // (Some environments/filesystems may report EINVAL when ffmpeg tries to open it.)
+        try {
+            if (fs.existsSync(playlistCandidate)) {
+                const st = fs.statSync(playlistCandidate);
+                if (!st.isFile()) {
+                    fs.rmSync(playlistCandidate, { recursive: true, force: true });
+                }
+            }
+        } catch {
+            // ignore
+        }
+    } catch {
+        // ignore
+    }
+}
+
+function verifyHlsOutputWritable(dir, playlistPath) {
+    // Best-effort preflight so we can return a clear error before spawning ffmpeg.
+    // Returns null when OK, otherwise an error string.
+    try {
+        ensureDir(dir);
+        try {
+            const st = fs.statSync(dir);
+            if (!st.isDirectory()) return `HLS output path is not a directory: ${dir}`;
+        } catch {
+            // If it doesn't exist, ensureDir should have created it.
+        }
+
+        // If playlistPath exists but isn't a regular file, clean it up.
+        try {
+            if (fs.existsSync(playlistPath)) {
+                const st = fs.statSync(playlistPath);
+                if (!st.isFile()) {
+                    fs.rmSync(playlistPath, { recursive: true, force: true });
+                }
+            }
+        } catch {
+            // ignore
+        }
+
+        // Write test
+        const probe = path.join(dir, '.write_probe');
+        fs.writeFileSync(probe, 'ok');
+        fs.unlinkSync(probe);
+        return null;
+    } catch (err) {
+        const code = err?.code || err?.name;
+        const msg = err?.message || String(err);
+        return `${code || 'write_error'}: ${msg}`;
+    }
+}
+
+function stopHlsStream(cameraId) {
+    const id = String(cameraId || '').trim();
+    const existing = hlsStreams.get(id);
+    if (!existing) return;
+    try {
+        if (existing.ffmpeg && typeof existing.ffmpeg.kill === 'function') {
+            existing.ffmpeg.kill('SIGKILL');
+        }
+    } catch {
+        // ignore
+    }
+    try {
+        cleanupHlsDir(existing.dir);
+    } catch {
+        // ignore
+    }
+    hlsStreams.delete(id);
+}
+
+function startHlsStream(cameraId, streamUrl, ffmpegPath) {
+    const id = String(cameraId || '').trim();
+    if (!id) return null;
+
+    const existing = hlsStreams.get(id);
+    if (existing && existing.ffmpeg && existing.ffmpeg.exitCode === null) {
+        return existing;
+    }
+
+    const dir = path.join(RTSP_HLS_DIR, safeCameraDirName(id));
+    ensureDir(dir);
+    cleanupHlsDir(dir);
+
+    const playlistPath = path.join(dir, 'playlist.m3u8');
+    const segmentPattern = path.join(dir, 'seg_%d.ts');
+
+    const outputCheck = verifyHlsOutputWritable(dir, playlistPath);
+    if (outputCheck) {
+        return {
+            dir,
+            playlistPath,
+            ffmpeg: null,
+            lastError: `HLS output not writable: ${outputCheck}`,
+            startedAtMs: Date.now(),
+        };
+    }
+
+    // Good defaults for compatibility and quality.
+    // - Generate sane timestamps even if the RTSP source has broken/non-monotonic PTS.
+    // - Transcode to H.264 yuv420p for broad playback support.
+    // - Use small segments/list size to keep latency reasonable.
+    const args = [
+        '-y',
+        // Make RTSP sources with bad/missing timestamps behave.
+        '-fflags', '+genpts+discardcorrupt',
+        '-use_wallclock_as_timestamps', '1',
+        '-avoid_negative_ts', 'make_zero',
+        '-analyzeduration', String(RTSP_HLS_ANALYZEDURATION),
+        '-probesize', String(RTSP_HLS_PROBESIZE),
+        '-rtsp_transport', RTSP_HLS_RTSP_TRANSPORT,
+        '-i', streamUrl,
+        '-an',
+        '-sn',
+        '-dn',
+        '-c:v', 'libx264',
+        '-tune', 'zerolatency',
+        '-preset', 'veryfast',
+        '-crf', String(process.env.RTSP_HLS_CRF || '20'),
+        '-pix_fmt', 'yuv420p',
+        // Force timestamps to advance consistently for HLS.
+        '-r', String(RTSP_HLS_OUTPUT_FPS),
+        '-g', String(process.env.RTSP_HLS_GOP || (RTSP_HLS_SEGMENT_SECONDS * 25)),
+        '-keyint_min', String(process.env.RTSP_HLS_GOP || (RTSP_HLS_SEGMENT_SECONDS * 25)),
+        '-sc_threshold', '0',
+        // Force periodic keyframes so HLS segments/playlist appear quickly.
+        '-force_key_frames', `expr:gte(t,n_forced*${RTSP_HLS_SEGMENT_SECONDS})`,
+        '-f', 'hls',
+        '-hls_time', String(RTSP_HLS_SEGMENT_SECONDS),
+        '-hls_list_size', String(RTSP_HLS_LIST_SIZE),
+        '-hls_flags', 'delete_segments+append_list+omit_endlist',
+        '-hls_segment_filename', segmentPattern,
+        playlistPath,
+    ];
+
+    const bin = ffmpegPath || 'ffmpeg';
+    const cp = require('child_process').spawn(bin, args, { detached: false });
+
+    const state = {
+        dir,
+        playlistPath,
+        ffmpeg: cp,
+        lastError: null,
+        stderrTail: [],
+        startedAtMs: Date.now(),
+        ffmpegArgs: args,
+    };
+    hlsStreams.set(id, state);
+
+    try {
+        cp.on('error', (err) => {
+            state.lastError = err?.message || String(err);
+            console.error(`HLS ffmpeg spawn error: ${state.lastError}`);
+        });
+        cp.stderr?.on?.('data', (buf) => {
+            const s = String(buf || '');
+            if (!s) return;
+            const lines = s.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+            if (!lines.length) return;
+            for (const line of lines) {
+                state.stderrTail.push(line);
+            }
+            // Keep last ~60 lines.
+            if (state.stderrTail.length > 60) {
+                state.stderrTail = state.stderrTail.slice(-60);
+            }
+            state.lastError = state.stderrTail[state.stderrTail.length - 1] || null;
+        });
+        cp.on('exit', (code) => {
+            if (code && code !== 0) {
+                console.error(`HLS ffmpeg exited with code ${code} (camera ${id})`);
+            }
+        });
+    } catch {
+        // ignore
+    }
+
+    return state;
+}
+
+function buildHttpUrl(req, p) {
+    const proto = USE_HTTPS ? 'https' : 'http';
+    const hostHeader = String(req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').trim();
+    const host = hostHeader ? hostHeader.split(',')[0].trim() : (req?.hostname || 'localhost');
+    const cleaned = String(p || '').startsWith('/') ? String(p) : `/${String(p || '')}`;
+    return `${proto}://${host}${cleaned}`;
+}
+
+function checkFfmpegAvailable(rawFfmpegPath) {
+    const ffmpegPath = String(rawFfmpegPath || '').trim();
+    const bin = ffmpegPath || 'ffmpeg';
+    try {
+        const result = spawnSync(bin, ['-version'], { stdio: 'ignore' });
+        if (result && result.error) {
+            const code = result.error.code || result.error.name;
+            const msg = result.error.message || String(result.error);
+            return { ok: false, bin, error: `${code || 'spawn_error'}: ${msg}` };
+        }
+        return { ok: true, bin };
+    } catch (err) {
+        const code = err?.code || err?.name;
+        const msg = err?.message || String(err);
+        return { ok: false, bin, error: `${code || 'spawn_error'}: ${msg}` };
+    }
+}
 
 // Hubitat Maker API
 // Public-repo posture: no built-in defaults or legacy env var fallbacks.
@@ -651,7 +982,39 @@ function getUiMainAllowedDeviceIds() {
 
 function getUiAllowedDeviceIdsUnion() {
     const { ctrl, main } = getUiAllowlistsInfo();
-    return Array.from(new Set([...(ctrl.ids || []), ...(main.ids || [])]));
+
+    // Panel profiles can further restrict the UI, but server-side enforcement must allow
+    // any device that *any* panel is configured to control, otherwise the UI can show
+    // a control that the backend rejects.
+    //
+    // Important: environment allowlists remain authoritative/locked.
+    const profiles = (persistedConfig?.ui?.panelProfiles && typeof persistedConfig.ui.panelProfiles === 'object')
+        ? persistedConfig.ui.panelProfiles
+        : {};
+
+    const profileCtrl = [];
+    const profileMain = [];
+    for (const p of Object.values(profiles)) {
+        if (!p || typeof p !== 'object') continue;
+        if (!ctrl.locked) {
+            const ids = Array.isArray(p.ctrlAllowedDeviceIds)
+                ? p.ctrlAllowedDeviceIds
+                : (Array.isArray(p.allowedDeviceIds) ? p.allowedDeviceIds : []);
+            for (const v of ids) {
+                const s = String(v || '').trim();
+                if (s) profileCtrl.push(s);
+            }
+        }
+        if (!main.locked) {
+            const ids = Array.isArray(p.mainAllowedDeviceIds) ? p.mainAllowedDeviceIds : [];
+            for (const v of ids) {
+                const s = String(v || '').trim();
+                if (s) profileMain.push(s);
+            }
+        }
+    }
+
+    return Array.from(new Set([...(ctrl.ids || []), ...(main.ids || []), ...profileCtrl, ...profileMain]));
 }
 
 function isUiDeviceAllowedForControl(deviceId) {
@@ -770,6 +1133,68 @@ function normalizePersistedConfig(raw) {
     const mainAllowed = Array.isArray(uiRaw.mainAllowedDeviceIds)
         ? uiRaw.mainAllowedDeviceIds
         : [];
+
+    // Home visibility (which devices contribute to Home room cards/metrics).
+    // Empty list means "show all".
+    const homeVisibleDeviceIds = Array.isArray(uiRaw.homeVisibleDeviceIds)
+        ? uiRaw.homeVisibleDeviceIds.map((v) => String(v || '').trim()).filter(Boolean)
+        : [];
+
+    const visibleRoomIds = Array.isArray(uiRaw.visibleRoomIds)
+        ? uiRaw.visibleRoomIds.map((v) => String(v || '').trim()).filter(Boolean)
+        : [];
+
+    const deviceLabelOverrides = (() => {
+        const rawMap = (uiRaw.deviceLabelOverrides && typeof uiRaw.deviceLabelOverrides === 'object')
+            ? uiRaw.deviceLabelOverrides
+            : {};
+        const outMap = {};
+        for (const [k, v] of Object.entries(rawMap)) {
+            const id = String(k || '').trim();
+            if (!id) continue;
+            const label = String(v ?? '').trim();
+            if (!label) continue;
+            if (label.length > 64) continue;
+            outMap[id] = label;
+        }
+        return outMap;
+    })();
+
+    const deviceCommandAllowlist = (() => {
+        const rawMap = (uiRaw.deviceCommandAllowlist && typeof uiRaw.deviceCommandAllowlist === 'object')
+            ? uiRaw.deviceCommandAllowlist
+            : {};
+        const outMap = {};
+        for (const [k, v] of Object.entries(rawMap)) {
+            const id = String(k || '').trim();
+            if (!id) continue;
+            if (!Array.isArray(v)) continue;
+            const cmds = v
+                .map((c) => String(c || '').trim())
+                .filter((c) => c && ALLOWED_PANEL_DEVICE_COMMANDS.has(c));
+            // Empty array is allowed (meaning: show no commands for this device on this panel).
+            outMap[id] = Array.from(new Set(cmds)).slice(0, 32);
+        }
+        return outMap;
+    })();
+
+    const deviceHomeMetricAllowlist = (() => {
+        const rawMap = (uiRaw.deviceHomeMetricAllowlist && typeof uiRaw.deviceHomeMetricAllowlist === 'object')
+            ? uiRaw.deviceHomeMetricAllowlist
+            : {};
+        const outMap = {};
+        for (const [k, v] of Object.entries(rawMap)) {
+            const id = String(k || '').trim();
+            if (!id) continue;
+            if (!Array.isArray(v)) continue;
+            const keys = v
+                .map((c) => String(c || '').trim())
+                .filter((c) => c && ALLOWED_HOME_METRIC_KEYS.has(c));
+            // Empty array is allowed (meaning: show no Home metrics from this device).
+            outMap[id] = Array.from(new Set(keys)).slice(0, 16);
+        }
+        return outMap;
+    })();
 
     const rawAccent = String(uiRaw.accentColorId || uiRaw.colorScheme || '').trim();
     const accentColorId = normalizeAccentColorId(rawAccent);
@@ -906,6 +1331,132 @@ function normalizePersistedConfig(raw) {
     // Default matches current layout (3 columns).
     const homeRoomColumnsXl = clampInt(uiRaw.homeRoomColumnsXl, 1, 6, 3);
 
+    // Home room metric grid columns (sub-cards inside each room panel).
+    // 0 = auto (derived from room columns), 1-3 = forced columns.
+    const homeRoomMetricColumns = clampInt(uiRaw.homeRoomMetricColumns, 0, 3, 0);
+
+    // Home room metric cards to show (applies to every room).
+    // Default: show temperature/humidity/illuminance.
+    const homeRoomMetricKeys = (() => {
+        if (!Object.prototype.hasOwnProperty.call(uiRaw, 'homeRoomMetricKeys')) {
+            return ['temperature', 'humidity', 'illuminance'];
+        }
+        const raw = Array.isArray(uiRaw.homeRoomMetricKeys) ? uiRaw.homeRoomMetricKeys : [];
+        const keys = raw
+            .map((v) => String(v || '').trim())
+            .filter((v) => v && ALLOWED_HOME_ROOM_METRIC_KEYS.has(v));
+        return Array.from(new Set(keys));
+    })();
+
+    // --- Cameras (registered devices, then assigned to rooms per panel) ---
+    // Cameras are not standard Hubitat devices; this registry supports:
+    // - Snapshot previews via server-side proxy
+    // - HTTP(S) embeds (iframe)
+    // - RTSP playback via server-side HLS (requires ffmpeg)
+    const cameras = (() => {
+        const rawList = Array.isArray(uiRaw.cameras) ? uiRaw.cameras : [];
+        const outList = [];
+
+        for (const rawCam of rawList) {
+            if (!rawCam || typeof rawCam !== 'object') continue;
+            const id = String(rawCam.id || '').trim();
+            if (!id) continue;
+
+            const label = String(rawCam.label || id).trim().slice(0, 64) || id;
+            const enabled = rawCam.enabled !== false;
+
+            // Legacy: roomId (old) -> defaultRoomId (new default assignment).
+            const defaultRoomId = String(rawCam.defaultRoomId || rawCam.roomId || '').trim();
+
+            const snapRaw = (rawCam.snapshot && typeof rawCam.snapshot === 'object') ? rawCam.snapshot : {};
+            const snapshotUrl = asFile(snapRaw.url);
+
+            const authRaw = (snapRaw.basicAuth && typeof snapRaw.basicAuth === 'object') ? snapRaw.basicAuth : null;
+            const basicAuth = authRaw
+                ? {
+                    username: String(authRaw.username ?? '').trim(),
+                    password: String(authRaw.password ?? '').trim(),
+                }
+                : null;
+
+            const embedRaw = (rawCam.embed && typeof rawCam.embed === 'object') ? rawCam.embed : {};
+            const embedUrl = asFile(embedRaw.url);
+
+            const rtspRaw = (rawCam.rtsp && typeof rawCam.rtsp === 'object') ? rawCam.rtsp : {};
+            const rtspUrl = String(rtspRaw.url || '').trim();
+
+            outList.push({
+                id,
+                label,
+                enabled,
+                ...(defaultRoomId ? { defaultRoomId } : {}),
+                ...(snapshotUrl ? {
+                    snapshot: {
+                        url: snapshotUrl,
+                        ...(basicAuth && (basicAuth.username || basicAuth.password) ? { basicAuth } : {}),
+                    },
+                } : {}),
+                ...(embedUrl ? { embed: { url: embedUrl } } : {}),
+                ...(rtspUrl ? { rtsp: { url: rtspUrl } } : {}),
+            });
+        }
+
+        // Hard cap to avoid accidental huge payloads.
+        return outList.slice(0, 100);
+    })();
+
+    // Room -> camera ids assignment.
+    // If omitted, client falls back to per-camera defaultRoomId.
+    const roomCameraIds = (() => {
+        if (uiRaw.roomCameraIds && typeof uiRaw.roomCameraIds === 'object') {
+            const rawMap = uiRaw.roomCameraIds;
+            const outMap = {};
+            for (const [ridRaw, idsRaw] of Object.entries(rawMap)) {
+                const rid = String(ridRaw || '').trim();
+                if (!rid) continue;
+                const ids = Array.isArray(idsRaw)
+                    ? idsRaw.map((v) => String(v || '').trim()).filter(Boolean)
+                    : [];
+                outMap[rid] = Array.from(new Set(ids));
+            }
+            return outMap;
+        }
+
+        // Back-compat: derive a default mapping from legacy/defaultRoomId values.
+        const outMap = {};
+        for (const cam of cameras) {
+            const rid = String(cam?.defaultRoomId || '').trim();
+            if (!rid) continue;
+            const id = String(cam?.id || '').trim();
+            if (!id) continue;
+            outMap[rid] = Array.from(new Set([...(outMap[rid] || []), id]));
+        }
+        return outMap;
+    })();
+
+    const homeCameraPreviewsEnabled = uiRaw.homeCameraPreviewsEnabled === true;
+    const controlsCameraPreviewsEnabled = uiRaw.controlsCameraPreviewsEnabled === true;
+    const cameraPreviewRefreshSeconds = clampInt(uiRaw.cameraPreviewRefreshSeconds, 2, 120, 10);
+
+    // Top-of-panel camera bar configuration.
+    // Empty list means "show none".
+    const topCameraIds = Array.isArray(uiRaw.topCameraIds)
+        ? uiRaw.topCameraIds.map((v) => String(v || '').trim()).filter(Boolean)
+        : [];
+
+    // Camera bar size: xs | sm | md | lg
+    const topCameraSize = (() => {
+        const raw = String(uiRaw.topCameraSize ?? '').trim().toLowerCase();
+        if (raw === 'xs' || raw === 'sm' || raw === 'md' || raw === 'lg') return raw;
+        return 'md';
+    })();
+
+    // Camera visibility allowlist.
+    // Empty list means "show all configured cameras".
+    const visibleCameraIds = Array.isArray(uiRaw.visibleCameraIds)
+        ? uiRaw.visibleCameraIds.map((v) => String(v || '').trim()).filter(Boolean)
+        : [];
+
     // Glow/icon styling (Home page).
     // Color IDs use the same shared allowlist as tolerance/text colors.
     const glowColorIdRaw = String(uiRaw.glowColorId ?? '').trim();
@@ -995,6 +1546,68 @@ function normalizePersistedConfig(raw) {
             ? clampInt(p.homeRoomColumnsXl, 1, 6, homeRoomColumnsXl)
             : null;
 
+        const pHomeRoomMetricColumns = Object.prototype.hasOwnProperty.call(p, 'homeRoomMetricColumns')
+            ? clampInt(p.homeRoomMetricColumns, 0, 3, homeRoomMetricColumns)
+            : null;
+
+        const pHomeRoomMetricKeys = Object.prototype.hasOwnProperty.call(p, 'homeRoomMetricKeys')
+            ? (() => {
+                const raw = Array.isArray(p.homeRoomMetricKeys) ? p.homeRoomMetricKeys : [];
+                const keys = raw
+                    .map((v) => String(v || '').trim())
+                    .filter((v) => v && ALLOWED_HOME_ROOM_METRIC_KEYS.has(v));
+                return Array.from(new Set(keys));
+            })()
+            : null;
+
+        const pHomeCameraPreviewsEnabled = Object.prototype.hasOwnProperty.call(p, 'homeCameraPreviewsEnabled')
+            ? (p.homeCameraPreviewsEnabled === true)
+            : null;
+
+        const pControlsCameraPreviewsEnabled = Object.prototype.hasOwnProperty.call(p, 'controlsCameraPreviewsEnabled')
+            ? (p.controlsCameraPreviewsEnabled === true)
+            : null;
+
+        const pCameraPreviewRefreshSeconds = Object.prototype.hasOwnProperty.call(p, 'cameraPreviewRefreshSeconds')
+            ? clampInt(p.cameraPreviewRefreshSeconds, 2, 120, cameraPreviewRefreshSeconds)
+            : null;
+
+        const pRoomCameraIds = Object.prototype.hasOwnProperty.call(p, 'roomCameraIds')
+            ? (() => {
+                const rawMap = (p.roomCameraIds && typeof p.roomCameraIds === 'object') ? p.roomCameraIds : {};
+                const outMap = {};
+                for (const [ridRaw, idsRaw] of Object.entries(rawMap)) {
+                    const rid = String(ridRaw || '').trim();
+                    if (!rid) continue;
+                    const ids = Array.isArray(idsRaw)
+                        ? idsRaw.map((v) => String(v || '').trim()).filter(Boolean)
+                        : [];
+                    outMap[rid] = Array.from(new Set(ids));
+                }
+                return outMap;
+            })()
+            : null;
+
+        const pVisibleCameraIds = Object.prototype.hasOwnProperty.call(p, 'visibleCameraIds')
+            ? (Array.isArray(p.visibleCameraIds)
+                ? p.visibleCameraIds.map((v) => String(v || '').trim()).filter(Boolean)
+                : [])
+            : null;
+
+        const pTopCameraIds = Object.prototype.hasOwnProperty.call(p, 'topCameraIds')
+            ? (Array.isArray(p.topCameraIds)
+                ? p.topCameraIds.map((v) => String(v || '').trim()).filter(Boolean)
+                : [])
+            : null;
+
+        const pTopCameraSize = Object.prototype.hasOwnProperty.call(p, 'topCameraSize')
+            ? (() => {
+                const raw = String(p.topCameraSize ?? '').trim().toLowerCase();
+                if (raw === 'xs' || raw === 'sm' || raw === 'md' || raw === 'lg') return raw;
+                return null;
+            })()
+            : null;
+
         const pGlowColorIdRaw = Object.prototype.hasOwnProperty.call(p, 'glowColorId')
             ? String(p.glowColorId ?? '').trim()
             : null;
@@ -1015,6 +1628,87 @@ function normalizePersistedConfig(raw) {
         const pIconSizePct = Object.prototype.hasOwnProperty.call(p, 'iconSizePct')
             ? clampInt(p.iconSizePct, ICON_SIZE_PCT_RANGE.min, ICON_SIZE_PCT_RANGE.max, iconSizePct)
             : null;
+
+        const pVisibleRoomIds = Object.prototype.hasOwnProperty.call(p, 'visibleRoomIds')
+            ? (Array.isArray(p.visibleRoomIds)
+                ? p.visibleRoomIds.map((v) => String(v || '').trim()).filter(Boolean)
+                : [])
+            : null;
+
+        const pHomeVisibleDeviceIds = Object.prototype.hasOwnProperty.call(p, 'homeVisibleDeviceIds')
+            ? (Array.isArray(p.homeVisibleDeviceIds)
+                ? p.homeVisibleDeviceIds.map((v) => String(v || '').trim()).filter(Boolean)
+                : [])
+            : null;
+
+        const pCtrlAllowedDeviceIds = (() => {
+            if (!Object.prototype.hasOwnProperty.call(p, 'ctrlAllowedDeviceIds') && !Object.prototype.hasOwnProperty.call(p, 'allowedDeviceIds')) {
+                return null;
+            }
+            const raw = Array.isArray(p.ctrlAllowedDeviceIds)
+                ? p.ctrlAllowedDeviceIds
+                : (Array.isArray(p.allowedDeviceIds) ? p.allowedDeviceIds : []);
+            return raw.map((v) => String(v || '').trim()).filter(Boolean);
+        })();
+
+        const pMainAllowedDeviceIds = Object.prototype.hasOwnProperty.call(p, 'mainAllowedDeviceIds')
+            ? (Array.isArray(p.mainAllowedDeviceIds)
+                ? p.mainAllowedDeviceIds.map((v) => String(v || '').trim()).filter(Boolean)
+                : [])
+            : null;
+
+        const pDeviceLabelOverrides = (() => {
+            if (!Object.prototype.hasOwnProperty.call(p, 'deviceLabelOverrides')) return null;
+            const rawMap = (p.deviceLabelOverrides && typeof p.deviceLabelOverrides === 'object')
+                ? p.deviceLabelOverrides
+                : {};
+            const outMap = {};
+            for (const [k, v] of Object.entries(rawMap)) {
+                const id = String(k || '').trim();
+                if (!id) continue;
+                const label = String(v ?? '').trim();
+                if (!label) continue;
+                if (label.length > 64) continue;
+                outMap[id] = label;
+            }
+            return outMap;
+        })();
+
+        const pDeviceCommandAllowlist = (() => {
+            if (!Object.prototype.hasOwnProperty.call(p, 'deviceCommandAllowlist')) return null;
+            const rawMap = (p.deviceCommandAllowlist && typeof p.deviceCommandAllowlist === 'object')
+                ? p.deviceCommandAllowlist
+                : {};
+            const outMap = {};
+            for (const [k, v] of Object.entries(rawMap)) {
+                const id = String(k || '').trim();
+                if (!id) continue;
+                if (!Array.isArray(v)) continue;
+                const cmds = v
+                    .map((c) => String(c || '').trim())
+                    .filter((c) => c && ALLOWED_PANEL_DEVICE_COMMANDS.has(c));
+                outMap[id] = Array.from(new Set(cmds)).slice(0, 32);
+            }
+            return outMap;
+        })();
+
+        const pDeviceHomeMetricAllowlist = (() => {
+            if (!Object.prototype.hasOwnProperty.call(p, 'deviceHomeMetricAllowlist')) return null;
+            const rawMap = (p.deviceHomeMetricAllowlist && typeof p.deviceHomeMetricAllowlist === 'object')
+                ? p.deviceHomeMetricAllowlist
+                : {};
+            const outMap = {};
+            for (const [k, v] of Object.entries(rawMap)) {
+                const id = String(k || '').trim();
+                if (!id) continue;
+                if (!Array.isArray(v)) continue;
+                const keys = v
+                    .map((c) => String(c || '').trim())
+                    .filter((c) => c && ALLOWED_HOME_METRIC_KEYS.has(c));
+                outMap[id] = Array.from(new Set(keys)).slice(0, 16);
+            }
+            return outMap;
+        })();
 
         const pHomeBgRaw = (p.homeBackground && typeof p.homeBackground === 'object') ? p.homeBackground : null;
         const pHomeBackground = pHomeBgRaw
@@ -1041,10 +1735,26 @@ function normalizePersistedConfig(raw) {
             ...(pPrimaryTextColorId !== null ? { primaryTextColorId: pPrimaryTextColorId } : {}),
             ...(pCardScalePct !== null ? { cardScalePct: pCardScalePct } : {}),
             ...(pHomeRoomColumnsXl !== null ? { homeRoomColumnsXl: pHomeRoomColumnsXl } : {}),
+            ...(pHomeRoomMetricColumns !== null ? { homeRoomMetricColumns: pHomeRoomMetricColumns } : {}),
+            ...(pHomeRoomMetricKeys !== null ? { homeRoomMetricKeys: pHomeRoomMetricKeys } : {}),
+            ...(pHomeCameraPreviewsEnabled !== null ? { homeCameraPreviewsEnabled: pHomeCameraPreviewsEnabled } : {}),
+            ...(pControlsCameraPreviewsEnabled !== null ? { controlsCameraPreviewsEnabled: pControlsCameraPreviewsEnabled } : {}),
+            ...(pCameraPreviewRefreshSeconds !== null ? { cameraPreviewRefreshSeconds: pCameraPreviewRefreshSeconds } : {}),
+            ...(pVisibleCameraIds !== null ? { visibleCameraIds: pVisibleCameraIds } : {}),
+            ...(pTopCameraIds !== null ? { topCameraIds: pTopCameraIds } : {}),
+            ...(pTopCameraSize !== null ? { topCameraSize: pTopCameraSize } : {}),
+            ...(pRoomCameraIds !== null ? { roomCameraIds: pRoomCameraIds } : {}),
             ...(pGlowColorId !== null ? { glowColorId: pGlowColorId } : {}),
             ...(pIconColorId !== null ? { iconColorId: pIconColorId } : {}),
             ...(pIconOpacityPct !== null ? { iconOpacityPct: pIconOpacityPct } : {}),
             ...(pIconSizePct !== null ? { iconSizePct: pIconSizePct } : {}),
+            ...(pVisibleRoomIds !== null ? { visibleRoomIds: pVisibleRoomIds } : {}),
+            ...(pHomeVisibleDeviceIds !== null ? { homeVisibleDeviceIds: pHomeVisibleDeviceIds } : {}),
+            ...(pCtrlAllowedDeviceIds !== null ? { ctrlAllowedDeviceIds: pCtrlAllowedDeviceIds } : {}),
+            ...(pMainAllowedDeviceIds !== null ? { mainAllowedDeviceIds: pMainAllowedDeviceIds } : {}),
+            ...(pDeviceLabelOverrides !== null ? { deviceLabelOverrides: pDeviceLabelOverrides } : {}),
+            ...(pDeviceCommandAllowlist !== null ? { deviceCommandAllowlist: pDeviceCommandAllowlist } : {}),
+            ...(pDeviceHomeMetricAllowlist !== null ? { deviceHomeMetricAllowlist: pDeviceHomeMetricAllowlist } : {}),
             ...(PRESET_PANEL_PROFILE_NAMES.has(name) ? { _preset: true } : {}),
         };
 
@@ -1074,6 +1784,11 @@ function normalizePersistedConfig(raw) {
         allowedDeviceIds: legacyAllowed.map((v) => String(v || '').trim()).filter(Boolean),
         ctrlAllowedDeviceIds: ctrlAllowed.map((v) => String(v || '').trim()).filter(Boolean),
         mainAllowedDeviceIds: mainAllowed.map((v) => String(v || '').trim()).filter(Boolean),
+        visibleRoomIds,
+        homeVisibleDeviceIds,
+        deviceLabelOverrides,
+        deviceCommandAllowlist,
+        deviceHomeMetricAllowlist,
         accentColorId,
         colorizeHomeValues,
         colorizeHomeValuesOpacityPct,
@@ -1107,6 +1822,19 @@ function normalizePersistedConfig(raw) {
         cardScalePct,
         // Home room columns at XL breakpoint.
         homeRoomColumnsXl,
+        // Home room metric sub-card columns (0=auto).
+        homeRoomMetricColumns,
+        // Home room metric cards to show.
+        homeRoomMetricKeys,
+        // Cameras (public fields are sanitized in /api/config; full snapshot URLs stay server-side).
+        cameras,
+        roomCameraIds,
+        homeCameraPreviewsEnabled,
+        controlsCameraPreviewsEnabled,
+        cameraPreviewRefreshSeconds,
+        visibleCameraIds,
+        topCameraIds,
+        topCameraSize,
         // Accent glow + icon styling.
         glowColorId,
         iconColorId,
@@ -1131,6 +1859,15 @@ function ensurePanelProfileExists(panelName) {
         ...profiles,
         [name]: {
             // Seed new profiles from current global defaults.
+            visibleRoomIds: Array.isArray(ui.visibleRoomIds) ? ui.visibleRoomIds : [],
+            homeVisibleDeviceIds: Array.isArray(ui.homeVisibleDeviceIds) ? ui.homeVisibleDeviceIds : [],
+            ctrlAllowedDeviceIds: Array.isArray(ui.ctrlAllowedDeviceIds)
+                ? ui.ctrlAllowedDeviceIds
+                : (Array.isArray(ui.allowedDeviceIds) ? ui.allowedDeviceIds : []),
+            mainAllowedDeviceIds: Array.isArray(ui.mainAllowedDeviceIds) ? ui.mainAllowedDeviceIds : [],
+            deviceLabelOverrides: (ui.deviceLabelOverrides && typeof ui.deviceLabelOverrides === 'object') ? ui.deviceLabelOverrides : {},
+            deviceCommandAllowlist: (ui.deviceCommandAllowlist && typeof ui.deviceCommandAllowlist === 'object') ? ui.deviceCommandAllowlist : {},
+            deviceHomeMetricAllowlist: (ui.deviceHomeMetricAllowlist && typeof ui.deviceHomeMetricAllowlist === 'object') ? ui.deviceHomeMetricAllowlist : {},
             accentColorId: ui.accentColorId,
             homeBackground: ui.homeBackground,
             cardOpacityScalePct: ui.cardOpacityScalePct,
@@ -1143,6 +1880,13 @@ function ensurePanelProfileExists(panelName) {
             primaryTextColorId: ui.primaryTextColorId,
             cardScalePct: ui.cardScalePct,
             homeRoomColumnsXl: ui.homeRoomColumnsXl,
+            homeCameraPreviewsEnabled: ui.homeCameraPreviewsEnabled,
+            controlsCameraPreviewsEnabled: ui.controlsCameraPreviewsEnabled,
+            cameraPreviewRefreshSeconds: ui.cameraPreviewRefreshSeconds,
+            visibleCameraIds: Array.isArray(ui.visibleCameraIds) ? ui.visibleCameraIds : [],
+            topCameraIds: Array.isArray(ui.topCameraIds) ? ui.topCameraIds : [],
+            topCameraSize: String(ui.topCameraSize ?? 'md').trim() || 'md',
+            roomCameraIds: (ui.roomCameraIds && typeof ui.roomCameraIds === 'object') ? ui.roomCameraIds : {},
             glowColorId: ui.glowColorId,
             iconColorId: ui.iconColorId,
             iconOpacityPct: ui.iconOpacityPct,
@@ -1196,13 +1940,15 @@ function loadPersistedConfig() {
             const hadPrimaryTextColorId = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'primaryTextColorId'));
             const hadCardScalePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'cardScalePct'));
             const hadHomeRoomColumnsXl = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeRoomColumnsXl'));
+            const hadHomeRoomMetricColumns = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeRoomMetricColumns'));
+            const hadHomeRoomMetricKeys = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeRoomMetricKeys'));
             const hadGlowColorId = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'glowColorId'));
             const hadIconColorId = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'iconColorId'));
             const hadIconOpacityPct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'iconOpacityPct'));
             const hadIconSizePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'iconSizePct'));
             persistedConfig = normalizePersistedConfig(raw);
             // If we added new fields for back-compat, write them back once.
-            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadColorizeHomeValuesOpacityPct || !hadClimateToleranceColors || !hadSensorIndicatorColors || !hadHomeBackground || !hadCardOpacityScalePct || !hadBlurScalePct || !hadSecondaryTextOpacityPct || !hadSecondaryTextSizePct || !hadSecondaryTextColorId || !hadPrimaryTextOpacityPct || !hadPrimaryTextSizePct || !hadPrimaryTextColorId || !hadCardScalePct || !hadHomeRoomColumnsXl || !hadGlowColorId || !hadIconColorId || !hadIconOpacityPct || !hadIconSizePct) {
+            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadColorizeHomeValuesOpacityPct || !hadClimateToleranceColors || !hadSensorIndicatorColors || !hadHomeBackground || !hadCardOpacityScalePct || !hadBlurScalePct || !hadSecondaryTextOpacityPct || !hadSecondaryTextSizePct || !hadSecondaryTextColorId || !hadPrimaryTextOpacityPct || !hadPrimaryTextSizePct || !hadPrimaryTextColorId || !hadCardScalePct || !hadHomeRoomColumnsXl || !hadHomeRoomMetricColumns || !hadHomeRoomMetricKeys || !hadGlowColorId || !hadIconColorId || !hadIconOpacityPct || !hadIconSizePct) {
                 lastPersistedSerialized = stableStringify(raw);
                 let label = 'migrate-ui-sensor-indicator-colors';
                 if (!hadAlertSounds) label = 'migrate-ui-alert-sounds';
@@ -1221,6 +1967,8 @@ function loadPersistedConfig() {
                 else if (!hadPrimaryTextColorId) label = 'migrate-ui-primary-text-color';
                 else if (!hadCardScalePct) label = 'migrate-ui-card-scale';
                 else if (!hadHomeRoomColumnsXl) label = 'migrate-ui-home-room-columns';
+                else if (!hadHomeRoomMetricColumns) label = 'migrate-ui-home-room-metric-columns';
+                else if (!hadHomeRoomMetricKeys) label = 'migrate-ui-home-room-metric-keys';
                 else if (!hadGlowColorId) label = 'migrate-ui-glow-color';
                 else if (!hadIconColorId) label = 'migrate-ui-icon-color';
                 else if (!hadIconOpacityPct) label = 'migrate-ui-icon-opacity';
@@ -2028,20 +2776,44 @@ function applyPostedEventToStatuses(payload) {
 
 // --- API ---
 
-// If we have a built UI, serve it at '/'. Otherwise provide a simple health message.
-app.get('/', (req, res) => {
-    if (HAS_BUILT_CLIENT) return res.sendFile(CLIENT_INDEX_HTML);
-    return res.send('Home Automation Server - Layout Enabled');
-});
-app.get('/api/config', (req, res) => {
-    // Persist the latest discovered mapping/layout into config.json.
-    // This makes config.json the stable source of truth.
-    persistConfigToDiskIfChanged('api-config');
+function getPublicCamerasList() {
+    const ui = (config?.ui && typeof config.ui === 'object') ? config.ui : {};
+    const cams = Array.isArray(ui.cameras) ? ui.cameras : [];
+    return cams
+        .map((c) => {
+            const id = String(c?.id || '').trim();
+            if (!id) return null;
+            const label = String(c?.label || id).trim() || id;
+            const enabled = c?.enabled !== false;
+            const hasSnapshot = Boolean(c?.snapshot && typeof c.snapshot === 'object' && typeof c.snapshot.url === 'string' && c.snapshot.url.trim());
+            const defaultRoomId = String(c?.defaultRoomId || c?.roomId || '').trim();
+            const embedUrl = (c?.embed && typeof c.embed === 'object' && typeof c.embed.url === 'string') ? String(c.embed.url).trim() : '';
+            const rtspUrl = (c?.rtsp && typeof c.rtsp === 'object' && typeof c.rtsp.url === 'string') ? String(c.rtsp.url).trim() : '';
+            const hasEmbed = Boolean(embedUrl);
+            const hasRtsp = Boolean(rtspUrl);
+            return {
+                id,
+                label,
+                enabled,
+                ...(defaultRoomId ? { defaultRoomId } : {}),
+                hasSnapshot,
+                hasEmbed,
+                ...(hasEmbed ? { embedUrl } : {}),
+                hasRtsp,
+            };
+        })
+        .filter(Boolean);
+}
+
+function getClientSafeConfig() {
     const allowlists = getUiAllowlistsInfo();
-    res.json({
+    const publicCameras = getPublicCamerasList();
+    return {
         ...config,
         ui: {
             ...(config?.ui || {}),
+            // Do not leak snapshot URLs or credentials to the browser.
+            cameras: publicCameras,
             ctrlAllowedDeviceIds: allowlists.ctrl.ids,
             mainAllowedDeviceIds: allowlists.main.ids,
             // Back-compat for older clients
@@ -2052,7 +2824,277 @@ app.get('/api/config', (req, res) => {
             mainAllowlistSource: allowlists.main.source,
             mainAllowlistLocked: allowlists.main.locked,
         },
-    });
+    };
+}
+
+// Ensure any socket "config_update" payloads are sanitized.
+// This avoids leaking camera snapshot URLs/auth via websockets.
+try {
+    const rawEmit = io.emit.bind(io);
+    // eslint-disable-next-line no-param-reassign
+    io.emit = (event, ...args) => {
+        if (event === 'config_update') {
+            return rawEmit('config_update', getClientSafeConfig());
+        }
+        return rawEmit(event, ...args);
+    };
+} catch {
+    // ignore
+}
+
+function getCameraById(cameraId) {
+    const id = String(cameraId || '').trim();
+    if (!id) return null;
+    const ui = (config?.ui && typeof config.ui === 'object') ? config.ui : {};
+    const cams = Array.isArray(ui.cameras) ? ui.cameras : [];
+    return cams.find((c) => String(c?.id || '').trim() === id) || null;
+}
+
+// If we have a built UI, serve it at '/'. Otherwise provide a simple health message.
+app.get('/', (req, res) => {
+    if (HAS_BUILT_CLIENT) return res.sendFile(CLIENT_INDEX_HTML);
+    return res.send('Home Automation Server - Layout Enabled');
+});
+
+app.get('/api/cameras', (req, res) => {
+    res.json({ ok: true, cameras: getPublicCamerasList() });
+});
+
+// --- HLS (RTSP -> HTTPS-friendly playback) ---
+app.get('/api/cameras/:id/hls/ensure', async (req, res) => {
+    try {
+        const cameraId = String(req.params.id || '').trim();
+        const camera = getCameraById(cameraId);
+        if (!camera) {
+            return res.status(404).json({ ok: false, error: 'camera_not_found' });
+        }
+        const rtspUrl = camera?.rtsp?.url;
+        if (!rtspUrl) {
+            return res.status(400).json({ ok: false, error: 'camera_has_no_rtsp_url' });
+        }
+
+        // Reuse existing ffmpeg preflight (respects FFMPEG_PATH).
+        const ffmpegPath = String(process.env.FFMPEG_PATH || '').trim() || null;
+        const ffmpegCheck = checkFfmpegAvailable(ffmpegPath);
+        if (!ffmpegCheck.ok) {
+            return res.status(500).json({ ok: false, error: 'ffmpeg_not_available', detail: ffmpegCheck.error || null });
+        }
+
+        const state = startHlsStream(cameraId, rtspUrl, ffmpegPath);
+        if (!state) {
+            return res.status(500).json({ ok: false, error: 'failed_to_start_hls' });
+        }
+
+        if (!state.ffmpeg) {
+            return res.status(502).json({
+                ok: false,
+                error: 'hls_output_not_writable',
+                detail: state.lastError || null,
+            });
+        }
+
+        const hasAnySegment = () => {
+            try {
+                const entries = fs.readdirSync(state.dir, { withFileTypes: true });
+                return entries.some((e) => e.isFile() && /^seg_\d+\.ts$/i.test(e.name));
+            } catch {
+                return false;
+            }
+        };
+
+        // Wait until playlist appears (or timeout).
+        const deadline = Date.now() + RTSP_HLS_STARTUP_TIMEOUT_MS;
+        while (Date.now() < deadline) {
+            if (fs.existsSync(state.playlistPath)) break;
+            if (hasAnySegment()) break;
+            if (state.ffmpeg && state.ffmpeg.exitCode !== null) break;
+            await new Promise((r) => setTimeout(r, 150));
+        }
+
+        const debugPayload = RTSP_HLS_DEBUG
+            ? {
+                ffmpeg: {
+                    bin: String(ffmpegPath || 'ffmpeg'),
+                    // Redact credentials in args (rtsp url).
+                    args: (Array.isArray(state.ffmpegArgs)
+                        ? state.ffmpegArgs.map((a) => (a === rtspUrl ? redactRtspUrl(rtspUrl) : a))
+                        : null),
+                },
+            }
+            : {};
+
+        const stderrTail = Array.isArray(state.stderrTail) ? state.stderrTail.slice(-30) : null;
+        const stderrText = Array.isArray(state.stderrTail) ? state.stderrTail.join('\n') : '';
+
+        const hint = (() => {
+            // Heuristic hints for common RTSP startup failures.
+            if (/Output file does not contain any stream/i.test(stderrText)) {
+                return 'ffmpeg did not detect a usable video stream. If this is a D-Link MJPEG RTSP URL (e.g. play3.sdp), try switching the camera to an H.264 RTSP profile/URL or use RTSP over TCP.';
+            }
+            if (/Quantization tables not found/i.test(stderrText) || /Invalid RTP\/JPEG packet/i.test(stderrText)) {
+                return 'The RTSP stream appears to be MJPEG over RTP with invalid/missing JPEG quantization tables (often caused by packet loss on UDP or a camera profile issue). Try RTSP over TCP and/or switch to an H.264 RTSP URL/profile.';
+            }
+            if (/Could not find codec parameters/i.test(stderrText) || /unspecified size/i.test(stderrText)) {
+                return 'ffmpeg could not determine the video dimensions during probe. Try increasing RTSP_HLS_PROBESIZE/RTSP_HLS_ANALYZEDURATION and prefer RTSP over TCP.';
+            }
+            return null;
+        })();
+
+        if (state.ffmpeg && state.ffmpeg.exitCode !== null && !fs.existsSync(state.playlistPath)) {
+            return res.status(502).json({
+                ok: false,
+                error: 'hls_ffmpeg_exited',
+                exitCode: state.ffmpeg.exitCode,
+                lastError: state.lastError || null,
+                stderrTail,
+                ...(hint ? { hint } : {}),
+                ...debugPayload,
+            });
+        }
+
+        if (!fs.existsSync(state.playlistPath)) {
+            return res.status(502).json({
+                ok: false,
+                error: 'hls_start_timeout',
+                timeoutMs: RTSP_HLS_STARTUP_TIMEOUT_MS,
+                lastError: state.lastError || null,
+                stderrTail,
+                ...(hint ? { hint } : {}),
+                ...debugPayload,
+            });
+        }
+
+        return res.json({
+            ok: true,
+            playlistUrl: buildHttpUrl(req, `/api/cameras/${encodeURIComponent(cameraId)}/hls/playlist.m3u8`),
+        });
+    } catch (err) {
+        console.error('HLS ensure error', err);
+        return res.status(500).json({ ok: false, error: 'internal_error' });
+    }
+});
+
+app.get('/api/cameras/:id/hls/playlist.m3u8', async (req, res) => {
+    try {
+        const cameraId = String(req.params.id || '').trim();
+        const state = hlsStreams.get(cameraId);
+        if (!state) {
+            return res.status(404).send('not_started');
+        }
+        if (!fs.existsSync(state.playlistPath)) {
+            return res.status(404).send('playlist_missing');
+        }
+
+        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+        res.setHeader('Cache-Control', 'no-store');
+        return res.send(fs.readFileSync(state.playlistPath, 'utf8'));
+    } catch (err) {
+        console.error('HLS playlist error', err);
+        return res.status(500).send('internal_error');
+    }
+});
+
+app.get('/api/cameras/:id/hls/:segment', async (req, res) => {
+    try {
+        const cameraId = String(req.params.id || '').trim();
+        const segment = String(req.params.segment || '').trim();
+        if (!/^seg_\d+\.ts$/i.test(segment)) {
+            return res.status(400).send('invalid_segment');
+        }
+        const state = hlsStreams.get(cameraId);
+        if (!state) {
+            return res.status(404).send('not_started');
+        }
+        const segmentPath = path.join(state.dir, segment);
+        if (!fs.existsSync(segmentPath)) {
+            return res.status(404).send('missing');
+        }
+        res.setHeader('Content-Type', 'video/mp2t');
+        res.setHeader('Cache-Control', 'no-store');
+        return res.sendFile(segmentPath);
+    } catch (err) {
+        console.error('HLS segment error', err);
+        return res.status(500).send('internal_error');
+    }
+});
+
+app.get('/api/cameras/:id/snapshot', async (req, res) => {
+    try {
+        const cam = getCameraById(req.params.id);
+        if (!cam || cam.enabled === false) {
+            res.status(404).json({ ok: false, error: 'Camera not found' });
+            return;
+        }
+
+        const snap = (cam.snapshot && typeof cam.snapshot === 'object') ? cam.snapshot : {};
+        const url = String(snap.url || '').trim();
+        if (!url) {
+            res.status(404).json({ ok: false, error: 'No snapshot configured' });
+            return;
+        }
+
+        let parsed;
+        try {
+            parsed = new URL(url);
+        } catch {
+            res.status(400).json({ ok: false, error: 'Invalid snapshot URL' });
+            return;
+        }
+
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+            res.status(400).json({ ok: false, error: 'Snapshot URL must be http(s)' });
+            return;
+        }
+
+        const headers = {};
+        const auth = (snap.basicAuth && typeof snap.basicAuth === 'object') ? snap.basicAuth : null;
+        const user = auth ? String(auth.username ?? '').trim() : '';
+        const pass = auth ? String(auth.password ?? '').trim() : '';
+        if (user || pass) {
+            headers.Authorization = `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`;
+        }
+
+        const ctrl = new AbortController();
+        const timeoutMs = 8000;
+        const t = setTimeout(() => ctrl.abort(), timeoutMs);
+        let upstream;
+        try {
+            upstream = await fetch(url, {
+                method: 'GET',
+                headers,
+                signal: ctrl.signal,
+            });
+        } finally {
+            clearTimeout(t);
+        }
+
+        if (!upstream.ok) {
+            const text = await upstream.text().catch(() => '');
+            res.status(502).json({ ok: false, error: text || `Snapshot fetch failed (${upstream.status})` });
+            return;
+        }
+
+        const ct = upstream.headers.get('content-type') || 'image/jpeg';
+        const buf = Buffer.from(await upstream.arrayBuffer());
+        if (buf.length > 8 * 1024 * 1024) {
+            res.status(413).json({ ok: false, error: 'Snapshot too large' });
+            return;
+        }
+
+        res.setHeader('Content-Type', ct);
+        res.setHeader('Cache-Control', 'no-store');
+        res.status(200).send(buf);
+    } catch (err) {
+        const msg = err?.name === 'AbortError' ? 'Snapshot timed out' : (err?.message || String(err));
+        res.status(500).json({ ok: false, error: msg });
+    }
+});
+
+app.get('/api/config', (req, res) => {
+    // Persist the latest discovered mapping/layout into config.json.
+    // This makes config.json the stable source of truth.
+    persistConfigToDiskIfChanged('api-config');
+    res.json(getClientSafeConfig());
 });
 app.get('/api/status', (req, res) => res.json(sensorStatuses));
 
@@ -2110,6 +3152,56 @@ function emitConfigUpdateSafe() {
     } catch {
         // ignore
     }
+}
+
+function redactUrlPassword(rawUrl) {
+    const url = String(rawUrl || '').trim();
+    if (!url) return '';
+    try {
+        const u = new URL(url);
+        if (!u.password) return url;
+        u.password = '***';
+        return u.toString();
+    } catch {
+        // Not parseable by WHATWG URL (rtsp:// is usually parseable in Node, but be safe).
+        return url.replace(/:(?!\/\/)([^@/]+)@/, ':***@');
+    }
+}
+
+function redactCameraForUi(cam) {
+    if (!cam || typeof cam !== 'object') return null;
+    const id = String(cam.id || '').trim();
+    if (!id) return null;
+    const label = String(cam.label || id).trim() || id;
+    const enabled = cam.enabled !== false;
+    const defaultRoomId = String(cam.defaultRoomId || cam.roomId || '').trim();
+
+    const snap = (cam.snapshot && typeof cam.snapshot === 'object') ? cam.snapshot : null;
+    const snapUrl = snap ? String(snap.url || '').trim() : '';
+    const auth = snap && snap.basicAuth && typeof snap.basicAuth === 'object' ? snap.basicAuth : null;
+    const user = auth ? String(auth.username ?? '').trim() : '';
+    const hasPassword = Boolean(auth && String(auth.password ?? '').trim());
+
+    const embed = (cam.embed && typeof cam.embed === 'object') ? cam.embed : null;
+    const embedUrl = embed ? String(embed.url || '').trim() : '';
+
+    const rtsp = (cam.rtsp && typeof cam.rtsp === 'object') ? cam.rtsp : null;
+    const rtspUrl = rtsp ? redactUrlPassword(rtsp.url) : '';
+
+    return {
+        id,
+        label,
+        enabled,
+        ...(defaultRoomId ? { defaultRoomId } : {}),
+        ...(snapUrl ? {
+            snapshot: {
+                url: snapUrl,
+                ...(user || hasPassword ? { basicAuth: { username: user, hasPassword } } : {}),
+            },
+        } : {}),
+                ...(embedUrl ? { embed: { url: embedUrl } } : {}),
+                ...(rtspUrl ? { rtsp: { url: rtspUrl } } : {}),
+    };
 }
 
 // Create/delete manual rooms (rooms not discovered via Maker API)
@@ -2321,11 +3413,221 @@ app.delete('/api/labels/:id', (req, res) => {
     return res.json({ ok: true });
 });
 
+// --- Camera registry (Settings -> Cameras) ---
+// Note: snapshot/basicAuth passwords are never returned to the UI.
+app.get('/api/ui/cameras', (req, res) => {
+    const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+    const cams = Array.isArray(ui.cameras) ? ui.cameras : [];
+    return res.json({ ok: true, cameras: cams.map(redactCameraForUi).filter(Boolean) });
+});
+
+app.post('/api/ui/cameras', (req, res) => {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const rawCam = (body.camera && typeof body.camera === 'object') ? body.camera : {};
+    const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+    const existing = Array.isArray(ui.cameras) ? ui.cameras : [];
+
+    const requestedId = String(rawCam.id || '').trim();
+    const label = String(rawCam.label || requestedId || '').trim();
+    if (!label && !requestedId) {
+        return res.status(400).json({ ok: false, error: 'Camera requires id or label' });
+    }
+
+    const baseId = slugifyId(requestedId || label);
+    if (!baseId) {
+        return res.status(400).json({ ok: false, error: 'Invalid camera id/label' });
+    }
+
+    const used = new Set(existing.map((c) => String(c?.id || '').trim()).filter(Boolean));
+    let id = baseId;
+    let n = 2;
+    while (used.has(id)) {
+        id = `${baseId}_${n}`;
+        n += 1;
+    }
+
+    const cam = {
+        id,
+        label: label || id,
+        enabled: rawCam.enabled !== false,
+        defaultRoomId: String(rawCam.defaultRoomId || '').trim(),
+        snapshot: rawCam.snapshot,
+        embed: rawCam.embed,
+        rtsp: rawCam.rtsp,
+    };
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...ui,
+            cameras: [...existing, cam],
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-cameras-create');
+    rebuildRuntimeConfigFromPersisted();
+    io.emit('config_update', config);
+
+    const created = (Array.isArray(persistedConfig?.ui?.cameras) ? persistedConfig.ui.cameras : [])
+        .find((c) => String(c?.id || '').trim() === id);
+    return res.json({ ok: true, camera: redactCameraForUi(created) });
+});
+
+app.put('/api/ui/cameras/:id', (req, res) => {
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ ok: false, error: 'Missing id' });
+
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const rawCam = (body.camera && typeof body.camera === 'object') ? body.camera : {};
+
+    const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+    const existing = Array.isArray(ui.cameras) ? ui.cameras : [];
+    const idx = existing.findIndex((c) => String(c?.id || '').trim() === id);
+    if (idx === -1) return res.status(404).json({ ok: false, error: 'Camera not found' });
+
+    const prev = existing[idx] && typeof existing[idx] === 'object' ? existing[idx] : {};
+    const next = { ...prev };
+
+    if (Object.prototype.hasOwnProperty.call(rawCam, 'label')) {
+        next.label = String(rawCam.label || id).trim().slice(0, 64) || id;
+    }
+    if (Object.prototype.hasOwnProperty.call(rawCam, 'enabled')) {
+        next.enabled = rawCam.enabled !== false;
+    }
+    if (Object.prototype.hasOwnProperty.call(rawCam, 'defaultRoomId')) {
+        next.defaultRoomId = String(rawCam.defaultRoomId || '').trim();
+    }
+
+    // Snapshot settings (preserve password unless explicitly provided).
+    if (Object.prototype.hasOwnProperty.call(rawCam, 'snapshot')) {
+        const snapRaw = (rawCam.snapshot && typeof rawCam.snapshot === 'object') ? rawCam.snapshot : {};
+        const prevSnap = (prev.snapshot && typeof prev.snapshot === 'object') ? prev.snapshot : {};
+        const prevAuth = (prevSnap.basicAuth && typeof prevSnap.basicAuth === 'object') ? prevSnap.basicAuth : {};
+
+        const authRaw = (snapRaw.basicAuth && typeof snapRaw.basicAuth === 'object') ? snapRaw.basicAuth : {};
+        const hasPasswordField = Object.prototype.hasOwnProperty.call(authRaw, 'password');
+
+        const nextAuth = {
+            username: String(authRaw.username ?? prevAuth.username ?? '').trim(),
+            password: hasPasswordField ? String(authRaw.password ?? '').trim() : String(prevAuth.password ?? '').trim(),
+        };
+
+        const url = String(snapRaw.url ?? prevSnap.url ?? '').trim();
+        if (url) {
+            next.snapshot = {
+                url,
+                ...(nextAuth.username || nextAuth.password ? { basicAuth: nextAuth } : {}),
+            };
+        } else {
+            delete next.snapshot;
+        }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(rawCam, 'embed')) {
+        const embedRaw = (rawCam.embed && typeof rawCam.embed === 'object') ? rawCam.embed : {};
+        const url = String(embedRaw.url || '').trim();
+        if (url) next.embed = { url };
+        else delete next.embed;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(rawCam, 'rtsp')) {
+        const rtspRaw = (rawCam.rtsp && typeof rawCam.rtsp === 'object') ? rawCam.rtsp : {};
+        const url = String(rtspRaw.url || '').trim();
+        if (url) {
+            next.rtsp = { url };
+        } else {
+            delete next.rtsp;
+        }
+    }
+
+    const nextList = [...existing];
+    nextList[idx] = next;
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...ui,
+            cameras: nextList,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-cameras-update');
+    rebuildRuntimeConfigFromPersisted();
+    io.emit('config_update', config);
+
+    const updated = (Array.isArray(persistedConfig?.ui?.cameras) ? persistedConfig.ui.cameras : [])
+        .find((c) => String(c?.id || '').trim() === id);
+    return res.json({ ok: true, camera: redactCameraForUi(updated) });
+});
+
+app.delete('/api/ui/cameras/:id', (req, res) => {
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ ok: false, error: 'Missing id' });
+
+    const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+    const existing = Array.isArray(ui.cameras) ? ui.cameras : [];
+    const nextCameras = existing.filter((c) => String(c?.id || '').trim() !== id);
+    if (nextCameras.length === existing.length) {
+        return res.status(404).json({ ok: false, error: 'Camera not found' });
+    }
+
+    // Best-effort stop HLS stream if running.
+    stopHlsStream(id);
+
+    const cleanRoomMap = (rawMap) => {
+        const map = (rawMap && typeof rawMap === 'object') ? rawMap : {};
+        const out = {};
+        for (const [rid, arr] of Object.entries(map)) {
+            const nextArr = (Array.isArray(arr) ? arr : [])
+                .map((v) => String(v || '').trim())
+                .filter((v) => v && v !== id);
+            if (nextArr.length) out[rid] = Array.from(new Set(nextArr));
+        }
+        return out;
+    };
+
+    const cleanVisibleIds = (arr) => (Array.isArray(arr) ? arr : [])
+        .map((v) => String(v || '').trim())
+        .filter((v) => v && v !== id);
+
+    const profiles = (ui.panelProfiles && typeof ui.panelProfiles === 'object') ? ui.panelProfiles : {};
+    const nextProfiles = {};
+    for (const [name, p] of Object.entries(profiles)) {
+        if (!p || typeof p !== 'object') continue;
+        nextProfiles[name] = {
+            ...p,
+            ...(Object.prototype.hasOwnProperty.call(p, 'roomCameraIds') ? { roomCameraIds: cleanRoomMap(p.roomCameraIds) } : {}),
+            ...(Object.prototype.hasOwnProperty.call(p, 'visibleCameraIds') ? { visibleCameraIds: cleanVisibleIds(p.visibleCameraIds) } : {}),
+        };
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...ui,
+            cameras: nextCameras,
+            roomCameraIds: cleanRoomMap(ui.roomCameraIds),
+            visibleCameraIds: cleanVisibleIds(ui.visibleCameraIds),
+            panelProfiles: nextProfiles,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-cameras-delete');
+    rebuildRuntimeConfigFromPersisted();
+    io.emit('config_update', config);
+    return res.json({ ok: true });
+});
+
 // Update UI device allowlists from the kiosk.
 // Back-compat: accepts an array or { allowedDeviceIds: [] } to update the CTRL list.
 app.put('/api/ui/allowed-device-ids', (req, res) => {
     const body = req.body;
     const allowlists = getUiAllowlistsInfo();
+
+    const panelName = normalizePanelName(body && typeof body === 'object' ? body.panelName : null);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+    }
 
     const legacyCtrl = Array.isArray(body)
         ? body
@@ -2365,14 +3667,36 @@ app.put('/api/ui/allowed-device-ids', (req, res) => {
     const nextCtrlIds = Array.isArray(incomingCtrl) ? normalizeIds(incomingCtrl) : null;
     const nextMainIds = Array.isArray(incomingMain) ? normalizeIds(incomingMain) : null;
 
-    persistedConfig = normalizePersistedConfig({
-        ...(persistedConfig || {}),
-        ui: {
-            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
-            ...(nextCtrlIds ? { ctrlAllowedDeviceIds: nextCtrlIds, allowedDeviceIds: nextCtrlIds } : {}),
-            ...(nextMainIds ? { mainAllowedDeviceIds: nextMainIds } : {}),
-        },
-    });
+    if (panelName) {
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        ...(nextCtrlIds ? { ctrlAllowedDeviceIds: nextCtrlIds } : {}),
+                        ...(nextMainIds ? { mainAllowedDeviceIds: nextMainIds } : {}),
+                    },
+                },
+            },
+        });
+    } else {
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                ...(nextCtrlIds ? { ctrlAllowedDeviceIds: nextCtrlIds, allowedDeviceIds: nextCtrlIds } : {}),
+                ...(nextMainIds ? { mainAllowedDeviceIds: nextMainIds } : {}),
+            },
+        });
+    }
 
     persistConfigToDiskIfChanged('api-ui');
 
@@ -2399,6 +3723,539 @@ app.put('/api/ui/allowed-device-ids', (req, res) => {
             ...(config?.ui || {}),
         },
     });
+});
+
+// Update which devices are visible on the Home dashboard (metrics/room cards) for the current panel.
+// Expected payload: { homeVisibleDeviceIds: string[], panelName?: string }
+// Empty list means "show all devices".
+app.put('/api/ui/home-visible-device-ids', (req, res) => {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const homeVisibleDeviceIds = Array.isArray(body.homeVisibleDeviceIds)
+        ? body.homeVisibleDeviceIds.map((v) => String(v || '').trim()).filter(Boolean)
+        : null;
+
+    if (!Array.isArray(homeVisibleDeviceIds)) {
+        return res.status(400).json({ error: 'Expected { homeVisibleDeviceIds: string[] }' });
+    }
+
+    const panelName = normalizePanelName(body.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        homeVisibleDeviceIds,
+                    },
+                },
+            },
+        });
+    } else {
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                homeVisibleDeviceIds,
+            },
+        });
+    }
+
+    persistConfigToDiskIfChanged('api-ui-home-visible-device-ids');
+
+    const nextAllowlists = getUiAllowlistsInfo();
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            // carry through allowlist lock/source fields
+            ctrlAllowedDeviceIds: nextAllowlists.ctrl.ids,
+            mainAllowedDeviceIds: nextAllowlists.main.ids,
+            allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            ctrlAllowlistSource: nextAllowlists.ctrl.source,
+            ctrlAllowlistLocked: nextAllowlists.ctrl.locked,
+            mainAllowlistSource: nextAllowlists.main.source,
+            mainAllowlistLocked: nextAllowlists.main.locked,
+            // new field
+            homeVisibleDeviceIds: persistedConfig?.ui?.homeVisibleDeviceIds,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({
+        ok: true,
+        ui: {
+            ...(config?.ui || {}),
+        },
+    });
+});
+
+// Update visible rooms (room filtering) for the current panel.
+// Expected payload: { visibleRoomIds: string[], panelName?: string }
+app.put('/api/ui/visible-room-ids', (req, res) => {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const visibleRoomIds = Array.isArray(body.visibleRoomIds)
+        ? body.visibleRoomIds.map((v) => String(v || '').trim()).filter(Boolean)
+        : null;
+
+    if (!Array.isArray(visibleRoomIds)) {
+        return res.status(400).json({ error: 'Expected { visibleRoomIds: string[] }' });
+    }
+
+    const panelName = normalizePanelName(body.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        visibleRoomIds,
+                    },
+                },
+            },
+        });
+    } else {
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                visibleRoomIds,
+            },
+        });
+    }
+
+    persistConfigToDiskIfChanged('api-ui-visible-room-ids');
+
+    const nextAllowlists = getUiAllowlistsInfo();
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            ctrlAllowedDeviceIds: nextAllowlists.ctrl.ids,
+            mainAllowedDeviceIds: nextAllowlists.main.ids,
+            allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            ctrlAllowlistSource: nextAllowlists.ctrl.source,
+            ctrlAllowlistLocked: nextAllowlists.ctrl.locked,
+            mainAllowlistSource: nextAllowlists.main.source,
+            mainAllowlistLocked: nextAllowlists.main.locked,
+            visibleRoomIds: Array.isArray(persistedConfig?.ui?.visibleRoomIds) ? persistedConfig.ui.visibleRoomIds : [],
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update which cameras are visible on this panel.
+// Expected payload: { visibleCameraIds: string[], panelName?: string }
+// Empty list means "show all cameras".
+app.put('/api/ui/visible-camera-ids', (req, res) => {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const visibleCameraIds = Array.isArray(body.visibleCameraIds)
+        ? body.visibleCameraIds.map((v) => String(v || '').trim()).filter(Boolean)
+        : null;
+
+    if (!Array.isArray(visibleCameraIds)) {
+        return res.status(400).json({ error: 'Expected { visibleCameraIds: string[] }' });
+    }
+
+    const panelName = normalizePanelName(body.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        visibleCameraIds,
+                    },
+                },
+            },
+        });
+    } else {
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                visibleCameraIds,
+            },
+        });
+    }
+
+    persistConfigToDiskIfChanged('api-ui-visible-camera-ids');
+
+    const nextAllowlists = getUiAllowlistsInfo();
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            ctrlAllowedDeviceIds: nextAllowlists.ctrl.ids,
+            mainAllowedDeviceIds: nextAllowlists.main.ids,
+            allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            ctrlAllowlistSource: nextAllowlists.ctrl.source,
+            ctrlAllowlistLocked: nextAllowlists.ctrl.locked,
+            mainAllowlistSource: nextAllowlists.main.source,
+            mainAllowlistLocked: nextAllowlists.main.locked,
+            visibleCameraIds: Array.isArray(persistedConfig?.ui?.visibleCameraIds) ? persistedConfig.ui.visibleCameraIds : [],
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update which cameras are assigned to a specific room on this panel.
+// Expected payload: { roomId: string, cameraIds: string[], panelName?: string }
+app.put('/api/ui/room-camera-ids', (req, res) => {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const roomId = String(body.roomId || '').trim();
+    if (!roomId) {
+        return res.status(400).json({ error: 'Expected { roomId: string, cameraIds: string[] }' });
+    }
+
+    const cameraIds = Array.isArray(body.cameraIds)
+        ? body.cameraIds.map((v) => String(v || '').trim()).filter(Boolean)
+        : null;
+
+    if (!Array.isArray(cameraIds)) {
+        return res.status(400).json({ error: 'Expected { roomId: string, cameraIds: string[] }' });
+    }
+
+    const uniq = Array.from(new Set(cameraIds));
+
+    const panelName = normalizePanelName(body.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        const prevProfile = (persistedConfig?.ui?.panelProfiles && persistedConfig.ui.panelProfiles[ensured] && typeof persistedConfig.ui.panelProfiles[ensured] === 'object')
+            ? persistedConfig.ui.panelProfiles[ensured]
+            : {};
+        const prevMap = (prevProfile.roomCameraIds && typeof prevProfile.roomCameraIds === 'object') ? prevProfile.roomCameraIds : {};
+        const nextMap = { ...prevMap };
+        // Persist empty arrays to represent an explicit "none" override.
+        // Absence of a room key means "use defaults" (derived from camera.defaultRoomId).
+        nextMap[roomId] = uniq;
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...prevProfile,
+                        roomCameraIds: nextMap,
+                    },
+                },
+            },
+        });
+    } else {
+        const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+        const prevMap = (ui.roomCameraIds && typeof ui.roomCameraIds === 'object') ? ui.roomCameraIds : {};
+        const nextMap = { ...prevMap };
+        // Persist empty arrays to represent an explicit "none" override.
+        // Absence of a room key means "use defaults" (derived from camera.defaultRoomId).
+        nextMap[roomId] = uniq;
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...ui,
+                roomCameraIds: nextMap,
+            },
+        });
+    }
+
+    persistConfigToDiskIfChanged('api-ui-room-camera-ids');
+
+    const nextAllowlists = getUiAllowlistsInfo();
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            ctrlAllowedDeviceIds: nextAllowlists.ctrl.ids,
+            mainAllowedDeviceIds: nextAllowlists.main.ids,
+            allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            ctrlAllowlistSource: nextAllowlists.ctrl.source,
+            ctrlAllowlistLocked: nextAllowlists.ctrl.locked,
+            mainAllowlistSource: nextAllowlists.main.source,
+            mainAllowlistLocked: nextAllowlists.main.locked,
+            roomCameraIds: (persistedConfig?.ui?.roomCameraIds && typeof persistedConfig.ui.roomCameraIds === 'object') ? persistedConfig.ui.roomCameraIds : {},
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update which cameras are shown in the top-of-panel camera bar, plus optional size.
+// Expected payload: { cameraIds?: string[]|null, size?: 'xs'|'sm'|'md'|'lg'|null, panelName?: string }
+app.put('/api/ui/top-cameras', (req, res) => {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+
+    const cameraIds = Object.prototype.hasOwnProperty.call(body, 'cameraIds')
+        ? (Array.isArray(body.cameraIds)
+            ? body.cameraIds.map((v) => String(v || '').trim()).filter(Boolean)
+            : null)
+        : undefined;
+
+    if (cameraIds === null) {
+        return res.status(400).json({ error: 'Expected cameraIds to be an array when provided' });
+    }
+
+    const size = Object.prototype.hasOwnProperty.call(body, 'size')
+        ? String(body.size ?? '').trim().toLowerCase()
+        : undefined;
+
+    if (size !== undefined && size !== '' && size !== 'xs' && size !== 'sm' && size !== 'md' && size !== 'lg') {
+        return res.status(400).json({ error: "Expected size to be one of: 'xs', 'sm', 'md', 'lg'" });
+    }
+
+    const panelName = normalizePanelName(body.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        const prevProfile = (persistedConfig?.ui?.panelProfiles && persistedConfig.ui.panelProfiles[ensured] && typeof persistedConfig.ui.panelProfiles[ensured] === 'object')
+            ? persistedConfig.ui.panelProfiles[ensured]
+            : {};
+
+        const nextProfile = {
+            ...prevProfile,
+            ...(cameraIds !== undefined ? { topCameraIds: Array.from(new Set(cameraIds)) } : {}),
+            ...(size !== undefined ? { topCameraSize: (size || 'md') } : {}),
+        };
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: nextProfile,
+                },
+            },
+        });
+    } else {
+        const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...ui,
+                ...(cameraIds !== undefined ? { topCameraIds: Array.from(new Set(cameraIds)) } : {}),
+                ...(size !== undefined ? { topCameraSize: (size || 'md') } : {}),
+            },
+        });
+    }
+
+    persistConfigToDiskIfChanged('api-ui-top-cameras');
+
+    const nextAllowlists = getUiAllowlistsInfo();
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            ctrlAllowedDeviceIds: nextAllowlists.ctrl.ids,
+            mainAllowedDeviceIds: nextAllowlists.main.ids,
+            allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            ctrlAllowlistSource: nextAllowlists.ctrl.source,
+            ctrlAllowlistLocked: nextAllowlists.ctrl.locked,
+            mainAllowlistSource: nextAllowlists.main.source,
+            mainAllowlistLocked: nextAllowlists.main.locked,
+            topCameraIds: Array.isArray(persistedConfig?.ui?.topCameraIds) ? persistedConfig.ui.topCameraIds : [],
+            topCameraSize: String(persistedConfig?.ui?.topCameraSize ?? 'md').trim() || 'md',
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update per-device UI overrides (label + command allowlist + Home metric allowlist).
+// Expected payload: { deviceId: string, label?: string|null, commands?: string[]|null, homeMetrics?: string[]|null, panelName?: string }
+app.put('/api/ui/device-overrides', (req, res) => {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+    const deviceId = String(body.deviceId || '').trim();
+    if (!deviceId) {
+        return res.status(400).json({ error: 'Missing deviceId' });
+    }
+
+    const labelRaw = Object.prototype.hasOwnProperty.call(body, 'label') ? body.label : undefined;
+    const label = (labelRaw === null || labelRaw === undefined)
+        ? null
+        : String(labelRaw ?? '').trim();
+    if (typeof label === 'string' && label.length > 64) {
+        return res.status(400).json({ error: 'Label too long (max 64 chars)' });
+    }
+
+    const commandsRaw = Object.prototype.hasOwnProperty.call(body, 'commands') ? body.commands : undefined;
+    const commands = (commandsRaw === null || commandsRaw === undefined)
+        ? null
+        : (Array.isArray(commandsRaw)
+            ? commandsRaw
+                .map((c) => String(c || '').trim())
+                .filter((c) => c && ALLOWED_PANEL_DEVICE_COMMANDS.has(c))
+            : null);
+    if (commandsRaw !== undefined && commandsRaw !== null && !Array.isArray(commandsRaw)) {
+        return res.status(400).json({ error: 'commands must be an array of strings (or null)' });
+    }
+
+    const homeMetricsRaw = Object.prototype.hasOwnProperty.call(body, 'homeMetrics') ? body.homeMetrics : undefined;
+    const homeMetrics = (homeMetricsRaw === null || homeMetricsRaw === undefined)
+        ? null
+        : (Array.isArray(homeMetricsRaw)
+            ? homeMetricsRaw
+                .map((c) => String(c || '').trim())
+                .filter((c) => c && ALLOWED_HOME_METRIC_KEYS.has(c))
+            : null);
+    if (homeMetricsRaw !== undefined && homeMetricsRaw !== null && !Array.isArray(homeMetricsRaw)) {
+        return res.status(400).json({ error: 'homeMetrics must be an array of strings (or null)' });
+    }
+
+    const panelName = normalizePanelName(body.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        const prev = (persistedConfig?.ui?.panelProfiles && persistedConfig.ui.panelProfiles[ensured] && typeof persistedConfig.ui.panelProfiles[ensured] === 'object')
+            ? persistedConfig.ui.panelProfiles[ensured]
+            : {};
+        const prevLabels = (prev.deviceLabelOverrides && typeof prev.deviceLabelOverrides === 'object') ? prev.deviceLabelOverrides : {};
+        const prevCmds = (prev.deviceCommandAllowlist && typeof prev.deviceCommandAllowlist === 'object') ? prev.deviceCommandAllowlist : {};
+        const prevHome = (prev.deviceHomeMetricAllowlist && typeof prev.deviceHomeMetricAllowlist === 'object') ? prev.deviceHomeMetricAllowlist : {};
+
+        const nextLabels = { ...prevLabels };
+        if (label === null || label === '') delete nextLabels[deviceId];
+        else nextLabels[deviceId] = label;
+
+        const nextCmds = { ...prevCmds };
+        if (commands === null) {
+            delete nextCmds[deviceId];
+        } else {
+            nextCmds[deviceId] = Array.from(new Set(commands)).slice(0, 32);
+        }
+
+        const nextHome = { ...prevHome };
+        if (homeMetrics === null) {
+            delete nextHome[deviceId];
+        } else {
+            nextHome[deviceId] = Array.from(new Set(homeMetrics)).slice(0, 16);
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...prev,
+                        deviceLabelOverrides: nextLabels,
+                        deviceCommandAllowlist: nextCmds,
+                        deviceHomeMetricAllowlist: nextHome,
+                    },
+                },
+            },
+        });
+    } else {
+        const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+        const prevLabels = (ui.deviceLabelOverrides && typeof ui.deviceLabelOverrides === 'object') ? ui.deviceLabelOverrides : {};
+        const prevCmds = (ui.deviceCommandAllowlist && typeof ui.deviceCommandAllowlist === 'object') ? ui.deviceCommandAllowlist : {};
+        const prevHome = (ui.deviceHomeMetricAllowlist && typeof ui.deviceHomeMetricAllowlist === 'object') ? ui.deviceHomeMetricAllowlist : {};
+
+        const nextLabels = { ...prevLabels };
+        if (label === null || label === '') delete nextLabels[deviceId];
+        else nextLabels[deviceId] = label;
+
+        const nextCmds = { ...prevCmds };
+        if (commands === null) {
+            delete nextCmds[deviceId];
+        } else {
+            nextCmds[deviceId] = Array.from(new Set(commands)).slice(0, 32);
+        }
+
+        const nextHome = { ...prevHome };
+        if (homeMetrics === null) {
+            delete nextHome[deviceId];
+        } else {
+            nextHome[deviceId] = Array.from(new Set(homeMetrics)).slice(0, 16);
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...ui,
+                deviceLabelOverrides: nextLabels,
+                deviceCommandAllowlist: nextCmds,
+                deviceHomeMetricAllowlist: nextHome,
+            },
+        });
+    }
+
+    persistConfigToDiskIfChanged('api-ui-device-overrides');
+
+    const nextAllowlists = getUiAllowlistsInfo();
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            ctrlAllowedDeviceIds: nextAllowlists.ctrl.ids,
+            mainAllowedDeviceIds: nextAllowlists.main.ids,
+            allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            ctrlAllowlistSource: nextAllowlists.ctrl.source,
+            ctrlAllowlistLocked: nextAllowlists.ctrl.locked,
+            mainAllowlistSource: nextAllowlists.main.source,
+            mainAllowlistLocked: nextAllowlists.main.locked,
+            visibleRoomIds: Array.isArray(persistedConfig?.ui?.visibleRoomIds) ? persistedConfig.ui.visibleRoomIds : [],
+            deviceLabelOverrides: (persistedConfig?.ui?.deviceLabelOverrides && typeof persistedConfig.ui.deviceLabelOverrides === 'object') ? persistedConfig.ui.deviceLabelOverrides : {},
+            deviceCommandAllowlist: (persistedConfig?.ui?.deviceCommandAllowlist && typeof persistedConfig.ui.deviceCommandAllowlist === 'object') ? persistedConfig.ui.deviceCommandAllowlist : {},
+            deviceHomeMetricAllowlist: (persistedConfig?.ui?.deviceHomeMetricAllowlist && typeof persistedConfig.ui.deviceHomeMetricAllowlist === 'object') ? persistedConfig.ui.deviceHomeMetricAllowlist : {},
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
 });
 
 // List server-side panel profiles.
@@ -2447,6 +4304,13 @@ app.post('/api/ui/panels', (req, res) => {
 
     // Seed from "current" effective UI settings (global defaults, or the selected profile/preset).
     const seed = {
+        visibleRoomIds: Array.isArray(effectiveUi.visibleRoomIds) ? effectiveUi.visibleRoomIds : [],
+        ctrlAllowedDeviceIds: Array.isArray(effectiveUi.ctrlAllowedDeviceIds)
+            ? effectiveUi.ctrlAllowedDeviceIds
+            : (Array.isArray(effectiveUi.allowedDeviceIds) ? effectiveUi.allowedDeviceIds : []),
+        mainAllowedDeviceIds: Array.isArray(effectiveUi.mainAllowedDeviceIds) ? effectiveUi.mainAllowedDeviceIds : [],
+        deviceLabelOverrides: (effectiveUi.deviceLabelOverrides && typeof effectiveUi.deviceLabelOverrides === 'object') ? effectiveUi.deviceLabelOverrides : {},
+        deviceCommandAllowlist: (effectiveUi.deviceCommandAllowlist && typeof effectiveUi.deviceCommandAllowlist === 'object') ? effectiveUi.deviceCommandAllowlist : {},
         accentColorId: effectiveUi.accentColorId,
         homeBackground: effectiveUi.homeBackground,
         cardOpacityScalePct: effectiveUi.cardOpacityScalePct,
@@ -2459,6 +4323,8 @@ app.post('/api/ui/panels', (req, res) => {
         primaryTextColorId: effectiveUi.primaryTextColorId,
         cardScalePct: effectiveUi.cardScalePct,
         homeRoomColumnsXl: effectiveUi.homeRoomColumnsXl,
+        homeRoomMetricColumns: effectiveUi.homeRoomMetricColumns,
+        homeRoomMetricKeys: Array.isArray(effectiveUi.homeRoomMetricKeys) ? effectiveUi.homeRoomMetricKeys : ['temperature', 'humidity', 'illuminance'],
         glowColorId: effectiveUi.glowColorId,
         iconColorId: effectiveUi.iconColorId,
         iconOpacityPct: effectiveUi.iconOpacityPct,
@@ -3758,6 +5624,231 @@ app.put('/api/ui/home-room-columns-xl', (req, res) => {
 
     return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
 });
+
+// Update Home room metric grid columns (sub-cards inside each room panel).
+// Expected payload: { homeRoomMetricColumns: number(0-3), panelName?: string }
+// 0 = auto.
+app.put('/api/ui/home-room-metric-columns', (req, res) => {
+    const raw = req.body?.homeRoomMetricColumns;
+    const num = (typeof raw === 'number') ? raw : Number(raw);
+    if (!Number.isFinite(num)) {
+        return res.status(400).json({ error: 'Missing homeRoomMetricColumns (0-3)' });
+    }
+
+    const homeRoomMetricColumns = Math.max(0, Math.min(3, Math.round(num)));
+
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        homeRoomMetricColumns,
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-home-room-metric-columns-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            homeRoomMetricColumns,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-home-room-metric-columns');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            homeRoomMetricColumns: persistedConfig?.ui?.homeRoomMetricColumns,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update which room metric cards are shown on Home.
+// Expected payload: { homeRoomMetricKeys: string[], panelName?: string }
+app.put('/api/ui/home-room-metric-keys', (req, res) => {
+    const raw = req.body?.homeRoomMetricKeys;
+    if (!Array.isArray(raw)) {
+        return res.status(400).json({ error: 'Missing homeRoomMetricKeys (array)' });
+    }
+
+    const homeRoomMetricKeys = Array.from(new Set(
+        raw
+            .map((v) => String(v || '').trim())
+            .filter((v) => v && ALLOWED_HOME_ROOM_METRIC_KEYS.has(v)),
+    ));
+
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        homeRoomMetricKeys,
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-home-room-metric-keys-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            homeRoomMetricKeys,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-home-room-metric-keys');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            homeRoomMetricKeys: persistedConfig?.ui?.homeRoomMetricKeys,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+    // Update camera preview settings.
+    // Expected payload: { homeCameraPreviewsEnabled: boolean, controlsCameraPreviewsEnabled: boolean, cameraPreviewRefreshSeconds: number(2-120), panelName?: string }
+    app.put('/api/ui/camera-previews', (req, res) => {
+        const hasHome = typeof req.body?.homeCameraPreviewsEnabled === 'boolean';
+        const hasControls = typeof req.body?.controlsCameraPreviewsEnabled === 'boolean';
+        if (!hasHome || !hasControls) {
+            return res.status(400).json({ error: 'Missing homeCameraPreviewsEnabled and/or controlsCameraPreviewsEnabled (boolean)' });
+        }
+
+        const rawSeconds = req.body?.cameraPreviewRefreshSeconds;
+        const num = (typeof rawSeconds === 'number') ? rawSeconds : Number(rawSeconds);
+        if (!Number.isFinite(num)) {
+            return res.status(400).json({ error: 'Missing cameraPreviewRefreshSeconds (2-120)' });
+        }
+
+        const homeCameraPreviewsEnabled = req.body?.homeCameraPreviewsEnabled === true;
+        const controlsCameraPreviewsEnabled = req.body?.controlsCameraPreviewsEnabled === true;
+        const cameraPreviewRefreshSeconds = Math.max(2, Math.min(120, Math.round(num)));
+
+        const panelName = normalizePanelName(req.body?.panelName);
+        if (panelName) {
+            if (rejectIfPresetPanelProfile(panelName, res)) return;
+            const ensured = ensurePanelProfileExists(panelName);
+            if (!ensured) {
+                return res.status(400).json({ error: 'Invalid panelName' });
+            }
+
+            persistedConfig = normalizePersistedConfig({
+                ...(persistedConfig || {}),
+                ui: {
+                    ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                    panelProfiles: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                        [ensured]: {
+                            ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                            homeCameraPreviewsEnabled,
+                            controlsCameraPreviewsEnabled,
+                            cameraPreviewRefreshSeconds,
+                        },
+                    },
+                },
+            });
+
+            persistConfigToDiskIfChanged('api-ui-camera-previews-panel');
+
+            config = {
+                ...config,
+                ui: {
+                    ...(config?.ui || {}),
+                    panelProfiles: persistedConfig?.ui?.panelProfiles,
+                },
+            };
+            io.emit('config_update', config);
+            return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                homeCameraPreviewsEnabled,
+                controlsCameraPreviewsEnabled,
+                cameraPreviewRefreshSeconds,
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-camera-previews');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                homeCameraPreviewsEnabled: persistedConfig?.ui?.homeCameraPreviewsEnabled,
+                controlsCameraPreviewsEnabled: persistedConfig?.ui?.controlsCameraPreviewsEnabled,
+                cameraPreviewRefreshSeconds: persistedConfig?.ui?.cameraPreviewRefreshSeconds,
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    });
 
 // Update UI climate tolerances from the kiosk.
 // Expected payload: { climateTolerances: { temperatureF: { cold, comfy, warm }, humidityPct: { dry, comfy, humid }, illuminanceLux: { dark, dim, bright } } }

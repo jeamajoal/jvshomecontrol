@@ -14,6 +14,15 @@ If you still see it:
 - Ensure you’re on the latest build
 - Confirm the browser URL scheme matches what you intend (http vs https)
 
+## RTSP cameras
+
+RTSP cameras play via server-side HLS (served from the same origin as the dashboard).
+
+If an RTSP feed won’t play:
+
+- Ensure `ffmpeg` is installed on the server.
+- See `docs/08-HTTPS.md` for HLS endpoints and tuning.
+
 ## Hubitat HTTPS errors
 
 If Hubitat is `https://...` with a self-signed cert:

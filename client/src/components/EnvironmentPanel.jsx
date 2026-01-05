@@ -4,6 +4,7 @@ import {
   Droplets,
   Sun,
   Activity,
+  DoorOpen,
   Power,
   Loader2,
   Clock,
@@ -15,8 +16,9 @@ import {
 
 import { getUiScheme } from '../uiScheme';
 import { useAppState } from '../appState';
-import { buildRoomsWithStatuses, getAllowedDeviceIdSet } from '../deviceSelectors';
+import { buildRoomsWithStatuses, getHomeVisibleDeviceIdSet } from '../deviceSelectors';
 import { API_HOST } from '../apiHost';
+import HlsPlayer from './HlsPlayer';
 import {
   normalizeToleranceColorId,
   getToleranceTextClass as getToleranceTextClassForColorId,
@@ -348,7 +350,6 @@ const ActionButton = ({ label, icon: IconComponent, disabled, busy, onClick, acc
   );
 };
 
-// Room/device joins are centralized in ../deviceSelectors.
 
 const isOutsideRoomName = (name) => {
   const n = String(name || '').toLowerCase();
@@ -363,7 +364,7 @@ const pickOutsideDevices = (rooms) => {
   return all.filter((d) => isOutsideRoomName(d.label));
 };
 
-const computeRoomMetrics = (devices, allowedControlIds) => {
+const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlist) => {
   const temps = [];
   const hums = [];
   const lux = [];
@@ -376,19 +377,55 @@ const computeRoomMetrics = (devices, allowedControlIds) => {
 
   const switches = [];
 
+  let temperaturePossibleCount = 0;
+  let humidityPossibleCount = 0;
+  let illuminancePossibleCount = 0;
+
+  const canUseMetric = (deviceId, key) => {
+    const id = String(deviceId || '').trim();
+    if (!id) return true;
+    const raw = (deviceHomeMetricAllowlist && typeof deviceHomeMetricAllowlist === 'object') ? deviceHomeMetricAllowlist : {};
+    const arr = raw[id];
+    if (!Array.isArray(arr)) return true; // inherit
+    return arr.map((v) => String(v || '').trim()).filter(Boolean).includes(key);
+  };
+
   for (const dev of devices) {
     const attrs = dev.status?.attributes || {};
+    const caps = Array.isArray(dev?.capabilities) ? dev.capabilities : [];
 
-    const t = asNumber(attrs.temperature);
-    if (t !== null) temps.push(t);
+    const allowTemp = canUseMetric(dev.id, 'temperature');
+    const allowHum = canUseMetric(dev.id, 'humidity');
+    const allowLux = canUseMetric(dev.id, 'illuminance');
+    const allowMotion = canUseMetric(dev.id, 'motion');
+    const allowContact = canUseMetric(dev.id, 'contact');
+    const allowDoor = canUseMetric(dev.id, 'door');
 
-    const h = asNumber(attrs.humidity);
-    if (h !== null) hums.push(h);
+    if (allowTemp) {
+      if (caps.includes('TemperatureMeasurement') || attrs.temperature !== undefined) {
+        temperaturePossibleCount += 1;
+      }
+      const t = asNumber(attrs.temperature);
+      if (t !== null) temps.push(t);
+    }
 
-    const lx = asNumber(attrs.illuminance);
-    if (lx !== null) lux.push(lx);
+    if (allowHum) {
+      if (caps.includes('RelativeHumidityMeasurement') || attrs.humidity !== undefined) {
+        humidityPossibleCount += 1;
+      }
+      const h = asNumber(attrs.humidity);
+      if (h !== null) hums.push(h);
+    }
 
-    if (attrs.motion === 'active') {
+    if (allowLux) {
+      if (caps.includes('IlluminanceMeasurement') || attrs.illuminance !== undefined) {
+        illuminancePossibleCount += 1;
+      }
+      const lx = asNumber(attrs.illuminance);
+      if (lx !== null) lux.push(lx);
+    }
+
+    if (allowMotion && attrs.motion === 'active') {
       motionActive = true;
       motionActiveCount += 1;
     }
@@ -407,8 +444,8 @@ const computeRoomMetrics = (devices, allowedControlIds) => {
       }
     };
 
-    maybeCountDoorState(attrs.contact);
-    maybeCountDoorState(attrs.door);
+    if (allowContact) maybeCountDoorState(attrs.contact);
+    if (allowDoor) maybeCountDoorState(attrs.door);
 
     if (typeof attrs.switch === 'string' && allowedControlIds?.has(String(dev.id))) {
       switches.push({
@@ -425,6 +462,12 @@ const computeRoomMetrics = (devices, allowedControlIds) => {
     temperature: avg(temps),
     humidity: avg(hums),
     illuminance: avg(lux),
+    temperatureCount: temps.length,
+    humidityCount: hums.length,
+    illuminanceCount: lux.length,
+    temperaturePossibleCount,
+    humidityPossibleCount,
+    illuminancePossibleCount,
     motionActive,
     motionActiveCount,
     doorCount,
@@ -498,7 +541,16 @@ async function sendDeviceCommand(deviceId, command, args = []) {
   }
 }
 
-const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
+const getDeviceCommandAllowlistForId = (deviceCommandAllowlist, deviceId) => {
+  const id = String(deviceId || '').trim();
+  if (!id) return null;
+  const raw = (deviceCommandAllowlist && typeof deviceCommandAllowlist === 'object') ? deviceCommandAllowlist : {};
+  const arr = raw[id];
+  if (!Array.isArray(arr)) return null;
+  return arr.map((v) => String(v || '').trim()).filter(Boolean);
+};
+
+const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, deviceCommandAllowlist, deviceHomeMetricAllowlist, homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
 
   const scaleNumRaw = Number(contentScale);
@@ -506,10 +558,13 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
   const titleStyle = { fontSize: `calc(${Math.round(18 * scaleNum)}px * var(--jvs-primary-text-size-scale, 1))` };
   const badgeStyle = { fontSize: `${Math.round(10 * scaleNum)}px` };
 
-  const metrics = useMemo(() => computeRoomMetrics(devices, allowedControlIds), [devices, allowedControlIds]);
+  const metrics = useMemo(
+    () => computeRoomMetrics(devices, null, deviceHomeMetricAllowlist),
+    [devices, deviceHomeMetricAllowlist],
+  );
 
   const supportedActions = useMemo(() => {
-    const allow = new Set(['on', 'off', 'refresh', 'push']);
+    const allow = new Set(['on', 'off', 'toggle', 'refresh', 'push']);
     return devices
       .map((d) => ({
         id: d.id,
@@ -517,14 +572,20 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
         commands: d.status?.commands || [],
         attrs: d.status?.attributes || {},
       }))
-      .filter((d) => allowedControlIds?.has(String(d.id)))
       .filter((d) => Array.isArray(d.commands) && d.commands.length)
       .map((d) => ({
         ...d,
-        commands: d.commands.filter((c) => allow.has(c)),
+        commands: (() => {
+          const base = d.commands.filter((c) => allow.has(c));
+          const perDevice = getDeviceCommandAllowlistForId(deviceCommandAllowlist, d.id);
+          // Home controls only appear when commands are explicitly selected.
+          if (!perDevice || perDevice.length === 0) return [];
+          const set = new Set(perDevice);
+          return base.filter((c) => set.has(c));
+        })(),
       }))
       .filter((d) => d.commands.length);
-  }, [devices, allowedControlIds]);
+  }, [devices, deviceCommandAllowlist]);
 
   const runAction = async (deviceId, command) => {
     const key = `${deviceId}:${command}`;
@@ -540,33 +601,145 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
     }
   };
 
-  const hasEnv =
-    metrics.temperature !== null ||
-    metrics.humidity !== null ||
-    metrics.illuminance !== null ||
-    devices.some((d) => d.status?.attributes?.motion) ||
-    devices.some((d) => typeof d.status?.attributes?.contact === 'string' || typeof d.status?.attributes?.door === 'string') ||
-    devices.some((d) => {
-      const caps = Array.isArray(d?.capabilities) ? d.capabilities : [];
-      return caps.includes('ContactSensor')
-        || caps.includes('MotionSensor')
-        || caps.includes('TemperatureMeasurement')
-        || caps.includes('RelativeHumidityMeasurement')
-        || caps.includes('IlluminanceMeasurement');
-    });
+  const hasEnv = Array.isArray(homeRoomMetricKeys) && homeRoomMetricKeys.length > 0;
 
   const headerGlow = (metrics.motionActive || metrics.doorOpen)
     ? `${uiScheme?.selectedCard || 'border-primary/40'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
     : 'border-white/10';
 
-  const badgeBase = `inline-flex items-center rounded-lg border px-2 py-1 ${scaleNum === 1 ? 'text-[10px]' : ''} font-bold uppercase tracking-[0.18em] border-white/10 bg-white/5`;
+  const statusIconBase = `inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/5 ${scaleNum === 1 ? 'w-7 h-7' : ''}`;
+  const statusIconStyle = scaleNum === 1
+    ? undefined
+    : {
+        width: `${Math.round(28 * scaleNum)}px`,
+        height: `${Math.round(28 * scaleNum)}px`,
+      };
 
-  const motionBadgeText = getToleranceTextClassForColorId(
-    normalizeToleranceColorId(sensorIndicatorColors?.motion, 'warning')
-  );
-  const doorBadgeText = getToleranceTextClassForColorId(
-    normalizeToleranceColorId(sensorIndicatorColors?.door, 'neon-red')
-  );
+  const statusIconSizeClass = scaleNum === 1 ? 'w-4 h-4' : '';
+  const statusIconSizeStyle = scaleNum === 1
+    ? undefined
+    : {
+        width: `${Math.round(16 * scaleNum)}px`,
+        height: `${Math.round(16 * scaleNum)}px`,
+      };
+
+  const activeIconClass = `${uiScheme?.selectedText || 'text-neon-blue'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+  const inactiveIconClass = 'text-white/35';
+
+  const metricCards = useMemo(() => {
+    const cards = [];
+    const selectedKeys = Array.isArray(homeRoomMetricKeys)
+      ? homeRoomMetricKeys.map((k) => String(k || '').trim()).filter(Boolean)
+      : [];
+    const selected = new Set(selectedKeys);
+
+    if (selected.has('temperature')) {
+      cards.push(
+        <MetricCard
+          key="temperature"
+          title="Temperature"
+          value={metrics.temperature === null ? '—' : formatTemp(metrics.temperature)}
+          sub={metrics.temperature === null ? 'No reading' : null}
+          icon={Thermometer}
+          accentClassName="border-white/10"
+          valueClassName={getColorizedValueClass('temperature', metrics.temperature, climateTolerances, climateToleranceColors, colorizeHomeValues)}
+          valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
+          iconWrapClassName="bg-white/5"
+          uiScheme={uiScheme}
+          primaryTextColorClassName={primaryTextColorClassName}
+          secondaryTextClassName={secondaryTextColorClassName}
+          secondaryTextStrongClassName={secondaryTextColorClassName}
+          scaled
+          scale={scaleNum}
+        />
+      );
+    }
+
+    if (selected.has('humidity')) {
+      cards.push(
+        <MetricCard
+          key="humidity"
+          title="Humidity"
+          value={metrics.humidity === null ? '—' : formatPercent(metrics.humidity)}
+          sub={metrics.humidity === null ? 'No reading' : null}
+          icon={Droplets}
+          accentClassName="border-white/10"
+          valueClassName={
+            colorizeHomeValues
+              ? getColorizedValueClass('humidity', metrics.humidity, climateTolerances, climateToleranceColors, true)
+              : ''
+          }
+          valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
+          iconWrapClassName="bg-white/5"
+          uiScheme={uiScheme}
+          primaryTextColorClassName={primaryTextColorClassName}
+          secondaryTextClassName={secondaryTextColorClassName}
+          secondaryTextStrongClassName={secondaryTextColorClassName}
+          scaled
+          scale={scaleNum}
+        />
+      );
+    }
+
+    if (selected.has('illuminance')) {
+      cards.push(
+        <MetricCard
+          key="illuminance"
+          title="Illuminance"
+          value={metrics.illuminance === null ? '—' : formatLux(metrics.illuminance)}
+          sub={metrics.illuminance === null ? 'No reading' : null}
+          icon={Sun}
+          accentClassName="border-white/10"
+          valueClassName={
+            colorizeHomeValues
+              ? getColorizedValueClass('illuminance', metrics.illuminance, climateTolerances, climateToleranceColors, true)
+              : ''
+          }
+          valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
+          iconWrapClassName="bg-white/5"
+          uiScheme={uiScheme}
+          primaryTextColorClassName={primaryTextColorClassName}
+          secondaryTextClassName={secondaryTextColorClassName}
+          secondaryTextStrongClassName={secondaryTextColorClassName}
+          scaled
+          scale={scaleNum}
+        />
+      );
+    }
+    return cards;
+  }, [
+    metrics.temperature,
+    metrics.humidity,
+    metrics.illuminance,
+    homeRoomMetricKeys,
+    climateTolerances,
+    climateToleranceColors,
+    colorizeHomeValues,
+    colorizeHomeValuesOpacityPct,
+    uiScheme,
+    primaryTextColorClassName,
+    secondaryTextColorClassName,
+    scaleNum,
+  ]);
+
+  const metricGridClassName = useMemo(() => {
+    const count = metricCards.length;
+    if (count <= 1) return 'grid-cols-1';
+
+    const forcedRaw = Number(homeRoomMetricColumns);
+    const forced = Number.isFinite(forcedRaw) ? Math.max(0, Math.min(3, Math.round(forcedRaw))) : 0;
+    if (forced >= 1) {
+      const cols = Math.max(1, Math.min(forced, count));
+      return cols === 1 ? 'grid-cols-1' : cols === 2 ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3';
+    }
+
+    const roomColsRaw = Number(homeRoomColumnsXl);
+    const roomCols = Number.isFinite(roomColsRaw) ? Math.max(1, Math.min(6, Math.round(roomColsRaw))) : 3;
+
+    const cap = roomCols >= 5 ? 1 : roomCols >= 4 ? 2 : 3;
+    const cols = Math.max(1, Math.min(cap, count));
+    return cols === 1 ? 'grid-cols-1' : cols === 2 ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3';
+  }, [metricCards.length, homeRoomMetricColumns, homeRoomColumnsXl]);
 
   return (
     <section className={`glass-panel p-4 md:p-5 border ${headerGlow}`}>
@@ -579,69 +752,34 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
         </h2>
 
         <div className="shrink-0 flex items-center gap-2">
-          {metrics.motionActive ? <span className={`${badgeBase} ${motionBadgeText}`} style={scaleNum === 1 ? undefined : badgeStyle}>Motion</span> : null}
-          {metrics.doorOpen ? <span className={`${badgeBase} ${doorBadgeText}`} style={scaleNum === 1 ? undefined : badgeStyle}>Door</span> : null}
+          <span
+            className={statusIconBase}
+            style={statusIconStyle}
+            title={metrics.motionActive ? 'Motion active' : 'Motion'}
+            aria-label={metrics.motionActive ? 'Motion active' : 'Motion'}
+          >
+            <Activity
+              className={`${statusIconSizeClass} jvs-icon ${metrics.motionActive ? activeIconClass : inactiveIconClass}`.trim()}
+              style={statusIconSizeStyle}
+            />
+          </span>
+          <span
+            className={statusIconBase}
+            style={statusIconStyle}
+            title={metrics.doorOpen ? 'Door open' : 'Door'}
+            aria-label={metrics.doorOpen ? 'Door open' : 'Door'}
+          >
+            <DoorOpen
+              className={`${statusIconSizeClass} jvs-icon ${metrics.doorOpen ? activeIconClass : inactiveIconClass}`.trim()}
+              style={statusIconSizeStyle}
+            />
+          </span>
         </div>
       </div>
 
       {hasEnv ? (
-        <div className="mt-4 grid grid-cols-2 lg:grid-cols-3 gap-3">
-          <MetricCard
-            title="Temperature"
-            value={formatTemp(metrics.temperature)}
-            sub={metrics.temperature === null ? 'No sensor' : null}
-            icon={Thermometer}
-            accentClassName="border-white/10"
-            valueClassName={getColorizedValueClass('temperature', metrics.temperature, climateTolerances, climateToleranceColors, colorizeHomeValues)}
-            valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
-            iconWrapClassName="bg-white/5"
-            uiScheme={uiScheme}
-            primaryTextColorClassName={primaryTextColorClassName}
-            secondaryTextClassName={secondaryTextColorClassName}
-            secondaryTextStrongClassName={secondaryTextColorClassName}
-            scaled
-            scale={scaleNum}
-          />
-          <MetricCard
-            title="Humidity"
-            value={metrics.humidity === null ? '—' : formatPercent(metrics.humidity)}
-            sub={metrics.humidity === null ? 'No sensor' : null}
-            icon={Droplets}
-            accentClassName="border-white/10"
-            valueClassName={
-              colorizeHomeValues
-                ? getColorizedValueClass('humidity', metrics.humidity, climateTolerances, climateToleranceColors, true)
-                : ''
-            }
-            valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
-            iconWrapClassName="bg-white/5"
-            uiScheme={uiScheme}
-            primaryTextColorClassName={primaryTextColorClassName}
-            secondaryTextClassName={secondaryTextColorClassName}
-            secondaryTextStrongClassName={secondaryTextColorClassName}
-            scaled
-            scale={scaleNum}
-          />
-          <MetricCard
-            title="Illuminance"
-            value={metrics.illuminance === null ? '—' : formatLux(metrics.illuminance)}
-            sub={metrics.illuminance === null ? 'No sensor' : null}
-            icon={Sun}
-            accentClassName="border-white/10"
-            valueClassName={
-              colorizeHomeValues
-                ? getColorizedValueClass('illuminance', metrics.illuminance, climateTolerances, climateToleranceColors, true)
-                : ''
-            }
-            valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
-            iconWrapClassName="bg-white/5"
-            uiScheme={uiScheme}
-            primaryTextColorClassName={primaryTextColorClassName}
-            secondaryTextClassName={secondaryTextColorClassName}
-            secondaryTextStrongClassName={secondaryTextColorClassName}
-            scaled
-            scale={scaleNum}
-          />
+        <div className={`mt-4 grid ${metricGridClassName} gap-3`}>
+          {metricCards}
         </div>
       ) : null}
 
@@ -688,6 +826,19 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
                       disabled={!connected}
                       busy={busyActions.has(`${d.id}:off`)}
                       onClick={() => runAction(d.id, 'off')}
+                      uiScheme={uiScheme}
+                      scaled
+                      scale={scaleNum}
+                    />
+                  ) : null}
+                  {!d.commands.includes('on') && !d.commands.includes('off') && d.commands.includes('toggle') ? (
+                    <ActionButton
+                      label="Toggle"
+                      icon={Power}
+                      accent="fixed"
+                      disabled={!connected}
+                      busy={busyActions.has(`${d.id}:toggle`)}
+                      onClick={() => runAction(d.id, 'toggle')}
                       uiScheme={uiScheme}
                       scaled
                       scale={scaleNum}
@@ -875,14 +1026,132 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     return Math.max(1, Math.min(6, Math.round(raw)));
   }, [config?.ui?.homeRoomColumnsXl]);
 
-  const allowedControlIds = useMemo(() => getAllowedDeviceIdSet(config, 'main'), [config]);
-  const rooms = useMemo(() => buildRoomsWithStatuses(config, statuses), [config, statuses]);
+  const homeRoomMetricColumns = useMemo(() => {
+    const raw = Number(config?.ui?.homeRoomMetricColumns);
+    if (!Number.isFinite(raw)) return 0;
+    return Math.max(0, Math.min(3, Math.round(raw)));
+  }, [config?.ui?.homeRoomMetricColumns]);
+
+  const homeRoomMetricKeys = useMemo(() => {
+    const allowed = new Set(['temperature', 'humidity', 'illuminance']);
+    const raw = Array.isArray(config?.ui?.homeRoomMetricKeys)
+      ? config.ui.homeRoomMetricKeys
+      : ['temperature', 'humidity', 'illuminance'];
+    const keys = raw
+      .map((v) => String(v || '').trim())
+      .filter((v) => allowed.has(v));
+    return Array.from(new Set(keys));
+  }, [config?.ui?.homeRoomMetricKeys]);
+
+  const homeCameraPreviewsEnabled = useMemo(
+    () => config?.ui?.homeCameraPreviewsEnabled === true,
+    [config?.ui?.homeCameraPreviewsEnabled],
+  );
+
+  const cameraPreviewRefreshSeconds = useMemo(() => {
+    const raw = Number(config?.ui?.cameraPreviewRefreshSeconds);
+    if (!Number.isFinite(raw)) return 10;
+    return Math.max(2, Math.min(120, Math.round(raw)));
+  }, [config?.ui?.cameraPreviewRefreshSeconds]);
+
+  const cameras = useMemo(
+    () => (Array.isArray(config?.ui?.cameras) ? config.ui.cameras : []),
+    [config?.ui?.cameras],
+  );
+
+  const visibleCameraIds = useMemo(
+    () => (Array.isArray(config?.ui?.visibleCameraIds) ? config.ui.visibleCameraIds : []),
+    [config?.ui?.visibleCameraIds],
+  );
+
+  const topCameraIds = useMemo(
+    () => (Array.isArray(config?.ui?.topCameraIds) ? config.ui.topCameraIds.map((v) => String(v || '').trim()).filter(Boolean) : []),
+    [config?.ui?.topCameraIds],
+  );
+
+  const topCameraSize = useMemo(() => {
+    const raw = String(config?.ui?.topCameraSize ?? '').trim().toLowerCase();
+    if (raw === 'xs' || raw === 'sm' || raw === 'md' || raw === 'lg') return raw;
+    return 'md';
+  }, [config?.ui?.topCameraSize]);
+
+  const homeVisibleDeviceIds = useMemo(() => getHomeVisibleDeviceIdSet(config), [config]);
+  const rooms = useMemo(
+    () => buildRoomsWithStatuses(config, statuses, { deviceIdSet: homeVisibleDeviceIds }),
+    [config, statuses, homeVisibleDeviceIds],
+  );
   const now = useClock(1000);
   const roomContentScale = useMemo(() => {
     const raw = Number(cardScalePct);
     if (!Number.isFinite(raw)) return 1;
     return Math.max(0.5, Math.min(2, raw / 100));
   }, [cardScalePct]);
+
+  const [cameraBrokenIds, setCameraBrokenIds] = useState(() => new Set());
+
+  const topCameras = useMemo(() => {
+    if (!homeCameraPreviewsEnabled) return [];
+    const ids = Array.isArray(topCameraIds) ? topCameraIds : [];
+    if (!ids.length) return [];
+
+    const allow = Array.isArray(visibleCameraIds)
+      ? visibleCameraIds.map((v) => String(v || '').trim()).filter(Boolean)
+      : [];
+    const allowSet = new Set(allow);
+    const allowAll = allowSet.size === 0;
+
+    const list = Array.isArray(cameras) ? cameras : [];
+    const byId = new Map(list.map((c) => [String(c?.id || '').trim(), c]));
+
+    return ids
+      .map((idRaw) => {
+        const id = String(idRaw || '').trim();
+        if (!id) return null;
+        const c = byId.get(id);
+        if (!c || typeof c !== 'object') return null;
+        const cid = String(c.id || '').trim();
+        if (!cid) return null;
+        const label = String(c.label || cid).trim() || cid;
+        const enabled = c.enabled !== false;
+        const hasSnapshot = c.hasSnapshot === true;
+        const hasEmbed = c.hasEmbed === true && typeof c.embedUrl === 'string' && c.embedUrl.trim();
+        const embedUrl = hasEmbed ? String(c.embedUrl).trim() : '';
+        const hasRtsp = c.hasRtsp === true;
+        const hasAnyPreview = Boolean(hasEmbed || hasRtsp || hasSnapshot);
+
+        if (!enabled || !hasAnyPreview) return null;
+        if (!allowAll && !allowSet.has(cid)) return null;
+
+        return {
+          id: cid,
+          label,
+          hasSnapshot,
+          hasEmbed,
+          embedUrl,
+          hasRtsp,
+        };
+      })
+      .filter(Boolean);
+  }, [cameras, homeCameraPreviewsEnabled, topCameraIds, visibleCameraIds]);
+
+  const cameraRefreshMs = useMemo(() => {
+    const raw = Number(cameraPreviewRefreshSeconds);
+    const secs = Number.isFinite(raw) ? Math.max(2, Math.min(120, Math.round(raw))) : 10;
+    return secs * 1000;
+  }, [cameraPreviewRefreshSeconds]);
+
+  const cameraTick = useMemo(() => {
+    const t = Number(now);
+    if (!Number.isFinite(t)) return 0;
+    return cameraRefreshMs > 0 ? Math.floor(t / cameraRefreshMs) : 0;
+  }, [now, cameraRefreshMs]);
+
+  const topCameraGridClassName = useMemo(() => {
+    if (topCameraSize === 'lg') return 'grid-cols-1';
+    if (topCameraSize === 'sm') return 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
+    if (topCameraSize === 'xs') return 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4';
+    return 'grid-cols-1 md:grid-cols-2';
+  }, [topCameraSize]);
 
   const [weather, setWeather] = useState(null);
   const [weatherError, setWeatherError] = useState(null);
@@ -891,13 +1160,13 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
 
   const overall = useMemo(() => {
     const allDevices = (rooms || []).flatMap((r) => r.devices);
-    return computeRoomMetrics(allDevices, allowedControlIds);
-  }, [rooms, allowedControlIds]);
+    return computeRoomMetrics(allDevices, null, config?.ui?.deviceHomeMetricAllowlist);
+  }, [rooms, config?.ui?.deviceHomeMetricAllowlist]);
 
   const outsideSensors = useMemo(() => {
     const outsideDevices = pickOutsideDevices(rooms);
-    return computeRoomMetrics(outsideDevices, allowedControlIds);
-  }, [rooms, allowedControlIds]);
+    return computeRoomMetrics(outsideDevices, null, config?.ui?.deviceHomeMetricAllowlist);
+  }, [rooms, config?.ui?.deviceHomeMetricAllowlist]);
 
   useEffect(() => {
     let alive = true;
@@ -1124,6 +1393,61 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
           </div>
 
           <div className="mt-4">
+            {topCameras.length ? (
+              <div className="mb-4">
+                <div
+                  className={`text-[11px] md:text-xs uppercase tracking-[0.2em] jvs-secondary-text font-semibold mb-3 ${secondaryTextColorClass}`.trim()}
+                  style={{ fontSize: `calc(11px * var(--jvs-secondary-text-size-scale, 1))` }}
+                >
+                  Cameras
+                </div>
+                <div className={`grid ${topCameraGridClassName} gap-3`}>
+                  {topCameras.map((cam) => {
+                    const broken = cameraBrokenIds.has(cam.id);
+                    const src = `${API_HOST}/api/cameras/${encodeURIComponent(cam.id)}/snapshot?t=${cameraTick}`;
+                    return (
+                      <div key={cam.id} className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                        <div className={`text-[11px] uppercase tracking-[0.2em] font-semibold ${primaryTextColorClass || 'text-white/80'} truncate`.trim()}>
+                          {cam.label || cam.id}
+                        </div>
+                        <div className="mt-2 overflow-hidden rounded-xl bg-black/30">
+                          {cam.hasEmbed ? (
+                            <iframe
+                              src={cam.embedUrl}
+                              title={cam.label || cam.id}
+                              className="w-full aspect-video"
+                              style={{ border: 0 }}
+                              allow="autoplay; fullscreen"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : cam.hasRtsp ? (
+                            <HlsPlayer cameraId={cam.id} />
+                          ) : (!broken ? (
+                            <img
+                              src={src}
+                              alt={cam.label || cam.id}
+                              className="w-full aspect-video object-cover"
+                              onError={() => {
+                                setCameraBrokenIds((prev) => {
+                                  const next = new Set(prev);
+                                  next.add(cam.id);
+                                  return next;
+                                });
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full aspect-video flex items-center justify-center text-xs text-white/45">
+                              Snapshot unavailable
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
             <div
               className="jvs-home-rooms-grid gap-4"
               style={{
@@ -1137,13 +1461,17 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   roomName={r.room.name}
                   devices={r.devices}
                   connected={connected}
-                  allowedControlIds={allowedControlIds}
                   uiScheme={resolvedUiScheme}
                   climateTolerances={climateTolerances}
                   climateToleranceColors={climateToleranceColors}
                   colorizeHomeValues={colorizeHomeValues}
                   colorizeHomeValuesOpacityPct={colorizeHomeValuesOpacityPct}
                   sensorIndicatorColors={sensorIndicatorColors}
+                  deviceCommandAllowlist={config?.ui?.deviceCommandAllowlist}
+                  deviceHomeMetricAllowlist={config?.ui?.deviceHomeMetricAllowlist}
+                  homeRoomMetricKeys={homeRoomMetricKeys}
+                  homeRoomMetricColumns={homeRoomMetricColumns}
+                  homeRoomColumnsXl={homeRoomColumnsXl}
                   primaryTextColorClassName={primaryTextColorClass}
                   secondaryTextColorClassName={secondaryTextColorClass}
                   contentScale={roomContentScale}
