@@ -778,7 +778,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const accentColorId = String(config?.ui?.accentColorId || 'neon-blue');
   const scheme = getUiScheme(accentColorId);
 
-  const allowlistSave = useAsyncSave(saveAllowlists);
   const homeVisibleSave = useAsyncSave((payload) => {
     const ids = payload && typeof payload === 'object' ? payload.homeVisibleDeviceIds : [];
     const panelName = payload && typeof payload === 'object' ? payload.panelName : null;
