@@ -2651,6 +2651,8 @@ app.get('/api/cameras/:id/rtsp/ensure', async (req, res) => {
                 ...(ffmpegPath ? { ffmpegPath } : {}),
                 ffmpegOptions: {
                     '-stats': '',
+                    // Many cameras/firewalls break RTSP over UDP; TCP is usually more reliable.
+                    '-rtsp_transport': 'tcp',
                     '-r': 25,
                     // Many RTSP sources include audio; drop it for the browser preview.
                     '-an': '',
