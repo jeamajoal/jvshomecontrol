@@ -444,25 +444,34 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
     const segmentPattern = path.join(dir, 'seg_%d.ts');
 
     // Good defaults for compatibility and quality.
+    // - Generate sane timestamps even if the RTSP source has broken/non-monotonic PTS.
     // - Transcode to H.264 yuv420p for broad playback support.
     // - Use small segments/list size to keep latency reasonable.
     const args = [
+        // Make RTSP sources with bad/missing timestamps behave.
+        '-fflags', '+genpts',
+        '-use_wallclock_as_timestamps', '1',
+        '-avoid_negative_ts', 'make_zero',
         '-rtsp_transport', 'tcp',
         '-i', streamUrl,
         '-an',
         '-sn',
         '-dn',
         '-c:v', 'libx264',
+        '-tune', 'zerolatency',
         '-preset', 'veryfast',
         '-crf', String(process.env.RTSP_HLS_CRF || '20'),
         '-pix_fmt', 'yuv420p',
         '-g', String(process.env.RTSP_HLS_GOP || (RTSP_HLS_SEGMENT_SECONDS * 25)),
         '-keyint_min', String(process.env.RTSP_HLS_GOP || (RTSP_HLS_SEGMENT_SECONDS * 25)),
         '-sc_threshold', '0',
+        // Force periodic keyframes so HLS segments/playlist appear quickly.
+        '-force_key_frames', `expr:gte(t,n_forced*${RTSP_HLS_SEGMENT_SECONDS})`,
         '-f', 'hls',
         '-hls_time', String(RTSP_HLS_SEGMENT_SECONDS),
         '-hls_list_size', String(RTSP_HLS_LIST_SIZE),
         '-hls_flags', 'delete_segments+append_list+omit_endlist',
+        '-reset_timestamps', '1',
         '-hls_segment_filename', segmentPattern,
         playlistPath,
     ];
@@ -2755,7 +2764,17 @@ app.get('/api/cameras/:id/hls/ensure', async (req, res) => {
         const deadline = Date.now() + RTSP_HLS_STARTUP_TIMEOUT_MS;
         while (Date.now() < deadline) {
             if (fs.existsSync(state.playlistPath)) break;
+            if (state.ffmpeg && state.ffmpeg.exitCode !== null) break;
             await new Promise((r) => setTimeout(r, 150));
+        }
+
+        if (state.ffmpeg && state.ffmpeg.exitCode !== null && !fs.existsSync(state.playlistPath)) {
+            return res.status(502).json({
+                ok: false,
+                error: 'hls_ffmpeg_exited',
+                exitCode: state.ffmpeg.exitCode,
+                lastError: state.lastError || null,
+            });
         }
 
         if (!fs.existsSync(state.playlistPath)) {
