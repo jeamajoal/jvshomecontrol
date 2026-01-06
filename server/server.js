@@ -91,6 +91,9 @@ const ALLOWED_TOLERANCE_COLOR_IDS = new Set([
 const DEFAULT_ACCENT_COLOR_ID = 'neon-blue';
 const ALLOWED_ACCENT_COLOR_IDS = new Set(Array.from(ALLOWED_TOLERANCE_COLOR_IDS).filter((id) => id !== 'none'));
 
+const HOME_TOP_ROW_CARD_IDS = Object.freeze(['time', 'outside', 'inside', 'home']);
+const ALLOWED_HOME_TOP_ROW_CARD_IDS = new Set(HOME_TOP_ROW_CARD_IDS);
+
 const normalizeAccentColorId = (raw) => {
     const v = String(raw ?? '').trim();
     if (!v) return DEFAULT_ACCENT_COLOR_ID;
@@ -1327,6 +1330,22 @@ function normalizePersistedConfig(raw) {
     // Currently used by the Home panel to scale cards/controls for different screens.
     const cardScalePct = clampInt(uiRaw.cardScalePct, 50, 200, 100);
 
+    // Home top row visibility + scale.
+    const homeTopRowEnabled = uiRaw.homeTopRowEnabled !== false;
+    const homeTopRowScalePct = clampInt(uiRaw.homeTopRowScalePct, 50, 120, 100);
+    const hasHomeTopRowCards = Object.prototype.hasOwnProperty.call(uiRaw, 'homeTopRowCards');
+    const homeTopRowCards = (() => {
+        const raw = hasHomeTopRowCards
+            ? (Array.isArray(uiRaw.homeTopRowCards) ? uiRaw.homeTopRowCards : [])
+            : HOME_TOP_ROW_CARD_IDS;
+        const filtered = raw
+            .map((v) => String(v || '').trim())
+            .filter((v) => v && ALLOWED_HOME_TOP_ROW_CARD_IDS.has(v));
+        const uniq = Array.from(new Set(filtered));
+        if (uniq.length) return uniq;
+        return hasHomeTopRowCards ? [] : HOME_TOP_ROW_CARD_IDS;
+    })();
+
     // Home room grid columns at XL breakpoint (>= 1280px).
     // Default matches current layout (3 columns).
     const homeRoomColumnsXl = clampInt(uiRaw.homeRoomColumnsXl, 1, 6, 3);
@@ -1542,6 +1561,23 @@ function normalizePersistedConfig(raw) {
         const pCardScalePct = Object.prototype.hasOwnProperty.call(p, 'cardScalePct')
             ? clampInt(p.cardScalePct, 50, 200, cardScalePct)
             : null;
+        const pHomeTopRowEnabled = Object.prototype.hasOwnProperty.call(p, 'homeTopRowEnabled')
+            ? (p.homeTopRowEnabled !== false)
+            : null;
+        const pHomeTopRowScalePct = Object.prototype.hasOwnProperty.call(p, 'homeTopRowScalePct')
+            ? clampInt(p.homeTopRowScalePct, 50, 120, homeTopRowScalePct)
+            : null;
+        const hasPanelHomeTopRowCards = Object.prototype.hasOwnProperty.call(p, 'homeTopRowCards');
+        const pHomeTopRowCards = hasPanelHomeTopRowCards
+            ? (() => {
+                const raw = Array.isArray(p.homeTopRowCards) ? p.homeTopRowCards : [];
+                const cards = raw
+                    .map((v) => String(v || '').trim())
+                    .filter((v) => v && ALLOWED_HOME_TOP_ROW_CARD_IDS.has(v));
+                const uniq = Array.from(new Set(cards));
+                return uniq.length ? uniq : [];
+            })()
+            : null;
         const pHomeRoomColumnsXl = Object.prototype.hasOwnProperty.call(p, 'homeRoomColumnsXl')
             ? clampInt(p.homeRoomColumnsXl, 1, 6, homeRoomColumnsXl)
             : null;
@@ -1734,6 +1770,9 @@ function normalizePersistedConfig(raw) {
             ...(pPrimaryTextSizePct !== null ? { primaryTextSizePct: pPrimaryTextSizePct } : {}),
             ...(pPrimaryTextColorId !== null ? { primaryTextColorId: pPrimaryTextColorId } : {}),
             ...(pCardScalePct !== null ? { cardScalePct: pCardScalePct } : {}),
+            ...(pHomeTopRowEnabled !== null ? { homeTopRowEnabled: pHomeTopRowEnabled } : {}),
+            ...(pHomeTopRowScalePct !== null ? { homeTopRowScalePct: pHomeTopRowScalePct } : {}),
+            ...(pHomeTopRowCards !== null ? { homeTopRowCards: pHomeTopRowCards } : {}),
             ...(pHomeRoomColumnsXl !== null ? { homeRoomColumnsXl: pHomeRoomColumnsXl } : {}),
             ...(pHomeRoomMetricColumns !== null ? { homeRoomMetricColumns: pHomeRoomMetricColumns } : {}),
             ...(pHomeRoomMetricKeys !== null ? { homeRoomMetricKeys: pHomeRoomMetricKeys } : {}),
@@ -1820,6 +1859,10 @@ function normalizePersistedConfig(raw) {
         primaryTextColorId,
         // Scale percent for UI cards/controls (used by Home fit-scale).
         cardScalePct,
+        // Home top row visibility/scale/cards.
+        homeTopRowEnabled,
+        homeTopRowScalePct,
+        homeTopRowCards,
         // Home room columns at XL breakpoint.
         homeRoomColumnsXl,
         // Home room metric sub-card columns (0=auto).
@@ -1879,6 +1922,9 @@ function ensurePanelProfileExists(panelName) {
             primaryTextSizePct: ui.primaryTextSizePct,
             primaryTextColorId: ui.primaryTextColorId,
             cardScalePct: ui.cardScalePct,
+            homeTopRowEnabled: ui.homeTopRowEnabled,
+            homeTopRowScalePct: ui.homeTopRowScalePct,
+            homeTopRowCards: Array.isArray(ui.homeTopRowCards) ? ui.homeTopRowCards : HOME_TOP_ROW_CARD_IDS,
             homeRoomColumnsXl: ui.homeRoomColumnsXl,
             homeCameraPreviewsEnabled: ui.homeCameraPreviewsEnabled,
             controlsCameraPreviewsEnabled: ui.controlsCameraPreviewsEnabled,
@@ -1939,6 +1985,9 @@ function loadPersistedConfig() {
             const hadPrimaryTextSizePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'primaryTextSizePct'));
             const hadPrimaryTextColorId = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'primaryTextColorId'));
             const hadCardScalePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'cardScalePct'));
+            const hadHomeTopRowEnabled = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeTopRowEnabled'));
+            const hadHomeTopRowScalePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeTopRowScalePct'));
+            const hadHomeTopRowCards = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeTopRowCards'));
             const hadHomeRoomColumnsXl = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeRoomColumnsXl'));
             const hadHomeRoomMetricColumns = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeRoomMetricColumns'));
             const hadHomeRoomMetricKeys = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeRoomMetricKeys'));
@@ -1948,7 +1997,7 @@ function loadPersistedConfig() {
             const hadIconSizePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'iconSizePct'));
             persistedConfig = normalizePersistedConfig(raw);
             // If we added new fields for back-compat, write them back once.
-            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadColorizeHomeValuesOpacityPct || !hadClimateToleranceColors || !hadSensorIndicatorColors || !hadHomeBackground || !hadCardOpacityScalePct || !hadBlurScalePct || !hadSecondaryTextOpacityPct || !hadSecondaryTextSizePct || !hadSecondaryTextColorId || !hadPrimaryTextOpacityPct || !hadPrimaryTextSizePct || !hadPrimaryTextColorId || !hadCardScalePct || !hadHomeRoomColumnsXl || !hadHomeRoomMetricColumns || !hadHomeRoomMetricKeys || !hadGlowColorId || !hadIconColorId || !hadIconOpacityPct || !hadIconSizePct) {
+            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadColorizeHomeValuesOpacityPct || !hadClimateToleranceColors || !hadSensorIndicatorColors || !hadHomeBackground || !hadCardOpacityScalePct || !hadBlurScalePct || !hadSecondaryTextOpacityPct || !hadSecondaryTextSizePct || !hadSecondaryTextColorId || !hadPrimaryTextOpacityPct || !hadPrimaryTextSizePct || !hadPrimaryTextColorId || !hadCardScalePct || !hadHomeTopRowEnabled || !hadHomeTopRowScalePct || !hadHomeTopRowCards || !hadHomeRoomColumnsXl || !hadHomeRoomMetricColumns || !hadHomeRoomMetricKeys || !hadGlowColorId || !hadIconColorId || !hadIconOpacityPct || !hadIconSizePct) {
                 lastPersistedSerialized = stableStringify(raw);
                 let label = 'migrate-ui-sensor-indicator-colors';
                 if (!hadAlertSounds) label = 'migrate-ui-alert-sounds';
@@ -1966,6 +2015,9 @@ function loadPersistedConfig() {
                 else if (!hadPrimaryTextSizePct) label = 'migrate-ui-primary-text-size';
                 else if (!hadPrimaryTextColorId) label = 'migrate-ui-primary-text-color';
                 else if (!hadCardScalePct) label = 'migrate-ui-card-scale';
+                else if (!hadHomeTopRowEnabled) label = 'migrate-ui-home-top-row-enabled';
+                else if (!hadHomeTopRowScalePct) label = 'migrate-ui-home-top-row-scale';
+                else if (!hadHomeTopRowCards) label = 'migrate-ui-home-top-row-cards';
                 else if (!hadHomeRoomColumnsXl) label = 'migrate-ui-home-room-columns';
                 else if (!hadHomeRoomMetricColumns) label = 'migrate-ui-home-room-metric-columns';
                 else if (!hadHomeRoomMetricKeys) label = 'migrate-ui-home-room-metric-keys';
@@ -4706,6 +4758,107 @@ app.put('/api/ui/card-opacity-scale', (req, res) => {
             cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
             cardScalePct: persistedConfig?.ui?.cardScalePct,
             homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update Home top row visibility/scale/cards (per panel profile aware).
+// Expected payload: { homeTopRowEnabled?: boolean, homeTopRowScalePct?: number(50-120), homeTopRowCards?: string[], panelName?: string }
+app.put('/api/ui/home-top-row', (req, res) => {
+    const hasEnabled = Object.prototype.hasOwnProperty.call(req.body || {}, 'homeTopRowEnabled');
+    const hasScale = Object.prototype.hasOwnProperty.call(req.body || {}, 'homeTopRowScalePct');
+    const hasCards = Object.prototype.hasOwnProperty.call(req.body || {}, 'homeTopRowCards');
+
+    if (!hasEnabled && !hasScale && !hasCards) {
+        return res.status(400).json({ error: 'Missing homeTopRowEnabled/homeTopRowScalePct/homeTopRowCards' });
+    }
+
+    const nextEnabled = hasEnabled ? req.body.homeTopRowEnabled === true : null;
+
+    const nextScale = (() => {
+        if (!hasScale) return null;
+        const raw = req.body.homeTopRowScalePct;
+        const num = (typeof raw === 'number') ? raw : Number(raw);
+        if (!Number.isFinite(num)) return 'err';
+        return Math.max(50, Math.min(120, Math.round(num)));
+    })();
+    if (nextScale === 'err') {
+        return res.status(400).json({ error: 'Invalid homeTopRowScalePct (50-120)' });
+    }
+
+    const nextCards = (() => {
+        if (!hasCards) return null;
+        const raw = Array.isArray(req.body.homeTopRowCards) ? req.body.homeTopRowCards : [];
+        const filtered = raw
+            .map((v) => String(v || '').trim())
+            .filter((v) => v && ALLOWED_HOME_TOP_ROW_CARD_IDS.has(v));
+        return Array.from(new Set(filtered));
+    })();
+
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        const prevProfile = (persistedConfig?.ui?.panelProfiles && persistedConfig.ui.panelProfiles[ensured])
+            ? persistedConfig.ui.panelProfiles[ensured]
+            : {};
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...prevProfile,
+                        ...(nextEnabled !== null ? { homeTopRowEnabled: nextEnabled } : {}),
+                        ...(nextScale !== null ? { homeTopRowScalePct: nextScale } : {}),
+                        ...(nextCards !== null ? { homeTopRowCards: nextCards } : {}),
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-home-top-row-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            ...(nextEnabled !== null ? { homeTopRowEnabled: nextEnabled } : {}),
+            ...(nextScale !== null ? { homeTopRowScalePct: nextScale } : {}),
+            ...(nextCards !== null ? { homeTopRowCards: nextCards } : {}),
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-home-top-row');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            homeTopRowEnabled: persistedConfig?.ui?.homeTopRowEnabled,
+            homeTopRowScalePct: persistedConfig?.ui?.homeTopRowScalePct,
+            homeTopRowCards: persistedConfig?.ui?.homeTopRowCards,
             panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };

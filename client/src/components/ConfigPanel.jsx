@@ -8,6 +8,8 @@ import {
 } from '../toleranceColors';
 import { getUiScheme } from '../uiScheme';
 
+const HOME_TOP_ROW_CARD_IDS = ['time', 'outside', 'inside', 'home'];
+
 async function saveAllowlists(payload) {
   const res = await fetch(`${API_HOST}/api/ui/allowed-device-ids`, {
     method: 'PUT',
@@ -424,6 +426,25 @@ async function saveCardScalePct(cardScalePct, panelName) {
   return res.json().catch(() => ({}));
 }
 
+async function saveHomeTopRow(payload, panelName) {
+  const hasPayload = payload && typeof payload === 'object';
+  const res = await fetch(`${API_HOST}/api/ui/home-top-row`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...(hasPayload && Object.prototype.hasOwnProperty.call(payload, 'homeTopRowEnabled') ? { homeTopRowEnabled: payload.homeTopRowEnabled === true } : {}),
+      ...(hasPayload && Object.prototype.hasOwnProperty.call(payload, 'homeTopRowScalePct') ? { homeTopRowScalePct: payload.homeTopRowScalePct } : {}),
+      ...(hasPayload && Object.prototype.hasOwnProperty.call(payload, 'homeTopRowCards') ? { homeTopRowCards: Array.isArray(payload.homeTopRowCards) ? payload.homeTopRowCards : [] } : {}),
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Home top row save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveHomeRoomColumnsXl(homeRoomColumnsXl, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/home-room-columns-xl`, {
     method: 'PUT',
@@ -805,6 +826,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const iconOpacitySave = useAsyncSave((iconOpacityPct) => saveIconOpacityPct(iconOpacityPct, selectedPanelName || null));
   const iconSizeSave = useAsyncSave((iconSizePct) => saveIconSizePct(iconSizePct, selectedPanelName || null));
   const cardScaleSave = useAsyncSave((cardScalePct) => saveCardScalePct(cardScalePct, selectedPanelName || null));
+  const homeTopRowSave = useAsyncSave((payload) => saveHomeTopRow(payload, selectedPanelName || null));
   const homeRoomColsSave = useAsyncSave((homeRoomColumnsXl) => saveHomeRoomColumnsXl(homeRoomColumnsXl, selectedPanelName || null));
   const homeRoomMetricColsSave = useAsyncSave((homeRoomMetricColumns) => saveHomeRoomMetricColumns(homeRoomMetricColumns, selectedPanelName || null));
   const homeRoomMetricKeysSave = useAsyncSave((homeRoomMetricKeys) => saveHomeRoomMetricKeys(homeRoomMetricKeys, selectedPanelName || null));
@@ -1014,6 +1036,29 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return Math.max(50, Math.min(200, Math.round(raw)));
   }, [config?.ui?.cardScalePct]);
 
+  const homeTopRowEnabledFromConfig = config?.ui?.homeTopRowEnabled !== false;
+
+  const homeTopRowScaleFromConfig = useMemo(() => {
+    const raw = Number(config?.ui?.homeTopRowScalePct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(50, Math.min(120, Math.round(raw)));
+  }, [config?.ui?.homeTopRowScalePct]);
+
+  const homeTopRowCardsFromConfig = useMemo(() => {
+    const uiObj = (config?.ui && typeof config.ui === 'object') ? config.ui : {};
+    const hasCards = Object.prototype.hasOwnProperty.call(uiObj, 'homeTopRowCards');
+    const raw = hasCards
+      ? (Array.isArray(uiObj.homeTopRowCards) ? uiObj.homeTopRowCards : [])
+      : HOME_TOP_ROW_CARD_IDS;
+    const allowed = new Set(HOME_TOP_ROW_CARD_IDS);
+    const cards = raw
+      .map((v) => String(v || '').trim())
+      .filter((v) => v && allowed.has(v));
+    const uniq = Array.from(new Set(cards));
+    if (hasCards) return uniq;
+    return uniq.length ? uniq : HOME_TOP_ROW_CARD_IDS;
+  }, [config?.ui?.homeTopRowCards]);
+
   const homeRoomColumnsXlFromConfig = useMemo(() => {
     const raw = Number(config?.ui?.homeRoomColumnsXl);
     if (!Number.isFinite(raw)) return 3;
@@ -1121,6 +1166,14 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [cardScaleDirty, setCardScaleDirty] = useState(false);
   const [cardScaleError, setCardScaleError] = useState(null);
 
+  const [homeTopRowDraft, setHomeTopRowDraft] = useState(() => ({
+    enabled: true,
+    scalePct: 100,
+    cards: HOME_TOP_ROW_CARD_IDS,
+  }));
+  const [homeTopRowDirty, setHomeTopRowDirty] = useState(false);
+  const [homeTopRowError, setHomeTopRowError] = useState(null);
+
   const [homeRoomColumnsXlDraft, setHomeRoomColumnsXlDraft] = useState(() => 3);
   const [homeRoomColumnsXlDirty, setHomeRoomColumnsXlDirty] = useState(false);
   const [homeRoomColumnsXlError, setHomeRoomColumnsXlError] = useState(null);
@@ -1201,6 +1254,16 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   }, [selectedPanelName]);
 
   useEffect(() => {
+    setHomeTopRowError(null);
+    setHomeTopRowDirty(false);
+    setHomeTopRowDraft({
+      enabled: homeTopRowEnabledFromConfig,
+      scalePct: homeTopRowScaleFromConfig,
+      cards: homeTopRowCardsFromConfig,
+    });
+  }, [selectedPanelName, homeTopRowEnabledFromConfig, homeTopRowScaleFromConfig, homeTopRowCardsFromConfig]);
+
+  useEffect(() => {
     if (cardOpacityScaleDirty) return;
     setCardOpacityScaleDraft(cardOpacityScaleFromConfig);
   }, [cardOpacityScaleDirty, cardOpacityScaleFromConfig]);
@@ -1264,6 +1327,15 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     if (cardScaleDirty) return;
     setCardScaleDraft(cardScaleFromConfig);
   }, [cardScaleDirty, cardScaleFromConfig]);
+
+  useEffect(() => {
+    if (homeTopRowDirty) return;
+    setHomeTopRowDraft({
+      enabled: homeTopRowEnabledFromConfig,
+      scalePct: homeTopRowScaleFromConfig,
+      cards: homeTopRowCardsFromConfig,
+    });
+  }, [homeTopRowDirty, homeTopRowEnabledFromConfig, homeTopRowScaleFromConfig, homeTopRowCardsFromConfig]);
 
   useEffect(() => {
     if (homeRoomColumnsXlDirty) return;
@@ -1589,6 +1661,40 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
     return () => clearTimeout(t);
   }, [connected, cardScaleDirty, cardScaleDraft]);
+
+  // Autosave: Home top row.
+  useEffect(() => {
+    if (!connected) return;
+    if (!homeTopRowDirty) return;
+
+    const t = setTimeout(async () => {
+      setHomeTopRowError(null);
+      try {
+        const scaleRaw = Number(homeTopRowDraft.scalePct);
+        const homeTopRowScalePct = Number.isFinite(scaleRaw)
+          ? Math.max(50, Math.min(120, Math.round(scaleRaw)))
+          : 100;
+
+        const allowed = new Set(HOME_TOP_ROW_CARD_IDS);
+        const cards = Array.from(new Set(
+          (Array.isArray(homeTopRowDraft.cards) ? homeTopRowDraft.cards : [])
+            .map((c) => String(c || '').trim())
+            .filter((c) => c && allowed.has(c)),
+        ));
+
+        await homeTopRowSave.run({
+          homeTopRowEnabled: homeTopRowDraft.enabled === true,
+          homeTopRowScalePct,
+          homeTopRowCards: cards,
+        });
+        setHomeTopRowDirty(false);
+      } catch (err) {
+        setHomeTopRowError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, homeTopRowDirty, homeTopRowDraft, homeTopRowSave]);
 
   // Autosave: Home room columns (XL).
   useEffect(() => {
@@ -3551,6 +3657,137 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
               {cardScaleError ? (
                 <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {cardScaleError}</div>
+              ) : null}
+            </div>
+
+            <div className="utility-group p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                    Home top row
+                  </div>
+                  <div className="mt-1 text-xs text-white/45">
+                    Show or scale the first row on Home. Applies per panel profile.
+                  </div>
+                </div>
+
+                <label className="inline-flex items-center gap-2 text-sm text-white/80">
+                  <input
+                    type="checkbox"
+                    checked={homeTopRowDraft.enabled === true}
+                    disabled={!connected}
+                    onChange={(e) => {
+                      setHomeTopRowError(null);
+                      setHomeTopRowDirty(true);
+                      setHomeTopRowDraft((prev) => ({ ...prev, enabled: e.target.checked }));
+                    }}
+                    className="h-4 w-4 rounded border-white/30 bg-black/50"
+                  />
+                  <span>Show</span>
+                </label>
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-white/10">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                      Scale
+                    </div>
+                    <div className="mt-1 text-xs text-white/45">
+                      Shrink the row (50–120%). Lower values reduce the height.
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={50}
+                      max={120}
+                      step={1}
+                      value={homeTopRowDraft.scalePct}
+                      disabled={!connected}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        const next = Number.isFinite(n) ? Math.max(50, Math.min(120, Math.round(n))) : 100;
+                        setHomeTopRowError(null);
+                        setHomeTopRowDirty(true);
+                        setHomeTopRowDraft((prev) => ({ ...prev, scalePct: next }));
+                      }}
+                      className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    />
+                    <div className="text-xs text-white/45">%</div>
+                  </div>
+                </div>
+
+                <input
+                  type="range"
+                  min={50}
+                  max={120}
+                  step={1}
+                  value={homeTopRowDraft.scalePct}
+                  disabled={!connected}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    const next = Number.isFinite(n) ? Math.max(50, Math.min(120, Math.round(n))) : 100;
+                    setHomeTopRowError(null);
+                    setHomeTopRowDirty(true);
+                    setHomeTopRowDraft((prev) => ({ ...prev, scalePct: next }));
+                  }}
+                  className="mt-3 w-full"
+                />
+              </div>
+
+              <div className="mt-4">
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                  Cards
+                </div>
+                <div className="mt-2 flex flex-wrap gap-3">
+                  {HOME_TOP_ROW_CARD_IDS.map((id) => {
+                    const labelMap = {
+                      time: 'Time & date',
+                      outside: 'Outside',
+                      inside: 'Inside',
+                      home: 'Home status',
+                    };
+                    const checked = Array.isArray(homeTopRowDraft.cards)
+                      ? homeTopRowDraft.cards.includes(id)
+                      : false;
+                    return (
+                      <label key={id} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={!connected}
+                          onChange={(e) => {
+                            setHomeTopRowError(null);
+                            setHomeTopRowDirty(true);
+                            setHomeTopRowDraft((prev) => {
+                              const set = new Set(Array.isArray(prev.cards) ? prev.cards : []);
+                              if (e.target.checked) set.add(id);
+                              else set.delete(id);
+                              return { ...prev, cards: Array.from(set) };
+                            });
+                          }}
+                          className="h-4 w-4 rounded border-white/30 bg-black/50"
+                        />
+                        <span>{labelMap[id] || id}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="text-xs text-white/45">
+                  {homeTopRowDirty ? 'Pending changes…' : 'Saved'}
+                </div>
+                <div className="text-xs text-white/45">
+                  {statusText(homeTopRowSave.status)}
+                </div>
+              </div>
+
+              {homeTopRowError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {homeTopRowError}</div>
               ) : null}
             </div>
 
