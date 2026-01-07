@@ -4777,7 +4777,7 @@ app.put('/api/ui/home-top-row', (req, res) => {
         return res.status(400).json({ error: 'Missing homeTopRowEnabled/homeTopRowScalePct/homeTopRowCards' });
     }
 
-    const nextEnabled = hasEnabled ? req.body.homeTopRowEnabled !== false : null;
+    const nextEnabled = hasEnabled ? req.body.homeTopRowEnabled === true : null;
 
     const nextScale = (() => {
         if (!hasScale) return null;
