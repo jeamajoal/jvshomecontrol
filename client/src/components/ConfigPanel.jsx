@@ -728,7 +728,8 @@ const asNumber = (value) => {
   return Number.isFinite(num) ? num : null;
 };
 
-const RTSP_REDACTED_PATTERN = /:\/\/[^/]*\*\*\*@/i;
+const RTSP_REDACTED_PLACEHOLDER = '***';
+const RTSP_REDACTED_PATTERN = new RegExp(`:\\/\\/[^/]*${RTSP_REDACTED_PLACEHOLDER}@`, 'i');
 
 const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: connectedProp, onOpenEvents }) => {
   const ctx = useAppState();

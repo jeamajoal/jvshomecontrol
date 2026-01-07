@@ -416,19 +416,20 @@ const RTSP_HLS_DEBUG = (() => {
 })();
 
 const hlsStreams = new Map(); // cameraId -> { dir, playlistPath, ffmpeg, lastError, stderrTail, startedAtMs, ffmpegArgs }
-const RTSP_REDACTED_PATTERN = /:\/\/[^/]*\*\*\*@/i;
+const RTSP_REDACTED_PLACEHOLDER = '***';
+const RTSP_REDACTED_PATTERN = new RegExp(`:\\/\\/[^/]*${RTSP_REDACTED_PLACEHOLDER}@`, 'i');
 
 function redactRtspUrl(url) {
     try {
         const u = new URL(String(url));
         if (u.username || u.password) {
             u.username = u.username ? 'REDACTED' : '';
-            u.password = u.password ? 'REDACTED' : '';
+            u.password = u.password ? RTSP_REDACTED_PLACEHOLDER : '';
         }
         return u.toString();
     } catch {
         // Fallback: strip user:pass@ if present.
-        return String(url || '').replace(/rtsp:\/\/[^@/]+@/i, 'rtsp://REDACTED@');
+        return String(url || '').replace(/rtsp:\/\/[^@/]+@/i, `rtsp://${RTSP_REDACTED_PLACEHOLDER}@`);
     }
 }
 
