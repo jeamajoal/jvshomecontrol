@@ -1057,7 +1057,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     const uniq = Array.from(new Set(cards));
     if (hasCards) return uniq;
     return uniq.length ? uniq : HOME_TOP_ROW_CARD_IDS;
-  }, [config?.ui?.homeTopRowCards]);
+  }, [config?.ui]);
 
   const homeRoomColumnsXlFromConfig = useMemo(() => {
     const raw = Number(config?.ui?.homeRoomColumnsXl);
