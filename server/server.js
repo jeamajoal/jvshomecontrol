@@ -3584,7 +3584,18 @@ app.put('/api/ui/cameras/:id', (req, res) => {
 
     if (Object.prototype.hasOwnProperty.call(rawCam, 'rtsp')) {
         const rtspRaw = (rawCam.rtsp && typeof rawCam.rtsp === 'object') ? rawCam.rtsp : {};
-        const url = String(rtspRaw.url || '').trim();
+        const prevRtsp = (prev.rtsp && typeof prev.rtsp === 'object') ? prev.rtsp : {};
+        const prevRtspUrl = String(prevRtsp.url || '').trim();
+        let url = String(rtspRaw.url || '').trim();
+
+        // Allow redacted RTSP URLs from the Settings UI to keep the stored credentials.
+        if (url && prevRtspUrl) {
+            const redactedPrev = redactUrlPassword(prevRtspUrl);
+            if (url === redactedPrev || url.includes('***')) {
+                url = prevRtspUrl;
+            }
+        }
+
         if (url) {
             next.rtsp = { url };
         } else {
