@@ -416,6 +416,7 @@ const RTSP_HLS_DEBUG = (() => {
 })();
 
 const hlsStreams = new Map(); // cameraId -> { dir, playlistPath, ffmpeg, lastError, stderrTail, startedAtMs, ffmpegArgs }
+// Redaction placeholder is kept in sync with the client Settings UI (ConfigPanel).
 const RTSP_REDACTED_PLACEHOLDER = '***';
 const RTSP_REDACTED_PATTERN = new RegExp(`:\\/\\/[^/]*${RTSP_REDACTED_PLACEHOLDER}@`, 'i');
 
@@ -423,7 +424,7 @@ function redactRtspUrl(url) {
     try {
         const u = new URL(String(url));
         if (u.username || u.password) {
-            u.username = u.username ? 'REDACTED' : '';
+            u.username = u.username ? RTSP_REDACTED_PLACEHOLDER : '';
             u.password = u.password ? RTSP_REDACTED_PLACEHOLDER : '';
         }
         return u.toString();

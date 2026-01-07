@@ -728,6 +728,7 @@ const asNumber = (value) => {
   return Number.isFinite(num) ? num : null;
 };
 
+// Keep in sync with server RTSP redaction to preserve credentials when editing.
 const RTSP_REDACTED_PLACEHOLDER = '***';
 const RTSP_REDACTED_PATTERN = new RegExp(`:\\/\\/[^/]*${RTSP_REDACTED_PLACEHOLDER}@`, 'i');
 
