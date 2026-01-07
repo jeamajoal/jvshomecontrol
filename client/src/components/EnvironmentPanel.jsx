@@ -1503,7 +1503,11 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
 
           <div
             className="mt-4"
-            style={homeTopRowEnabled && topRowCards.length ? { marginTop: `${Math.max(8, Math.round(16 * homeTopRowScale))}px` } : undefined}
+            style={
+              homeTopRowEnabled && topRowCards.length
+                ? { marginTop: `${Math.max(0.5, homeTopRowScale)}rem` }
+                : undefined
+            }
           >
             {topCameras.length ? (
               <div className="mb-4">
