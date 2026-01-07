@@ -3591,7 +3591,8 @@ app.put('/api/ui/cameras/:id', (req, res) => {
         // Allow redacted RTSP URLs from the Settings UI to keep the stored credentials.
         if (url && prevRtspUrl) {
             const redactedPrev = redactUrlPassword(prevRtspUrl);
-            if (url === redactedPrev || url.includes('***')) {
+            const looksRedacted = /:\/\/[^/]*\*\*\*@/i.test(url);
+            if (url === redactedPrev || looksRedacted) {
                 url = prevRtspUrl;
             }
         }

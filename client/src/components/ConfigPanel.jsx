@@ -4858,7 +4858,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
                 <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">RTSP</div>
                 <div className="mt-1 text-xs text-white/45">Streams via server-side RTSP → HLS (ffmpeg required on the server).</div>
-                {cameraFormMode === 'edit' && /\*{3}/.test(String(cameraForm.rtspUrl || '')) ? (
+                {cameraFormMode === 'edit' && /:\/\/[^/]*\*\*\*@/i.test(String(cameraForm.rtspUrl || '')) ? (
                   <div className="mt-1 text-[11px] text-white/45">
                     Password is hidden; leave unchanged to keep the stored credentials.
                   </div>
