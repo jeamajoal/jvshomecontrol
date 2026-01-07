@@ -416,6 +416,7 @@ const RTSP_HLS_DEBUG = (() => {
 })();
 
 const hlsStreams = new Map(); // cameraId -> { dir, playlistPath, ffmpeg, lastError, stderrTail, startedAtMs, ffmpegArgs }
+const RTSP_REDACTED_PATTERN = /:\/\/[^/]*\*\*\*@/i;
 
 function redactRtspUrl(url) {
     try {
@@ -3591,7 +3592,7 @@ app.put('/api/ui/cameras/:id', (req, res) => {
         // Allow redacted RTSP URLs from the Settings UI to keep the stored credentials.
         if (url && prevRtspUrl) {
             const redactedPrev = redactUrlPassword(prevRtspUrl);
-            const looksRedacted = /:\/\/[^/]*\*\*\*@/i.test(url);
+            const looksRedacted = RTSP_REDACTED_PATTERN.test(url);
             if (url === redactedPrev || looksRedacted) {
                 url = prevRtspUrl;
             }
