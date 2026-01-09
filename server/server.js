@@ -592,7 +592,7 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
         '-f', 'hls',
         '-hls_time', String(RTSP_HLS_SEGMENT_SECONDS),
         '-hls_list_size', String(RTSP_HLS_LIST_SIZE),
-        '-hls_flags', 'delete_segments+append_list+omit_endlist',
+        '-hls_flags', 'delete_segments+omit_endlist',
         '-hls_segment_filename', segmentPattern,
         playlistPath,
     ];
