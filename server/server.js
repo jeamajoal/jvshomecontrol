@@ -415,7 +415,54 @@ const RTSP_HLS_DEBUG = (() => {
     return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
 })();
 
-const hlsStreams = new Map(); // cameraId -> { dir, playlistPath, ffmpeg, lastError, stderrTail, startedAtMs, ffmpegArgs }
+// Health monitoring and recovery configuration
+const RTSP_HLS_HEALTH_CHECK_INTERVAL_MS = (() => {
+    const raw = String(process.env.RTSP_HLS_HEALTH_CHECK_INTERVAL_MS || '').trim();
+    const parsed = raw ? Number(raw) : 10000;
+    if (!Number.isFinite(parsed)) return 10000;
+    return Math.max(5000, Math.min(60000, Math.floor(parsed)));
+})();
+
+const RTSP_HLS_MAX_SEGMENT_AGE_SECONDS = (() => {
+    const raw = String(process.env.RTSP_HLS_MAX_SEGMENT_AGE_SECONDS || '').trim();
+    const parsed = raw ? Number(raw) : 30;
+    if (!Number.isFinite(parsed)) return 30;
+    return Math.max(10, Math.min(300, Math.floor(parsed)));
+})();
+
+const RTSP_HLS_STALE_THRESHOLD_SECONDS = (() => {
+    const raw = String(process.env.RTSP_HLS_STALE_THRESHOLD_SECONDS || '').trim();
+    const parsed = raw ? Number(raw) : 15;
+    if (!Number.isFinite(parsed)) return 15;
+    return Math.max(5, Math.min(60, Math.floor(parsed)));
+})();
+
+const RTSP_HLS_MAX_RESTART_ATTEMPTS = (() => {
+    const raw = String(process.env.RTSP_HLS_MAX_RESTART_ATTEMPTS || '').trim();
+    const parsed = raw ? Number(raw) : 5;
+    if (!Number.isFinite(parsed)) return 5;
+    return Math.max(1, Math.min(20, Math.floor(parsed)));
+})();
+
+const RTSP_HLS_RESTART_BACKOFF_MS = (() => {
+    const raw = String(process.env.RTSP_HLS_RESTART_BACKOFF_MS || '').trim();
+    const parsed = raw ? Number(raw) : 2000;
+    if (!Number.isFinite(parsed)) return 2000;
+    return Math.max(1000, Math.min(30000, Math.floor(parsed)));
+})();
+
+const RTSP_HLS_CLEANUP_ON_SHUTDOWN = (() => {
+    const raw = String(process.env.RTSP_HLS_CLEANUP_ON_SHUTDOWN || '').trim().toLowerCase();
+    return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+})();
+
+// Extended stream state tracking
+// cameraId -> { 
+//   dir, playlistPath, ffmpeg, lastError, stderrTail, startedAtMs, ffmpegArgs,
+//   lastSegmentTimeMs, restartAttempts, currentBackoffMs, healthStatus, 
+//   lastSuccessfulSegmentMs, totalRestarts, streamUrl, ffmpegPath
+// }
+const hlsStreams = new Map();
 // Redaction placeholder is kept in sync with the client Settings UI (ConfigPanel).
 const RTSP_REDACTED_PLACEHOLDER = '***';
 const RTSP_REDACTED_PATTERN = new RegExp(`:\\/\\/[^/]*${RTSP_REDACTED_PLACEHOLDER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}@`, 'i');
@@ -551,12 +598,21 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
 
     const outputCheck = verifyHlsOutputWritable(dir, playlistPath);
     if (outputCheck) {
+        const prevState = existing || {};
         return {
             dir,
             playlistPath,
             ffmpeg: null,
             lastError: `HLS output not writable: ${outputCheck}`,
             startedAtMs: Date.now(),
+            lastSegmentTimeMs: null,
+            restartAttempts: prevState.restartAttempts || 0,
+            currentBackoffMs: prevState.currentBackoffMs || RTSP_HLS_RESTART_BACKOFF_MS,
+            healthStatus: 'dead',
+            lastSuccessfulSegmentMs: null,
+            totalRestarts: prevState.totalRestarts || 0,
+            streamUrl,
+            ffmpegPath,
         };
     }
 
@@ -600,6 +656,11 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
     const bin = ffmpegPath || 'ffmpeg';
     const cp = require('child_process').spawn(bin, args, { detached: false });
 
+    // Preserve restart tracking if this is a restart
+    const prevState = existing || {};
+    const restartAttempts = (prevState.restartAttempts || 0);
+    const totalRestarts = (prevState.totalRestarts || 0);
+
     const state = {
         dir,
         playlistPath,
@@ -608,6 +669,15 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
         stderrTail: [],
         startedAtMs: Date.now(),
         ffmpegArgs: args,
+        // Enhanced state tracking for health monitoring
+        lastSegmentTimeMs: null,
+        restartAttempts,
+        currentBackoffMs: prevState.currentBackoffMs || RTSP_HLS_RESTART_BACKOFF_MS,
+        healthStatus: 'starting', // starting, healthy, stale, dead, restarting
+        lastSuccessfulSegmentMs: null,
+        totalRestarts,
+        streamUrl,
+        ffmpegPath,
     };
     hlsStreams.set(id, state);
 
@@ -640,6 +710,237 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
     }
 
     return state;
+}
+
+// Health monitoring and auto-recovery functions
+
+function getNewestSegmentTimeMs(dir) {
+    // Returns the mtime of the newest segment file in the directory
+    try {
+        if (!fs.existsSync(dir)) return null;
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        let newestMs = null;
+        for (const ent of entries) {
+            if (!ent.isFile()) continue;
+            if (!/^seg_\d+\.ts$/i.test(ent.name)) continue;
+            try {
+                const fullPath = path.join(dir, ent.name);
+                const stat = fs.statSync(fullPath);
+                const mtimeMs = stat.mtimeMs;
+                if (newestMs === null || mtimeMs > newestMs) {
+                    newestMs = mtimeMs;
+                }
+            } catch {
+                // ignore
+            }
+        }
+        return newestMs;
+    } catch {
+        return null;
+    }
+}
+
+function cleanupStaleSegments(dir) {
+    // Remove segments older than MAX_SEGMENT_AGE
+    try {
+        if (!fs.existsSync(dir)) return;
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        const now = Date.now();
+        const maxAgeMs = RTSP_HLS_MAX_SEGMENT_AGE_SECONDS * 1000;
+        
+        for (const ent of entries) {
+            if (!ent.isFile()) continue;
+            if (!/^seg_\d+\.ts$/i.test(ent.name)) continue;
+            try {
+                const fullPath = path.join(dir, ent.name);
+                const stat = fs.statSync(fullPath);
+                const ageMs = now - stat.mtimeMs;
+                if (ageMs > maxAgeMs) {
+                    fs.unlinkSync(fullPath);
+                }
+            } catch {
+                // ignore
+            }
+        }
+    } catch {
+        // ignore
+    }
+}
+
+function isStreamHealthy(state) {
+    // Check if ffmpeg is running
+    if (!state.ffmpeg || state.ffmpeg.exitCode !== null) {
+        return { healthy: false, reason: 'ffmpeg_not_running' };
+    }
+    
+    // Check if we have segments
+    const newestSegmentMs = getNewestSegmentTimeMs(state.dir);
+    if (newestSegmentMs === null) {
+        // No segments yet - check startup timeout
+        const startupAge = Date.now() - state.startedAtMs;
+        if (startupAge > RTSP_HLS_STARTUP_TIMEOUT_MS) {
+            return { healthy: false, reason: 'startup_timeout' };
+        }
+        return { healthy: true, reason: 'starting' };
+    }
+    
+    // Check if segments are stale
+    const segmentAge = Date.now() - newestSegmentMs;
+    const staleThresholdMs = RTSP_HLS_STALE_THRESHOLD_SECONDS * 1000;
+    if (segmentAge > staleThresholdMs) {
+        return { healthy: false, reason: 'stale_segments' };
+    }
+    
+    return { healthy: true, reason: 'ok' };
+}
+
+function attemptRestartHlsStream(cameraId) {
+    const id = String(cameraId || '').trim();
+    const state = hlsStreams.get(id);
+    if (!state) return false;
+    
+    // Check if we've exceeded max restart attempts
+    if (state.restartAttempts >= RTSP_HLS_MAX_RESTART_ATTEMPTS) {
+        console.error(`HLS stream ${id} exceeded max restart attempts (${RTSP_HLS_MAX_RESTART_ATTEMPTS})`);
+        state.healthStatus = 'dead';
+        return false;
+    }
+    
+    // Check if we need to backoff
+    const timeSinceStart = Date.now() - state.startedAtMs;
+    if (timeSinceStart < state.currentBackoffMs) {
+        // Still in backoff period
+        return false;
+    }
+    
+    console.log(`Attempting to restart HLS stream ${id} (attempt ${state.restartAttempts + 1}/${RTSP_HLS_MAX_RESTART_ATTEMPTS})`);
+    
+    // Stop existing stream
+    try {
+        if (state.ffmpeg && typeof state.ffmpeg.kill === 'function') {
+            state.ffmpeg.kill('SIGKILL');
+        }
+    } catch {
+        // ignore
+    }
+    
+    // Clean up stale segments
+    try {
+        cleanupHlsDir(state.dir);
+    } catch {
+        // ignore
+    }
+    
+    // Update restart tracking with exponential backoff
+    const newBackoffMs = Math.min(state.currentBackoffMs * 2, 60000); // Cap at 60 seconds
+    
+    // Update state for restart
+    hlsStreams.set(id, {
+        ...state,
+        restartAttempts: state.restartAttempts + 1,
+        currentBackoffMs: newBackoffMs,
+        totalRestarts: state.totalRestarts + 1,
+        healthStatus: 'restarting',
+    });
+    
+    // Restart the stream
+    const newState = startHlsStream(id, state.streamUrl, state.ffmpegPath);
+    
+    if (newState && newState.ffmpeg) {
+        return true;
+    }
+    
+    return false;
+}
+
+function performHealthCheck() {
+    // Check all active HLS streams
+    for (const [cameraId, state] of hlsStreams.entries()) {
+        try {
+            // Update last segment time
+            const newestSegmentMs = getNewestSegmentTimeMs(state.dir);
+            if (newestSegmentMs !== null && newestSegmentMs !== state.lastSegmentTimeMs) {
+                state.lastSegmentTimeMs = newestSegmentMs;
+                state.lastSuccessfulSegmentMs = newestSegmentMs;
+                
+                // Reset restart attempts after successful streaming
+                const timeSinceLastSegment = Date.now() - newestSegmentMs;
+                if (timeSinceLastSegment < RTSP_HLS_STALE_THRESHOLD_SECONDS * 1000) {
+                    if (state.restartAttempts > 0) {
+                        console.log(`HLS stream ${cameraId} recovered, resetting restart counter`);
+                    }
+                    state.restartAttempts = 0;
+                    state.currentBackoffMs = RTSP_HLS_RESTART_BACKOFF_MS;
+                    state.healthStatus = 'healthy';
+                }
+            }
+            
+            // Clean up stale segments
+            cleanupStaleSegments(state.dir);
+            
+            // Check stream health
+            const health = isStreamHealthy(state);
+            if (!health.healthy) {
+                // Update health status
+                if (health.reason === 'stale_segments') {
+                    state.healthStatus = 'stale';
+                } else if (health.reason === 'ffmpeg_not_running') {
+                    state.healthStatus = 'dead';
+                }
+                
+                // Attempt restart if needed
+                attemptRestartHlsStream(cameraId);
+            }
+        } catch (err) {
+            console.error(`Health check error for camera ${cameraId}:`, err);
+        }
+    }
+}
+
+// Health check interval reference
+let hlsHealthCheckInterval = null;
+
+function startHlsHealthMonitoring() {
+    if (hlsHealthCheckInterval) return; // Already running
+    
+    console.log(`Starting HLS health monitoring (interval: ${RTSP_HLS_HEALTH_CHECK_INTERVAL_MS}ms)`);
+    hlsHealthCheckInterval = setInterval(() => {
+        try {
+            performHealthCheck();
+        } catch (err) {
+            console.error('HLS health check error:', err);
+        }
+    }, RTSP_HLS_HEALTH_CHECK_INTERVAL_MS);
+}
+
+function stopHlsHealthMonitoring() {
+    if (hlsHealthCheckInterval) {
+        clearInterval(hlsHealthCheckInterval);
+        hlsHealthCheckInterval = null;
+        console.log('Stopped HLS health monitoring');
+    }
+}
+
+function stopAllHlsStreams() {
+    console.log(`Stopping all HLS streams (${hlsStreams.size} active)`);
+    for (const [cameraId, state] of hlsStreams.entries()) {
+        try {
+            if (state.ffmpeg && typeof state.ffmpeg.kill === 'function') {
+                state.ffmpeg.kill('SIGKILL');
+            }
+        } catch (err) {
+            console.error(`Failed to kill ffmpeg for camera ${cameraId}:`, err);
+        }
+        
+        if (RTSP_HLS_CLEANUP_ON_SHUTDOWN) {
+            try {
+                cleanupHlsDir(state.dir);
+            } catch (err) {
+                console.error(`Failed to cleanup HLS dir for camera ${cameraId}:`, err);
+            }
+        }
+    }
+    hlsStreams.clear();
 }
 
 function buildHttpUrl(req, p) {
@@ -3019,9 +3320,19 @@ app.get('/api/cameras/:id/hls/ensure', async (req, res) => {
             });
         }
 
+        // Include health status in successful response
+        const newestSegmentMs = getNewestSegmentTimeMs(state.dir);
+        const lastSegmentAge = newestSegmentMs ? Date.now() - newestSegmentMs : null;
+        
         return res.json({
             ok: true,
             playlistUrl: buildHttpUrl(req, `/api/cameras/${encodeURIComponent(cameraId)}/hls/playlist.m3u8`),
+            health: {
+                status: state.healthStatus,
+                lastSegmentAgeSeconds: lastSegmentAge ? Math.floor(lastSegmentAge / 1000) : null,
+                restartAttempts: state.restartAttempts,
+                totalRestarts: state.totalRestarts,
+            },
         });
     } catch (err) {
         console.error('HLS ensure error', err);
@@ -3070,6 +3381,62 @@ app.get('/api/cameras/:id/hls/:segment', async (req, res) => {
     } catch (err) {
         console.error('HLS segment error', err);
         return res.status(500).send('internal_error');
+    }
+});
+
+// HLS Health Monitoring Endpoint
+app.get('/api/hls/health', (req, res) => {
+    try {
+        const streams = {};
+        const now = Date.now();
+        
+        for (const [cameraId, state] of hlsStreams.entries()) {
+            const newestSegmentMs = getNewestSegmentTimeMs(state.dir);
+            const ffmpegRunning = state.ffmpeg && state.ffmpeg.exitCode === null;
+            const uptime = now - state.startedAtMs;
+            const lastSegmentAge = newestSegmentMs ? now - newestSegmentMs : null;
+            
+            streams[cameraId] = {
+                healthStatus: state.healthStatus,
+                ffmpegRunning,
+                uptime,
+                uptimeSeconds: Math.floor(uptime / 1000),
+                startedAt: new Date(state.startedAtMs).toISOString(),
+                lastSegmentTime: newestSegmentMs ? new Date(newestSegmentMs).toISOString() : null,
+                lastSegmentAgeSeconds: lastSegmentAge ? Math.floor(lastSegmentAge / 1000) : null,
+                restartAttempts: state.restartAttempts,
+                totalRestarts: state.totalRestarts,
+                currentBackoffMs: state.currentBackoffMs,
+                maxRestartAttempts: RTSP_HLS_MAX_RESTART_ATTEMPTS,
+                lastError: state.lastError || null,
+            };
+        }
+        
+        const summary = {
+            totalStreams: hlsStreams.size,
+            healthy: Object.values(streams).filter(s => s.healthStatus === 'healthy').length,
+            stale: Object.values(streams).filter(s => s.healthStatus === 'stale').length,
+            dead: Object.values(streams).filter(s => s.healthStatus === 'dead').length,
+            starting: Object.values(streams).filter(s => s.healthStatus === 'starting').length,
+            restarting: Object.values(streams).filter(s => s.healthStatus === 'restarting').length,
+        };
+        
+        return res.json({
+            ok: true,
+            summary,
+            streams,
+            config: {
+                healthCheckIntervalMs: RTSP_HLS_HEALTH_CHECK_INTERVAL_MS,
+                maxSegmentAgeSeconds: RTSP_HLS_MAX_SEGMENT_AGE_SECONDS,
+                staleThresholdSeconds: RTSP_HLS_STALE_THRESHOLD_SECONDS,
+                maxRestartAttempts: RTSP_HLS_MAX_RESTART_ATTEMPTS,
+                restartBackoffMs: RTSP_HLS_RESTART_BACKOFF_MS,
+                cleanupOnShutdown: RTSP_HLS_CLEANUP_ON_SHUTDOWN,
+            },
+        });
+    } catch (err) {
+        console.error('HLS health endpoint error:', err);
+        return res.status(500).json({ ok: false, error: 'internal_error' });
     }
 });
 
@@ -6861,4 +7228,33 @@ server.listen(PORT, '0.0.0.0', () => {
         console.log(`HTTPS certificate: ${HTTPS_CERT_PATH}`);
         console.log('NOTE: If browsers warn, trust the cert on the client device.');
     }
+    
+    // Start HLS health monitoring
+    startHlsHealthMonitoring();
 });
+
+// Graceful shutdown handling
+function gracefulShutdown(signal) {
+    console.log(`\nReceived ${signal}, shutting down gracefully...`);
+    
+    // Stop health monitoring
+    stopHlsHealthMonitoring();
+    
+    // Stop all HLS streams
+    stopAllHlsStreams();
+    
+    // Close server
+    server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+    });
+    
+    // Force exit after timeout
+    setTimeout(() => {
+        console.error('Forced shutdown after timeout');
+        process.exit(1);
+    }, 10000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
