@@ -361,7 +361,7 @@
         "homeRoomColumnsXl": 3,
         "homeBackground": {
           "enabled": true,
-          "url": "https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=1920&q=80",
+          "url": "https://images.unsplash.com/photo-1583212292454-1fe6229603b7?w=1920&q=80",
           "opacityPct": 32
         }
       },
@@ -515,7 +515,7 @@
         "homeRoomColumnsXl": 3,
         "homeBackground": {
           "enabled": true,
-          "url": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1920&q=80",
+          "url": "https://images.unsplash.com/photo-1495567720989-cebdbdd97913?w=1920&q=80",
           "opacityPct": 28
         }
       }
