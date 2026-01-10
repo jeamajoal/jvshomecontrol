@@ -225,24 +225,39 @@ ensure_repo() {
     /usr/bin/cp -a "${backgrounds_dir}/." "${backgrounds_backup_dir}/" || true
   fi
 
-  if [[ -d "${APP_DIR}/.git" ]]; then
+  # Check if this is a valid git repository by verifying .git exists and is a directory
+  if [[ -d "${APP_DIR}/.git" ]] && git -C "${APP_DIR}" rev-parse --git-dir >/dev/null 2>&1; then
     log "Updating existing repo in ${APP_DIR}…"
     sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git fetch --prune origin && git checkout -B '${REPO_BRANCH}' 'origin/${REPO_BRANCH}' && git reset --hard 'origin/${REPO_BRANCH}' && git clean -fd"
   else
-    # If APP_DIR is not empty (common if it was previously used as a home dir and
-    # populated from /etc/skel), cloning into '.' will fail.
+    # Not a valid git repo - check if directory has contents that need to be handled
     shopt -s dotglob nullglob
     local entries
     entries=("${APP_DIR}"/*)
     shopt -u dotglob nullglob
 
     if (( ${#entries[@]} > 0 )); then
+      # Directory is not empty - determine if contents are safe to remove
       local safe_to_remove
       safe_to_remove=1
+      local has_git_dir=0
+      
       for p in "${entries[@]}"; do
-        case "$(basename "${p}")" in
-          .bashrc|.profile|.bash_logout) ;; # typical /etc/skel files
-          *) safe_to_remove=0; break ;;
+        local basename_p
+        basename_p="$(basename "${p}")"
+        case "${basename_p}" in
+          .bashrc|.profile|.bash_logout) ;; # typical /etc/skel files - safe to remove
+          .git)
+            # .git directory exists but is not a valid repo (corrupted or incomplete)
+            has_git_dir=1
+            safe_to_remove=0
+            break
+            ;;
+          *) 
+            # Any other file/directory - not safe to auto-remove
+            safe_to_remove=0
+            break
+            ;;
         esac
       done
 
@@ -250,8 +265,33 @@ ensure_repo() {
         warn "${APP_DIR} contains only default shell dotfiles; removing them so git clone can proceed…"
         /usr/bin/rm -f "${APP_DIR}/.bashrc" "${APP_DIR}/.profile" "${APP_DIR}/.bash_logout" || true
       else
-        die "Destination '${APP_DIR}' already exists and is not a git repo (.git missing) and is not empty. Move it aside or delete its contents, then re-run."
+        # Provide specific error message based on what we found
+        if (( has_git_dir == 1 )); then
+          die "Directory '${APP_DIR}' contains a .git directory but is not a valid git repository (possibly corrupted or incomplete).
+Please remove the directory contents manually:
+  sudo rm -rf '${APP_DIR}'/* '${APP_DIR}'/.* 2>/dev/null || true
+  sudo rmdir '${APP_DIR}' 2>/dev/null || true
+Then re-run this script."
+        else
+          die "Directory '${APP_DIR}' exists but is not a git repository and contains files that cannot be automatically removed.
+Found files/directories: ${entries[*]}
+Please manually move or remove the contents:
+  sudo rm -rf '${APP_DIR}'/* '${APP_DIR}'/.* 2>/dev/null || true
+  sudo rmdir '${APP_DIR}' 2>/dev/null || true
+Then re-run this script."
+        fi
       fi
+    fi
+
+    # Double-check directory is empty before cloning (defensive check)
+    shopt -s dotglob nullglob
+    entries=("${APP_DIR}"/*)
+    shopt -u dotglob nullglob
+    
+    if (( ${#entries[@]} > 0 )); then
+      die "Directory '${APP_DIR}' is not empty after cleanup. This should not happen.
+Remaining files: ${entries[*]}
+Please manually remove the directory and re-run this script."
     fi
 
     log "Cloning repo into ${APP_DIR}…"
