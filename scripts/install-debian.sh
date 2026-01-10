@@ -181,25 +181,6 @@ ensure_user() {
     "${APP_USER}"
 }
 
-get_directory_entries() {
-  # Helper function to get directory entries including hidden files
-  # Usage: local -a entries; get_directory_entries "/path/to/dir" entries
-  local dir="$1"
-  local -n result_array="$2"
-  
-  # Save current shell options to avoid side effects
-  local old_dotglob old_nullglob
-  old_dotglob=$(shopt -p dotglob || true)
-  old_nullglob=$(shopt -p nullglob || true)
-  
-  shopt -s dotglob nullglob
-  result_array=("${dir}"/*)
-  
-  # Restore original shell options
-  eval "${old_dotglob}"
-  eval "${old_nullglob}"
-}
-
 ensure_repo() {
   /usr/bin/mkdir -p "${APP_DIR}"
   /usr/bin/chown -R "${APP_USER}:${APP_GROUP}" "${APP_DIR}"
@@ -244,73 +225,25 @@ ensure_repo() {
     /usr/bin/cp -a "${backgrounds_dir}/." "${backgrounds_backup_dir}/" || true
   fi
 
-  # Check if this is a valid git repository by verifying .git exists and is a directory
+  # Check if this is a valid git repository
   if [[ -d "${APP_DIR}/.git" ]] && git -C "${APP_DIR}" rev-parse --git-dir >/dev/null 2>&1; then
     log "Updating existing repo in ${APP_DIR}…"
     sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git fetch --prune origin && git checkout -B '${REPO_BRANCH}' 'origin/${REPO_BRANCH}' && git reset --hard 'origin/${REPO_BRANCH}' && git clean -fd"
   else
-    # Not a valid git repo - check if directory has contents that need to be handled
-    local entries
-    get_directory_entries "${APP_DIR}" entries
-
-    if (( ${#entries[@]} > 0 )); then
-      # Directory is not empty - determine if contents are safe to remove
-      local safe_to_remove
-      safe_to_remove=1
-      local has_git_dir=0
-      
-      for p in "${entries[@]}"; do
-        local basename_p
-        basename_p="$(basename "${p}")"
-        case "${basename_p}" in
-          .bashrc|.profile|.bash_logout) ;; # typical /etc/skel files - safe to remove
-          .git)
-            # .git directory exists but is not a valid repo (corrupted or incomplete)
-            has_git_dir=1
-            safe_to_remove=0
-            break
-            ;;
-          *) 
-            # Any other file/directory - not safe to auto-remove
-            safe_to_remove=0
-            break
-            ;;
-        esac
-      done
-
-      if (( safe_to_remove == 1 )); then
-        warn "${APP_DIR} contains only default shell dotfiles; removing them so git clone can proceed…"
-        /usr/bin/rm -f "${APP_DIR}/.bashrc" "${APP_DIR}/.profile" "${APP_DIR}/.bash_logout" || true
-      else
-        # Provide specific error message based on what we found
-        if (( has_git_dir == 1 )); then
-          die "Directory '${APP_DIR}' contains a .git directory but is not a valid git repository (possibly corrupted or incomplete).
-Please remove the directory contents manually:
-  sudo find '${APP_DIR}' -mindepth 1 -delete
-  sudo rmdir '${APP_DIR}' 2>/dev/null || true
-Then re-run this script."
-        else
-          die "Directory '${APP_DIR}' exists but is not a git repository and contains files that cannot be automatically removed.
-Found files/directories: ${entries[*]}
-Please manually move or remove the contents:
-  sudo find '${APP_DIR}' -mindepth 1 -delete
-  sudo rmdir '${APP_DIR}' 2>/dev/null || true
-Then re-run this script."
-        fi
-      fi
-    fi
-
-    # Double-check directory is empty before cloning (defensive check)
-    get_directory_entries "${APP_DIR}" entries
+    # Not a valid git repo - need to initialize it
+    log "Initializing git repository in ${APP_DIR}…"
     
-    if (( ${#entries[@]} > 0 )); then
-      die "Directory '${APP_DIR}' is not empty after cleanup. This should not happen.
-Remaining files: ${entries[*]}
-Please manually remove the directory and re-run this script."
+    # If there's an invalid .git directory, remove it
+    if [[ -e "${APP_DIR}/.git" ]]; then
+      warn "Removing invalid .git directory…"
+      /usr/bin/rm -rf "${APP_DIR}/.git" || true
     fi
-
-    log "Cloning repo into ${APP_DIR}…"
-    sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git clone --branch '${REPO_BRANCH}' --single-branch '${REPO_URL}' ."
+    
+    # Remove any default shell dotfiles that useradd might have created
+    /usr/bin/rm -f "${APP_DIR}/.bashrc" "${APP_DIR}/.profile" "${APP_DIR}/.bash_logout" 2>/dev/null || true
+    
+    # Initialize as git repo and add remote
+    sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git init && git remote add origin '${REPO_URL}' && git fetch origin '${REPO_BRANCH}' && git checkout -B '${REPO_BRANCH}' 'origin/${REPO_BRANCH}'"
   fi
 
   if [[ -n "${cfg_backup}" && -f "${cfg_backup}" ]]; then
