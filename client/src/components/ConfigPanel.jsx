@@ -2482,7 +2482,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     }
   };
 
-  const setMainAllowed = async (deviceId, nextAllowed, allDeviceIds) => {
+  const setMainAllowed = async (deviceId, nextAllowed) => {
     const id = String(deviceId || '').trim();
     if (!id) return;
 
@@ -2506,7 +2506,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     }
   };
 
-  const setCtrlAllowed = async (deviceId, nextAllowed, allDeviceIds) => {
+  const setCtrlAllowed = async (deviceId, nextAllowed) => {
     const id = String(deviceId || '').trim();
     if (!id) return;
 
@@ -2754,7 +2754,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                               className={`h-5 w-5 ${scheme.checkboxAccent}`}
                               disabled={!connected || allowlistSave.status === 'saving' || mainAllowlistLocked}
                               checked={isMainAllowed}
-                              onChange={(e) => setMainAllowed(d.id, e.target.checked, allDeviceIds)}
+                              onChange={(e) => setMainAllowed(d.id, e.target.checked)}
                             />
                             Home Control
                           </label>
@@ -2764,7 +2764,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                               className={`h-5 w-5 ${scheme.checkboxAccent}`}
                               disabled={!connected || allowlistSave.status === 'saving' || ctrlAllowlistLocked}
                               checked={isCtrlAllowed}
-                              onChange={(e) => setCtrlAllowed(d.id, e.target.checked, allDeviceIds)}
+                              onChange={(e) => setCtrlAllowed(d.id, e.target.checked)}
                             />
                             Controls
                           </label>
