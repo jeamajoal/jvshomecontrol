@@ -64,19 +64,23 @@ get_node_major() {
 }
 
 require_root() {
-  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+  if [[ "${EUID:-$(/usr/bin/id -u)}" -ne 0 ]]; then
     die "Run as root (use sudo)."
   fi
 }
 
 install_prereqs() {
   log "Installing base packages (git/curl/ca-certificates/ffmpeg)…"
-  apt-get update
+  /usr/bin/apt-get update
   # ffmpeg is required for RTSP camera previews (server-side RTSP -> MPEG1 websocket).
-  apt-get install -y ca-certificates curl git ffmpeg
+  /usr/bin/apt-get install -y ca-certificates curl git ffmpeg
 
   if ! command -v git >/dev/null 2>&1; then
     die "git is required but was not found after install. Install git and re-run."
+  fi
+
+  if ! command -v curl >/dev/null 2>&1; then
+    die "curl is required but was not found after install. Install curl and re-run."
   fi
 
   if command -v node >/dev/null 2>&1; then
@@ -101,20 +105,20 @@ install_prereqs() {
 
   log "Installing Node.js ${RECOMMENDED_NODE_MAJOR} LTS (NodeSource)…"
   curl -fsSL "https://deb.nodesource.com/setup_${RECOMMENDED_NODE_MAJOR}.x" | bash -
-  apt-get install -y nodejs
+  /usr/bin/apt-get install -y nodejs
 
   log "Node installed: $(node -v)"
   log "npm installed: $(npm -v)"
 }
 
 ensure_user() {
-  if id -u "${APP_USER}" >/dev/null 2>&1; then
+  if /usr/bin/id -u "${APP_USER}" >/dev/null 2>&1; then
     log "User ${APP_USER} already exists; skipping user creation."
     return 0
   fi
 
   log "Creating system user ${APP_USER}…"
-  useradd \
+  /usr/sbin/useradd \
     --system \
     --create-home \
     --home-dir "${APP_DIR}" \
@@ -132,20 +136,20 @@ ensure_config_json() {
     return 0
   fi
 
-  mkdir -p "$(dirname "${cfg}")"
+  /usr/bin/mkdir -p "$(/usr/bin/dirname "${cfg}")"
 
   if [[ ! -f "${cfg}" ]]; then
     log "Creating config.json from config.example.json…"
-    cp -a "${example}" "${cfg}"
-    chown "${APP_USER}:${APP_GROUP}" "${cfg}" || true
+    /usr/bin/cp -a "${example}" "${cfg}"
+    /usr/bin/chown "${APP_USER}:${APP_GROUP}" "${cfg}" || true
     return 0
   fi
 
   log "Merging new default config keys into existing config.json (preserving your values)…"
   local stamp backup
-  stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  stamp="$(/usr/bin/date -u +%Y%m%dT%H%M%SZ)"
   backup="${cfg}.${stamp}.bak"
-  cp -a "${cfg}" "${backup}"
+  /usr/bin/cp -a "${cfg}" "${backup}"
 
   # Use Node to perform a deep "defaults" merge:
   # - Existing user values win
@@ -203,7 +207,7 @@ if (before === after) {
 fs.writeFileSync(cfg, JSON.stringify(merged, null, 2) + '\n');
 NODE
 
-  chown "${APP_USER}:${APP_GROUP}" "${cfg}" || true
+  /usr/bin/chown "${APP_USER}:${APP_GROUP}" "${cfg}" || true
   warn "Config backup left in place: ${backup}"
 }
 
@@ -240,11 +244,11 @@ ensure_https_setup() {
     should_create=1
 
     local stamp
-    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    stamp="$(/usr/bin/date -u +%Y%m%dT%H%M%SZ)"
     log "Backing up existing cert/key…"
-    cp -a "${cert_path}" "${cert_path}.${stamp}.bak" || true
-    cp -a "${key_path}" "${key_path}.${stamp}.bak" || true
-    rm -f "${cert_path}" "${key_path}" || true
+    /usr/bin/cp -a "${cert_path}" "${cert_path}.${stamp}.bak" || true
+    /usr/bin/cp -a "${key_path}" "${key_path}.${stamp}.bak" || true
+    /usr/bin/rm -f "${cert_path}" "${key_path}" || true
   fi
 
   if [[ ! -t 0 ]]; then
@@ -267,7 +271,7 @@ ensure_https_setup() {
   fi
 
   local default_host
-  default_host="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo localhost)"
+  default_host="$(/usr/bin/hostname -f 2>/dev/null || /usr/bin/hostname 2>/dev/null || echo localhost)"
   local cert_host
   read -r -p "Hostname (or IP) to include in the HTTPS certificate [${default_host}]: " cert_host
   cert_host="${cert_host:-${default_host}}"
@@ -316,7 +320,7 @@ HUBITAT_ACCESS_TOKEN=REPLACE_ME
 # OPEN_METEO_LON=...
 EOF
 
-  chmod 600 "${ENV_FILE}"
+  /usr/bin/chmod 600 "${ENV_FILE}"
 }
 
 ensure_service() {
@@ -324,11 +328,11 @@ ensure_service() {
   # Back up any existing service file first.
   if [[ -f "${SERVICE_FILE}" ]]; then
     local stamp
-    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    stamp="$(/usr/bin/date -u +%Y%m%dT%H%M%SZ)"
     local backup
     backup="${SERVICE_FILE}.${stamp}.bak"
     log "Backing up existing service file to: ${backup}"
-    cp -a "${SERVICE_FILE}" "${backup}"
+    /usr/bin/cp -a "${SERVICE_FILE}" "${backup}"
   fi
 
   log "Writing systemd service: ${SERVICE_FILE}"
@@ -360,11 +364,11 @@ WantedBy=multi-user.target
 EOF
 
   log "Reloading systemd…"
-  systemctl daemon-reload
+  /usr/bin/systemctl daemon-reload
 
   log "Enabling and starting service…"
-  systemctl enable jvshomecontrol
-  systemctl restart jvshomecontrol
+  /usr/bin/systemctl enable jvshomecontrol
+  /usr/bin/systemctl restart jvshomecontrol
 }
 
 main() {

@@ -31,7 +31,7 @@ die() {
 }
 
 require_root() {
-  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+  if [[ "${EUID:-$(/usr/bin/id -u)}" -ne 0 ]]; then
     die "Run as root (use sudo)."
   fi
 }
@@ -59,12 +59,16 @@ confirm() {
 
 install_prereqs() {
   log "Installing base packages (git/curl/ca-certificates/ffmpeg)…"
-  apt-get update
+  /usr/bin/apt-get update
   # ffmpeg is required for RTSP camera previews (server-side RTSP -> MPEG1 websocket).
-  apt-get install -y ca-certificates curl git ffmpeg
+  /usr/bin/apt-get install -y ca-certificates curl git ffmpeg
 
   if ! command -v git >/dev/null 2>&1; then
     die "git is required but was not found after install. Install git and re-run."
+  fi
+
+  if ! command -v curl >/dev/null 2>&1; then
+    die "curl is required but was not found after install. Install curl and re-run."
   fi
 }
 
@@ -163,13 +167,13 @@ EOF
 }
 
 ensure_user() {
-  if id -u "${APP_USER}" >/dev/null 2>&1; then
+  if /usr/bin/id -u "${APP_USER}" >/dev/null 2>&1; then
     log "User ${APP_USER} already exists; skipping user creation."
     return 0
   fi
 
   log "Creating system user ${APP_USER}…"
-  useradd \
+  /usr/sbin/useradd \
     --system \
     --no-create-home \
     --home-dir "${APP_DIR}" \
@@ -178,8 +182,8 @@ ensure_user() {
 }
 
 ensure_repo() {
-  mkdir -p "${APP_DIR}"
-  chown -R "${APP_USER}:${APP_GROUP}" "${APP_DIR}"
+  /usr/bin/mkdir -p "${APP_DIR}"
+  /usr/bin/chown -R "${APP_USER}:${APP_GROUP}" "${APP_DIR}"
 
   # Preserve user-specific files across updates (the update uses git clean).
   local cfg cert_dir
@@ -197,28 +201,28 @@ ensure_repo() {
 
   if [[ -f "${cfg}" ]]; then
     local stamp
-    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    stamp="$(/usr/bin/date -u +%Y%m%dT%H%M%SZ)"
     cfg_backup="/tmp/jvshomecontrol.config.${stamp}.json"
     log "Backing up existing config.json to ${cfg_backup}…"
-    cp -a "${cfg}" "${cfg_backup}"
+    /usr/bin/cp -a "${cfg}" "${cfg_backup}"
   fi
 
   if [[ -d "${cert_dir}" ]]; then
     local stamp
-    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    stamp="$(/usr/bin/date -u +%Y%m%dT%H%M%SZ)"
     cert_backup_dir="/tmp/jvshomecontrol.certs.${stamp}"
     log "Backing up existing certs dir to ${cert_backup_dir}…"
-    mkdir -p "${cert_backup_dir}"
-    cp -a "${cert_dir}/." "${cert_backup_dir}/" || true
+    /usr/bin/mkdir -p "${cert_backup_dir}"
+    /usr/bin/cp -a "${cert_dir}/." "${cert_backup_dir}/" || true
   fi
 
   if [[ -d "${backgrounds_dir}" ]]; then
     local stamp
-    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    stamp="$(/usr/bin/date -u +%Y%m%dT%H%M%SZ)"
     backgrounds_backup_dir="/tmp/jvshomecontrol.backgrounds.${stamp}"
     log "Backing up existing backgrounds dir to ${backgrounds_backup_dir}…"
-    mkdir -p "${backgrounds_backup_dir}"
-    cp -a "${backgrounds_dir}/." "${backgrounds_backup_dir}/" || true
+    /usr/bin/mkdir -p "${backgrounds_backup_dir}"
+    /usr/bin/cp -a "${backgrounds_dir}/." "${backgrounds_backup_dir}/" || true
   fi
 
   if [[ -d "${APP_DIR}/.git" ]]; then
@@ -244,7 +248,7 @@ ensure_repo() {
 
       if (( safe_to_remove == 1 )); then
         warn "${APP_DIR} contains only default shell dotfiles; removing them so git clone can proceed…"
-        rm -f "${APP_DIR}/.bashrc" "${APP_DIR}/.profile" "${APP_DIR}/.bash_logout" || true
+        /usr/bin/rm -f "${APP_DIR}/.bashrc" "${APP_DIR}/.profile" "${APP_DIR}/.bash_logout" || true
       else
         die "Destination '${APP_DIR}' already exists and is not a git repo (.git missing) and is not empty. Move it aside or delete its contents, then re-run."
       fi
@@ -256,9 +260,9 @@ ensure_repo() {
 
   if [[ -n "${cfg_backup}" && -f "${cfg_backup}" ]]; then
     log "Restoring config.json to ${cfg}…"
-    mkdir -p "$(dirname "${cfg}")"
-    cp -a "${cfg_backup}" "${cfg}"
-    chown "${APP_USER}:${APP_GROUP}" "${cfg}" || true
+    /usr/bin/mkdir -p "$(/usr/bin/dirname "${cfg}")"
+    /usr/bin/cp -a "${cfg_backup}" "${cfg}"
+    /usr/bin/chown "${APP_USER}:${APP_GROUP}" "${cfg}" || true
 
     warn "Backup left in /tmp: ${cfg_backup}"
     warn "After confirming your settings are correct, you should remove it (e.g. sudo rm -f '${cfg_backup}')."
@@ -266,9 +270,9 @@ ensure_repo() {
 
   if [[ -n "${cert_backup_dir}" && -d "${cert_backup_dir}" ]]; then
     log "Restoring certs dir to ${cert_dir}…"
-    mkdir -p "${cert_dir}"
-    cp -a "${cert_backup_dir}/." "${cert_dir}/" || true
-    chown -R "${APP_USER}:${APP_GROUP}" "${cert_dir}" || true
+    /usr/bin/mkdir -p "${cert_dir}"
+    /usr/bin/cp -a "${cert_backup_dir}/." "${cert_dir}/" || true
+    /usr/bin/chown -R "${APP_USER}:${APP_GROUP}" "${cert_dir}" || true
 
     warn "Backup left in /tmp: ${cert_backup_dir}"
     warn "After confirming HTTPS is working, you should remove it (e.g. sudo rm -rf '${cert_backup_dir}')."
@@ -276,9 +280,9 @@ ensure_repo() {
 
   if [[ -n "${backgrounds_backup_dir}" && -d "${backgrounds_backup_dir}" ]]; then
     log "Restoring backgrounds dir to ${backgrounds_dir}…"
-    mkdir -p "${backgrounds_dir}"
-    cp -a "${backgrounds_backup_dir}/." "${backgrounds_dir}/" || true
-    chown -R "${APP_USER}:${APP_GROUP}" "${backgrounds_dir}" || true
+    /usr/bin/mkdir -p "${backgrounds_dir}"
+    /usr/bin/cp -a "${backgrounds_backup_dir}/." "${backgrounds_dir}/" || true
+    /usr/bin/chown -R "${APP_USER}:${APP_GROUP}" "${backgrounds_dir}" || true
 
     warn "Backup left in /tmp: ${backgrounds_backup_dir}"
     warn "After confirming backgrounds are present, you should remove it (e.g. sudo rm -rf '${backgrounds_backup_dir}')."
