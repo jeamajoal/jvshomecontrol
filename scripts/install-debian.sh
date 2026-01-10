@@ -231,7 +231,7 @@ ensure_repo() {
     sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git fetch --prune origin && git checkout -B '${REPO_BRANCH}' 'origin/${REPO_BRANCH}' && git reset --hard 'origin/${REPO_BRANCH}' && git clean -fd"
   else
     # Not a valid git repo - need to initialize it
-    log "Initializing git repository in ${APP_DIR}…"
+    log "Setting up git repository in ${APP_DIR}…"
     
     # If there's an invalid .git directory, remove it
     if [[ -d "${APP_DIR}/.git" ]]; then
@@ -243,20 +243,20 @@ ensure_repo() {
     /usr/bin/rm -f "${APP_DIR}/.bashrc" "${APP_DIR}/.profile" "${APP_DIR}/.bash_logout" || true
     
     # Initialize as git repo and add remote
-    log "Initializing git repository and fetching ${REPO_BRANCH}…"
     if ! sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git init"; then
       die "Failed to initialize git repository in ${APP_DIR}"
     fi
     
-    if ! sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git remote add origin '${REPO_URL}'"; then
-      die "Failed to add git remote: ${REPO_URL}"
+    if ! sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && { git remote get-url origin >/dev/null 2>&1 && git remote set-url origin '${REPO_URL}' || git remote add origin '${REPO_URL}'; }"; then
+      die "Failed to configure git remote: ${REPO_URL}"
     fi
     
+    log "Fetching ${REPO_BRANCH} from remote…"
     if ! sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git fetch origin '${REPO_BRANCH}'"; then
       die "Failed to fetch branch '${REPO_BRANCH}' from remote"
     fi
     
-    if ! sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git checkout -B '${REPO_BRANCH}' 'origin/${REPO_BRANCH}'"; then
+    if ! sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git checkout -B '${REPO_BRANCH}' 'origin/${REPO_BRANCH}' && git reset --hard 'origin/${REPO_BRANCH}' && git clean -fd"; then
       die "Failed to checkout branch '${REPO_BRANCH}'"
     fi
   fi
