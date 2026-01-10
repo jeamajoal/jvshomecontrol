@@ -32,6 +32,7 @@ Local-first home automation dashboard (UI + backend) designed for a wall tablet 
 - Security & hardening: [docs/07-Security.md](docs/07-Security.md)
 - HTTPS & certificates: [docs/08-HTTPS.md](docs/08-HTTPS.md)
 - Troubleshooting: [docs/09-Troubleshooting.md](docs/09-Troubleshooting.md)
+- RTSP/HLS camera streaming configuration: [docs/10-RTSP-HLS-Configuration.md](docs/10-RTSP-HLS-Configuration.md)
 
 ## Repo layout
 
