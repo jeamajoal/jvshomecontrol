@@ -132,7 +132,7 @@ ensure_config_json() {
     return 0
   fi
 
-  /usr/bin/mkdir -p "$(dirname "${cfg}")"
+  /usr/bin/mkdir -p "$(/usr/bin/dirname "${cfg}")"
 
   if [[ ! -f "${cfg}" ]]; then
     log "Creating config.json from config.example.json…"

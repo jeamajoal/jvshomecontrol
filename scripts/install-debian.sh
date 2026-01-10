@@ -256,7 +256,7 @@ ensure_repo() {
 
   if [[ -n "${cfg_backup}" && -f "${cfg_backup}" ]]; then
     log "Restoring config.json to ${cfg}…"
-    /usr/bin/mkdir -p "$(dirname "${cfg}")"
+    /usr/bin/mkdir -p "$(/usr/bin/dirname "${cfg}")"
     /usr/bin/cp -a "${cfg_backup}" "${cfg}"
     /usr/bin/chown "${APP_USER}:${APP_GROUP}" "${cfg}" || true
 
