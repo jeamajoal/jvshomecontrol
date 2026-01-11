@@ -415,6 +415,15 @@ const RTSP_HLS_DEBUG = (() => {
     return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
 })();
 
+// ffmpeg error detection keywords
+const FFMPEG_ERROR_KEYWORDS = ['error', 'failed', 'invalid', 'unable', 'cannot', 'refused', 'timeout'];
+// ffmpeg progress line pattern
+// - First alternative: matches progress indicators typically at start of line
+// - Second alternative: matches fps/speed/bitrate which can appear mid-line (preceded by space)
+const FFMPEG_PROGRESS_LINE_REGEX = /^(frame=|fps=|speed=|size=|time=|bitrate=|dup=|drop=)|\s(fps=|speed=|bitrate=)/;
+// Maximum stderr lines to show in diagnostic logs
+const MAX_STDERR_LINES_TO_LOG = 10;
+
 // Health monitoring and recovery configuration
 const RTSP_HLS_HEALTH_CHECK_INTERVAL_MS = (() => {
     const raw = String(process.env.RTSP_HLS_HEALTH_CHECK_INTERVAL_MS || '').trim();
@@ -667,6 +676,8 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
         ffmpeg: cp,
         lastError: null,
         stderrTail: [],
+        errorLines: [], // Separate buffer for actual error messages (not progress)
+        exitCode: null,
         startedAtMs: Date.now(),
         ffmpegArgs: args,
         // Enhanced state tracking for health monitoring
@@ -678,6 +689,7 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
         totalRestarts,
         streamUrl,
         ffmpegPath,
+        maxAttemptsLogged: false, // Track if we've logged the max attempts message
     };
     hlsStreams.set(id, state);
 
@@ -692,15 +704,34 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
             const lines = s.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
             if (!lines.length) return;
             for (const line of lines) {
+                // Check if this is an ffmpeg progress line
+                const isProgressLine = FFMPEG_PROGRESS_LINE_REGEX.test(line);
+                
+                // Store all lines in tail for reference
                 state.stderrTail.push(line);
+                
+                // Separately track actual error/warning messages
+                const lineLower = line.toLowerCase();
+                const isErrorLine = FFMPEG_ERROR_KEYWORDS.some(keyword => lineLower.includes(keyword));
+                
+                if (isErrorLine && !isProgressLine) {
+                    state.errorLines.push(line);
+                    console.error(`HLS ffmpeg stderr (${id}): ${line}`);
+                } else if (RTSP_HLS_DEBUG && !isProgressLine) {
+                    console.error(`HLS ffmpeg stderr (${id}): ${line}`);
+                }
             }
             // Keep last ~60 lines.
             if (state.stderrTail.length > 60) {
                 state.stderrTail = state.stderrTail.slice(-60);
             }
+            if (state.errorLines.length > 30) {
+                state.errorLines = state.errorLines.slice(-30);
+            }
             state.lastError = state.stderrTail[state.stderrTail.length - 1] || null;
         });
         cp.on('exit', (code) => {
+            state.exitCode = code;
             if (code && code !== 0) {
                 console.error(`HLS ffmpeg exited with code ${code} (camera ${id})`);
             }
@@ -801,7 +832,31 @@ function attemptRestartHlsStream(cameraId) {
     
     // Check if we've exceeded max restart attempts
     if (state.restartAttempts >= RTSP_HLS_MAX_RESTART_ATTEMPTS) {
-        console.error(`HLS stream ${id} exceeded max restart attempts (${RTSP_HLS_MAX_RESTART_ATTEMPTS})`);
+        // Only log once when first reaching the limit
+        if (!state.maxAttemptsLogged) {
+            console.error(`HLS stream ${id} exceeded max restart attempts (${RTSP_HLS_MAX_RESTART_ATTEMPTS})`);
+            
+            // Log exit code if available
+            if (state.exitCode !== null && state.exitCode !== 0) {
+                console.error(`HLS stream ${id} ffmpeg exit code: ${state.exitCode}`);
+            }
+            
+            // Log actual error messages (not progress output)
+            if (state.errorLines && state.errorLines.length > 0) {
+                console.error(`HLS stream ${id} error messages:`);
+                state.errorLines.forEach(line => console.error(`  ${line}`));
+            } else if (state.stderrTail && state.stderrTail.length > 0) {
+                // If no specific errors captured, log last stderr lines
+                const stderrCount = Math.min(MAX_STDERR_LINES_TO_LOG, state.stderrTail.length);
+                console.error(`HLS stream ${id} no specific errors captured. Recent stderr (last ${stderrCount} lines):`);
+                const recentLines = state.stderrTail.slice(-stderrCount);
+                recentLines.forEach(line => console.error(`  ${line}`));
+            } else {
+                console.error(`HLS stream ${id} no error information available (stderr empty)`);
+            }
+            
+            state.maxAttemptsLogged = true;
+        }
         state.healthStatus = 'dead';
         return false;
     }
@@ -872,6 +927,7 @@ function performHealthCheck() {
                     state.restartAttempts = 0;
                     state.currentBackoffMs = RTSP_HLS_RESTART_BACKOFF_MS;
                     state.healthStatus = 'healthy';
+                    state.maxAttemptsLogged = false;
                 }
             }
             
@@ -886,10 +942,17 @@ function performHealthCheck() {
                     state.healthStatus = 'stale';
                 } else if (health.reason === 'ffmpeg_not_running') {
                     state.healthStatus = 'dead';
+                } else if (health.reason === 'startup_timeout') {
+                    state.healthStatus = 'dead';
                 }
                 
-                // Attempt restart if needed
-                attemptRestartHlsStream(cameraId);
+                // Attempt restart only if not already in terminal 'dead' state with max attempts exceeded
+                // Allow one call at the limit to trigger error logging, then stop if logged
+                const isNotDead = state.healthStatus !== 'dead';
+                const canStillAttempt = state.restartAttempts <= RTSP_HLS_MAX_RESTART_ATTEMPTS && !state.maxAttemptsLogged;
+                if (isNotDead || canStillAttempt) {
+                    attemptRestartHlsStream(cameraId);
+                }
             }
         } catch (err) {
             console.error(`Health check error for camera ${cameraId}:`, err);
