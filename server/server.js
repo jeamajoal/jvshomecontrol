@@ -417,7 +417,9 @@ const RTSP_HLS_DEBUG = (() => {
 
 // ffmpeg error detection keywords
 const FFMPEG_ERROR_KEYWORDS = ['error', 'failed', 'invalid', 'unable', 'cannot', 'refused', 'timeout'];
-// ffmpeg progress line pattern (matches frame=, fps=, speed=, etc. at start or with preceding space)
+// ffmpeg progress line pattern
+// - First alternative: matches progress indicators typically at start of line
+// - Second alternative: matches fps/speed/bitrate which can appear mid-line (preceded by space)
 const FFMPEG_PROGRESS_LINE_REGEX = /^(frame=|fps=|speed=|size=|time=|bitrate=|dup=|drop=)|\s(fps=|speed=|bitrate=)/;
 // Maximum stderr lines to show in diagnostic logs
 const MAX_STDERR_LINES_TO_LOG = 10;
@@ -843,14 +845,14 @@ function attemptRestartHlsStream(cameraId) {
             if (state.errorLines && state.errorLines.length > 0) {
                 console.error(`HLS stream ${id} error messages:`);
                 state.errorLines.forEach(line => console.error(`  ${line}`));
-            } else {
+            } else if (state.stderrTail && state.stderrTail.length > 0) {
                 // If no specific errors captured, log last stderr lines
-                const stderrCount = Math.min(MAX_STDERR_LINES_TO_LOG, state.stderrTail?.length || 0);
+                const stderrCount = Math.min(MAX_STDERR_LINES_TO_LOG, state.stderrTail.length);
                 console.error(`HLS stream ${id} no specific errors captured. Recent stderr (last ${stderrCount} lines):`);
-                if (state.stderrTail && state.stderrTail.length > 0) {
-                    const recentLines = state.stderrTail.slice(-MAX_STDERR_LINES_TO_LOG);
-                    recentLines.forEach(line => console.error(`  ${line}`));
-                }
+                const recentLines = state.stderrTail.slice(-MAX_STDERR_LINES_TO_LOG);
+                recentLines.forEach(line => console.error(`  ${line}`));
+            } else {
+                console.error(`HLS stream ${id} no error information available (stderr empty)`);
             }
             
             state.maxAttemptsLogged = true;
