@@ -2364,7 +2364,7 @@ app.get('/api/cameras/:id/hls/ensure', async (req, res) => {
         }
 
         // Include health status in successful response
-        const newestSegmentMs = getNewestSegmentTimeMs(state.dir);
+        const newestSegmentMs = hlsService.getNewestSegmentTimeMs(state.dir);
         const lastSegmentAge = newestSegmentMs ? Date.now() - newestSegmentMs : null;
         
         return res.json({
@@ -2434,7 +2434,7 @@ app.get('/api/hls/health', (req, res) => {
         const now = Date.now();
         
         for (const [cameraId, state] of hlsService.getHlsStreams().entries()) {
-            const newestSegmentMs = getNewestSegmentTimeMs(state.dir);
+            const newestSegmentMs = hlsService.getNewestSegmentTimeMs(state.dir);
             const ffmpegRunning = state.ffmpeg && state.ffmpeg.exitCode === null;
             const uptime = now - state.startedAtMs;
             const lastSegmentAge = newestSegmentMs ? now - newestSegmentMs : null;
