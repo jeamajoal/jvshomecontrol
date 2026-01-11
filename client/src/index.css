@@ -146,7 +146,6 @@ select {
 /* Force dark backgrounds on all option elements */
 select option {
   background-color: #000000 !important;
-  background: #000000 !important;
   color: #ffffff !important;
   padding: 8px 12px;
 }
@@ -157,7 +156,6 @@ select option:focus,
 select option:checked,
 select option:active {
   background-color: #1a1a1a !important;
-  background: #1a1a1a !important;
   color: #ffffff !important;
 }
 
