@@ -693,6 +693,10 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
             if (!lines.length) return;
             for (const line of lines) {
                 state.stderrTail.push(line);
+                // Log ffmpeg errors to journal (filter out common noise)
+                if (RTSP_HLS_DEBUG || line.toLowerCase().includes('error') || line.toLowerCase().includes('failed')) {
+                    console.error(`HLS ffmpeg stderr (${id}): ${line}`);
+                }
             }
             // Keep last ~60 lines.
             if (state.stderrTail.length > 60) {
@@ -801,8 +805,22 @@ function attemptRestartHlsStream(cameraId) {
     
     // Check if we've exceeded max restart attempts
     if (state.restartAttempts >= RTSP_HLS_MAX_RESTART_ATTEMPTS) {
-        console.error(`HLS stream ${id} exceeded max restart attempts (${RTSP_HLS_MAX_RESTART_ATTEMPTS})`);
+        // Only log once when first reaching the limit
+        if (state.restartAttempts === RTSP_HLS_MAX_RESTART_ATTEMPTS) {
+            console.error(`HLS stream ${id} exceeded max restart attempts (${RTSP_HLS_MAX_RESTART_ATTEMPTS})`);
+            // Log the last error to help diagnose the issue
+            if (state.lastError) {
+                console.error(`HLS stream ${id} last error: ${state.lastError}`);
+            }
+            if (state.stderrTail && state.stderrTail.length > 0) {
+                console.error(`HLS stream ${id} recent stderr (last 10 lines):`);
+                const recentLines = state.stderrTail.slice(-10);
+                recentLines.forEach(line => console.error(`  ${line}`));
+            }
+        }
         state.healthStatus = 'dead';
+        // Increment to prevent re-logging
+        state.restartAttempts = RTSP_HLS_MAX_RESTART_ATTEMPTS + 1;
         return false;
     }
     
@@ -888,8 +906,10 @@ function performHealthCheck() {
                     state.healthStatus = 'dead';
                 }
                 
-                // Attempt restart if needed
-                attemptRestartHlsStream(cameraId);
+                // Attempt restart only if not already in terminal 'dead' state with max attempts exceeded
+                if (state.healthStatus !== 'dead' || state.restartAttempts < RTSP_HLS_MAX_RESTART_ATTEMPTS) {
+                    attemptRestartHlsStream(cameraId);
+                }
             }
         } catch (err) {
             console.error(`Health check error for camera ${cameraId}:`, err);
