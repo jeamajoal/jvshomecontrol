@@ -904,6 +904,8 @@ function performHealthCheck() {
                     state.healthStatus = 'stale';
                 } else if (health.reason === 'ffmpeg_not_running') {
                     state.healthStatus = 'dead';
+                } else if (health.reason === 'startup_timeout') {
+                    state.healthStatus = 'dead';
                 }
                 
                 // Attempt restart only if not already in terminal 'dead' state with max attempts exceeded
