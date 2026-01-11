@@ -10,7 +10,92 @@ const path = require('path');
 const { Server } = require('socket.io');
 const crypto = require('crypto');
 
+// --- Import modular configuration ---
+const {
+    // Paths
+    DATA_DIR,
+    CONFIG_FILE,
+    BACKUP_DIR,
+    SOUNDS_DIR,
+    BACKGROUNDS_DIR,
+    CLIENT_DIST_DIR,
+    CLIENT_INDEX_HTML,
+    CERT_DIR_DEFAULT,
+    
+    // Server
+    PORT,
+    MAX_BACKUP_FILES,
+    
+    // Color Schemes
+    LEGACY_UI_COLOR_SCHEMES,
+    ALLOWED_TOLERANCE_COLOR_IDS,
+    DEFAULT_ACCENT_COLOR_ID,
+    ALLOWED_ACCENT_COLOR_IDS,
+    
+    // UI Ranges
+    SECONDARY_TEXT_SIZE_PCT_RANGE,
+    PRIMARY_TEXT_SIZE_PCT_RANGE,
+    BLUR_SCALE_PCT_RANGE,
+    ICON_SIZE_PCT_RANGE,
+    
+    // Home Dashboard
+    HOME_TOP_ROW_CARD_IDS,
+    ALLOWED_HOME_TOP_ROW_CARD_IDS,
+    ALLOWED_PANEL_DEVICE_COMMANDS,
+    ALLOWED_HOME_METRIC_KEYS,
+    ALLOWED_HOME_ROOM_METRIC_KEYS,
+    
+    // Panel Profiles
+    DEFAULT_PANEL_PROFILES_PRESETS,
+    PRESET_PANEL_PROFILE_NAMES,
+    
+    // HLS Configuration
+    RTSP_HLS_DIR,
+    RTSP_HLS_SEGMENT_SECONDS,
+    RTSP_HLS_DEBUG,
+    RTSP_HLS_HEALTH_CHECK_INTERVAL_MS,
+    RTSP_REDACTED_PLACEHOLDER,
+    RTSP_REDACTED_PATTERN,
+    
+    // Hubitat Configuration
+    HUBITAT_HOST,
+    HUBITAT_APP_ID,
+    HUBITAT_ACCESS_TOKEN,
+    HUBITAT_CONFIGURED,
+    HUBITAT_POLL_INTERVAL_MS,
+    HUBITAT_TLS_INSECURE,
+    HUBITAT_API_BASE,
+    HUBITAT_API_URL,
+    HUBITAT_MODES_URL,
+    
+    // Events Configuration
+    MAX_INGESTED_EVENTS,
+    EVENTS_INGEST_TOKEN,
+    EVENTS_PERSIST_JSONL,
+} = require('./config');
 
+// --- Import utility functions ---
+const {
+    truthy,
+    falsy,
+    parseCommaList,
+    stableStringify,
+    clampInt,
+    normalizeAccentColorId,
+    normalizePanelName,
+    isPresetPanelProfile,
+    rejectIfPresetPanelProfile,
+    parseDmsOrDecimal,
+    describeFetchError,
+    redactAccessToken,
+    tryParseJsonFromText,
+} = require('./utils');
+
+// --- Import HLS service ---
+const hlsService = require('./services/hls');
+
+// --- Import state management ---
+const stateModule = require('./services/state');
 
 let UndiciAgent = null;
 try {
@@ -24,304 +109,21 @@ try {
 
 const app = express();
 
-const PORT = 3000;
-const DATA_DIR = path.join(__dirname, 'data');
-const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
-const BACKUP_DIR = path.join(DATA_DIR, 'backups');
-const SOUNDS_DIR = path.join(DATA_DIR, 'sounds');
-const BACKGROUNDS_DIR = path.join(DATA_DIR, 'backgrounds');
-const MAX_BACKUP_FILES = (() => {
-    const raw = process.env.BACKUP_MAX_FILES;
-    const parsed = raw ? Number(raw) : 200;
-    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 200;
-})();
+// Note: HOME_TOP_ROW_CARD_IDS, ALLOWED_HOME_TOP_ROW_CARD_IDS, normalizeAccentColorId,
+// SECONDARY_TEXT_SIZE_PCT_RANGE, PRIMARY_TEXT_SIZE_PCT_RANGE, BLUR_SCALE_PCT_RANGE,
+// ICON_SIZE_PCT_RANGE, ALLOWED_PANEL_DEVICE_COMMANDS, ALLOWED_HOME_METRIC_KEYS,
+// ALLOWED_HOME_ROOM_METRIC_KEYS are now imported from ./config and ./utils
 
-// Legacy UI accent scheme ids from earlier versions.
-// New versions use the unified palette (ALLOWED_TOLERANCE_COLOR_IDS) for ui.accentColorId.
-const LEGACY_UI_COLOR_SCHEMES = Object.freeze([
-    'electric-blue',
-    'classic-blue',
-    'emerald',
-    'amber',
-    'stone',
-    'slate',
-    'zinc',
-    'white',
-    'copper',
-    'neon-green',
-    'neon-red',
-]);
-
-// Used for validating color id settings coming from the UI (climate tolerance colors,
-// sensor indicator colors, and Home secondary text color).
-const ALLOWED_TOLERANCE_COLOR_IDS = new Set([
-    'none',
-    'neon-blue',
-    'neon-green',
-    'warning',
-    'neon-red',
-    'primary',
-    'success',
-    'danger',
-    'sky',
-    'cyan',
-    'teal',
-    'emerald',
-    'lime',
-    'amber',
-    'yellow',
-    'orange',
-    'rose',
-    'pink',
-    'fuchsia',
-    'purple',
-    'violet',
-    'indigo',
-    'blue',
-    'slate',
-    'stone',
-    'white',
-    'black',
-    'zinc',
-    'neutral',
-    'tan',
-    'brown',
-]);
-
-const DEFAULT_ACCENT_COLOR_ID = 'neon-blue';
-const ALLOWED_ACCENT_COLOR_IDS = new Set(Array.from(ALLOWED_TOLERANCE_COLOR_IDS).filter((id) => id !== 'none'));
-
-const HOME_TOP_ROW_CARD_IDS = Object.freeze(['time', 'outside', 'inside', 'home']);
-const ALLOWED_HOME_TOP_ROW_CARD_IDS = new Set(HOME_TOP_ROW_CARD_IDS);
-
-const normalizeAccentColorId = (raw) => {
-    const v = String(raw ?? '').trim();
-    if (!v) return DEFAULT_ACCENT_COLOR_ID;
-
-    // Accept new palette ids directly.
-    if (ALLOWED_ACCENT_COLOR_IDS.has(v)) return v;
-
-    // Migrate legacy scheme ids.
-    if (LEGACY_UI_COLOR_SCHEMES.includes(v)) {
-        const legacyMap = {
-            'electric-blue': 'neon-blue',
-            'classic-blue': 'primary',
-            emerald: 'success',
-            amber: 'warning',
-            copper: 'brown',
-            'neon-green': 'neon-green',
-            'neon-red': 'neon-red',
-            slate: 'slate',
-            stone: 'stone',
-            zinc: 'zinc',
-            white: 'white',
-        };
-
-        const mapped = legacyMap[v];
-        if (mapped && ALLOWED_ACCENT_COLOR_IDS.has(mapped)) return mapped;
-    }
-
-    return DEFAULT_ACCENT_COLOR_ID;
-};
-
-const SECONDARY_TEXT_SIZE_PCT_RANGE = Object.freeze({ min: 50, max: 200, def: 100 });
-const PRIMARY_TEXT_SIZE_PCT_RANGE = Object.freeze({ min: 50, max: 200, def: 100 });
-const BLUR_SCALE_PCT_RANGE = Object.freeze({ min: 0, max: 200, def: 100 });
-const ICON_SIZE_PCT_RANGE = Object.freeze({ min: 50, max: 200, def: 100 });
-
-// Commands that can be rendered by the current UI panels.
-// (We intentionally constrain this so config can't inject arbitrary commands into the UI.)
-const ALLOWED_PANEL_DEVICE_COMMANDS = new Set(['on', 'off', 'toggle', 'setLevel', 'refresh', 'push']);
-
-// Home metrics that can be shown on the Home dashboard per device.
-// (Used for multi-sensors where you want to hide/show specific attributes.)
-const ALLOWED_HOME_METRIC_KEYS = new Set(['temperature', 'humidity', 'illuminance', 'motion', 'contact', 'door']);
-
-// Home room metric cards (sub-cards inside each room panel).
-// These are configured globally (or per panel profile) and rendered for every room.
-const ALLOWED_HOME_ROOM_METRIC_KEYS = new Set(['temperature', 'humidity', 'illuminance']);
-
-// Default preset panel profiles that ship with the product.
-// These are always available as read-only templates.
-const DEFAULT_PANEL_PROFILES_PRESETS = Object.freeze({
-    'Neon Glass': {
-        _preset: true,
-        accentColorId: 'neon-blue',
-        iconColorId: 'neon-blue',
-        iconOpacityPct: 90,
-        iconSizePct: 110,
-        cardOpacityScalePct: 75,
-        blurScalePct: 170,
-        primaryTextOpacityPct: 100,
-        primaryTextSizePct: 110,
-        primaryTextColorId: 'white',
-        secondaryTextOpacityPct: 55,
-        secondaryTextSizePct: 105,
-        secondaryTextColorId: 'slate',
-        cardScalePct: 105,
-        homeRoomColumnsXl: 3,
-    },
-    'Stealth Slate': {
-        _preset: true,
-        accentColorId: 'slate',
-        iconColorId: 'white',
-        iconOpacityPct: 70,
-        iconSizePct: 105,
-        cardOpacityScalePct: 60,
-        blurScalePct: 0,
-        primaryTextOpacityPct: 95,
-        primaryTextSizePct: 105,
-        primaryTextColorId: 'white',
-        secondaryTextOpacityPct: 35,
-        secondaryTextSizePct: 95,
-        secondaryTextColorId: 'slate',
-        cardScalePct: 110,
-        homeRoomColumnsXl: 3,
-    },
-    'Arcade Mint': {
-        _preset: true,
-        accentColorId: 'neon-green',
-        iconColorId: 'neon-green',
-        iconOpacityPct: 100,
-        iconSizePct: 120,
-        cardOpacityScalePct: 90,
-        blurScalePct: 140,
-        primaryTextOpacityPct: 100,
-        primaryTextSizePct: 115,
-        primaryTextColorId: 'neon-green',
-        secondaryTextOpacityPct: 50,
-        secondaryTextSizePct: 100,
-        secondaryTextColorId: 'emerald',
-        cardScalePct: 100,
-        homeRoomColumnsXl: 3,
-    },
-    'Copper Warmth': {
-        _preset: true,
-        accentColorId: 'brown',
-        iconColorId: 'tan',
-        iconOpacityPct: 90,
-        iconSizePct: 105,
-        cardOpacityScalePct: 115,
-        blurScalePct: 110,
-        primaryTextOpacityPct: 100,
-        primaryTextSizePct: 110,
-        primaryTextColorId: 'tan',
-        secondaryTextOpacityPct: 45,
-        secondaryTextSizePct: 100,
-        secondaryTextColorId: 'brown',
-        cardScalePct: 100,
-        homeRoomColumnsXl: 3,
-    },
-    'Ice Cave': {
-        _preset: true,
-        accentColorId: 'primary',
-        iconColorId: 'cyan',
-        iconOpacityPct: 95,
-        iconSizePct: 110,
-        cardOpacityScalePct: 80,
-        blurScalePct: 200,
-        primaryTextOpacityPct: 100,
-        primaryTextSizePct: 110,
-        primaryTextColorId: 'cyan',
-        secondaryTextOpacityPct: 50,
-        secondaryTextSizePct: 100,
-        secondaryTextColorId: 'sky',
-        cardScalePct: 100,
-        homeRoomColumnsXl: 3,
-    },
-    'Amber Signal': {
-        _preset: true,
-        accentColorId: 'warning',
-        iconColorId: 'amber',
-        iconOpacityPct: 95,
-        iconSizePct: 110,
-        cardOpacityScalePct: 100,
-        blurScalePct: 120,
-        primaryTextOpacityPct: 100,
-        primaryTextSizePct: 110,
-        primaryTextColorId: 'amber',
-        secondaryTextOpacityPct: 45,
-        secondaryTextSizePct: 100,
-        secondaryTextColorId: 'stone',
-        cardScalePct: 100,
-        homeRoomColumnsXl: 3,
-    },
-    'Zinc Minimal': {
-        _preset: true,
-        accentColorId: 'zinc',
-        iconColorId: 'zinc',
-        iconOpacityPct: 60,
-        iconSizePct: 95,
-        cardOpacityScalePct: 130,
-        blurScalePct: 35,
-        primaryTextOpacityPct: 100,
-        primaryTextSizePct: 105,
-        primaryTextColorId: 'white',
-        secondaryTextOpacityPct: 30,
-        secondaryTextSizePct: 95,
-        secondaryTextColorId: 'zinc',
-        cardScalePct: 95,
-        homeRoomColumnsXl: 3,
-    },
-    'Red Alert': {
-        _preset: true,
-        accentColorId: 'neon-red',
-        iconColorId: 'neon-red',
-        iconOpacityPct: 100,
-        iconSizePct: 115,
-        cardOpacityScalePct: 95,
-        blurScalePct: 90,
-        primaryTextOpacityPct: 100,
-        primaryTextSizePct: 115,
-        primaryTextColorId: 'neon-red',
-        secondaryTextOpacityPct: 50,
-        secondaryTextSizePct: 100,
-        secondaryTextColorId: 'rose',
-        cardScalePct: 105,
-        homeRoomColumnsXl: 3,
-    },
-});
-
-const PRESET_PANEL_PROFILE_NAMES = new Set(Object.keys(DEFAULT_PANEL_PROFILES_PRESETS));
-
-function isPresetPanelProfile(panelName) {
-    const name = normalizePanelName(panelName);
-    if (!name) return false;
-    return PRESET_PANEL_PROFILE_NAMES.has(name);
-}
-
-function rejectIfPresetPanelProfile(panelName, res) {
-    if (!panelName) return false;
-    if (!isPresetPanelProfile(panelName)) return false;
-    res.status(409).json({
-        error: 'Preset template is read-only',
-        message: 'This panel profile is a shipped preset and cannot be overridden. Create a new panel profile to customize it.',
-    });
-    return true;
-}
-
-function normalizePanelName(raw) {
-    const s = String(raw ?? '').trim();
-    if (!s) return null;
-    // Allow user-friendly names, but keep them safe/stable as object keys.
-    // Permit letters/numbers/space/_/- and limit length.
-    if (s.length > 48) return null;
-    if (!/^[a-zA-Z0-9 _-]+$/.test(s)) return null;
-    return s;
-}
+// Note: DEFAULT_PANEL_PROFILES_PRESETS, PRESET_PANEL_PROFILE_NAMES, isPresetPanelProfile,
+// rejectIfPresetPanelProfile, normalizePanelName are now imported from ./config and ./utils
 
 // If the UI is built (`client/dist`), serve it from the backend so a single service
 // provides both the API and the dashboard.
-const CLIENT_DIST_DIR = path.join(__dirname, '..', 'client', 'dist');
-const CLIENT_INDEX_HTML = path.join(CLIENT_DIST_DIR, 'index.html');
 const HAS_BUILT_CLIENT = fs.existsSync(CLIENT_INDEX_HTML);
 
 // --- HTTPS (optional) ---
 // Defaults: server/data/certs/localhost.key + server/data/certs/localhost.crt
-const truthy = (v) => ['1', 'true', 'yes', 'on'].includes(String(v || '').trim().toLowerCase());
-const falsy = (v) => ['0', 'false', 'no', 'off'].includes(String(v || '').trim().toLowerCase());
-
-const CERT_DIR_DEFAULT = path.join(DATA_DIR, 'certs');
+// Note: truthy and falsy are now imported from ./utils
 const HTTPS_KEY_PATH = String(process.env.HTTPS_KEY_PATH || '').trim() || path.join(CERT_DIR_DEFAULT, 'localhost.key');
 const HTTPS_CERT_PATH = String(process.env.HTTPS_CERT_PATH || '').trim() || path.join(CERT_DIR_DEFAULT, 'localhost.crt');
 
@@ -351,660 +153,11 @@ const server = USE_HTTPS
 
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
+
 // --- RTSP -> HLS (HTTPS-friendly) ---
-// We intentionally implement HLS on the same origin as the app so customers don't
-// run into HTTPS+ws mixed-content issues.
-const RTSP_HLS_DIR = (() => {
-    const raw = String(process.env.RTSP_HLS_DIR || '').trim();
-    return raw || path.join(DATA_DIR, 'hls');
-})();
-
-const RTSP_HLS_SEGMENT_SECONDS = (() => {
-    const raw = String(process.env.RTSP_HLS_SEGMENT_SECONDS || '').trim();
-    const parsed = raw ? Number(raw) : 2;
-    if (!Number.isFinite(parsed)) return 2;
-    return Math.max(1, Math.min(6, Math.round(parsed)));
-})();
-
-const RTSP_HLS_LIST_SIZE = (() => {
-    const raw = String(process.env.RTSP_HLS_LIST_SIZE || '').trim();
-    const parsed = raw ? Number(raw) : 6;
-    if (!Number.isFinite(parsed)) return 6;
-    return Math.max(3, Math.min(20, Math.round(parsed)));
-})();
-
-const RTSP_HLS_OUTPUT_FPS = (() => {
-    // Some RTSP sources provide broken/non-advancing timestamps (PTS), which can prevent
-    // the HLS muxer from ever cutting segments. For those, forcing CFR makes time advance.
-    const raw = String(process.env.RTSP_HLS_OUTPUT_FPS || process.env.RTSP_HLS_FPS || '').trim();
-    const parsed = raw ? Number(raw) : 15;
-    if (!Number.isFinite(parsed)) return 15;
-    return Math.max(1, Math.min(60, Math.round(parsed)));
-})();
-
-const RTSP_HLS_PROBESIZE = (() => {
-    // Increase if ffmpeg can't determine codec parameters (e.g., MJPEG size) during startup.
-    const raw = String(process.env.RTSP_HLS_PROBESIZE || '').trim();
-    if (!raw) return '10M';
-    return raw;
-})();
-
-const RTSP_HLS_ANALYZEDURATION = (() => {
-    // Increase if ffmpeg needs more time to detect stream parameters.
-    const raw = String(process.env.RTSP_HLS_ANALYZEDURATION || '').trim();
-    if (!raw) return '10M';
-    return raw;
-})();
-
-const RTSP_HLS_RTSP_TRANSPORT = (() => {
-    const raw = String(process.env.RTSP_HLS_RTSP_TRANSPORT || '').trim().toLowerCase();
-    // Keep TCP as the safe default (NAT/Wi-Fi/firewalls). Allow UDP for low-latency setups.
-    if (raw === 'udp') return 'udp';
-    return 'tcp';
-})();
-
-const RTSP_HLS_STARTUP_TIMEOUT_MS = (() => {
-    const raw = String(process.env.RTSP_HLS_STARTUP_TIMEOUT_MS || '').trim();
-    const parsed = raw ? Number(raw) : 15000;
-    if (!Number.isFinite(parsed)) return 15000;
-    return Math.max(2000, Math.min(60000, Math.floor(parsed)));
-})();
-
-const RTSP_HLS_DEBUG = (() => {
-    const raw = String(process.env.RTSP_HLS_DEBUG || '').trim().toLowerCase();
-    return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
-})();
-
-// ffmpeg error detection keywords
-const FFMPEG_ERROR_KEYWORDS = ['error', 'failed', 'invalid', 'unable', 'cannot', 'refused', 'timeout'];
-// ffmpeg progress line pattern
-// - First alternative: matches progress indicators typically at start of line
-// - Second alternative: matches fps/speed/bitrate which can appear mid-line (preceded by space)
-const FFMPEG_PROGRESS_LINE_REGEX = /^(frame=|fps=|speed=|size=|time=|bitrate=|dup=|drop=)|\s(fps=|speed=|bitrate=)/;
-// Maximum stderr lines to show in diagnostic logs
-const MAX_STDERR_LINES_TO_LOG = 10;
-
-// Health monitoring and recovery configuration
-const RTSP_HLS_HEALTH_CHECK_INTERVAL_MS = (() => {
-    const raw = String(process.env.RTSP_HLS_HEALTH_CHECK_INTERVAL_MS || '').trim();
-    const parsed = raw ? Number(raw) : 10000;
-    if (!Number.isFinite(parsed)) return 10000;
-    return Math.max(5000, Math.min(60000, Math.floor(parsed)));
-})();
-
-const RTSP_HLS_MAX_SEGMENT_AGE_SECONDS = (() => {
-    const raw = String(process.env.RTSP_HLS_MAX_SEGMENT_AGE_SECONDS || '').trim();
-    const parsed = raw ? Number(raw) : 30;
-    if (!Number.isFinite(parsed)) return 30;
-    return Math.max(10, Math.min(300, Math.floor(parsed)));
-})();
-
-const RTSP_HLS_STALE_THRESHOLD_SECONDS = (() => {
-    const raw = String(process.env.RTSP_HLS_STALE_THRESHOLD_SECONDS || '').trim();
-    const parsed = raw ? Number(raw) : 15;
-    if (!Number.isFinite(parsed)) return 15;
-    return Math.max(5, Math.min(60, Math.floor(parsed)));
-})();
-
-const RTSP_HLS_MAX_RESTART_ATTEMPTS = (() => {
-    const raw = String(process.env.RTSP_HLS_MAX_RESTART_ATTEMPTS || '').trim();
-    const parsed = raw ? Number(raw) : 5;
-    if (!Number.isFinite(parsed)) return 5;
-    return Math.max(1, Math.min(20, Math.floor(parsed)));
-})();
-
-const RTSP_HLS_RESTART_BACKOFF_MS = (() => {
-    const raw = String(process.env.RTSP_HLS_RESTART_BACKOFF_MS || '').trim();
-    const parsed = raw ? Number(raw) : 2000;
-    if (!Number.isFinite(parsed)) return 2000;
-    return Math.max(1000, Math.min(30000, Math.floor(parsed)));
-})();
-
-const RTSP_HLS_CLEANUP_ON_SHUTDOWN = (() => {
-    const raw = String(process.env.RTSP_HLS_CLEANUP_ON_SHUTDOWN || '').trim().toLowerCase();
-    return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
-})();
-
-// Extended stream state tracking
-// cameraId -> { 
-//   dir, playlistPath, ffmpeg, lastError, stderrTail, startedAtMs, ffmpegArgs,
-//   lastSegmentTimeMs, restartAttempts, currentBackoffMs, healthStatus, 
-//   lastSuccessfulSegmentMs, totalRestarts, streamUrl, ffmpegPath
-// }
-const hlsStreams = new Map();
-// Redaction placeholder is kept in sync with the client Settings UI (ConfigPanel).
-const RTSP_REDACTED_PLACEHOLDER = '***';
-const RTSP_REDACTED_PATTERN = new RegExp(`:\\/\\/[^/]*${RTSP_REDACTED_PLACEHOLDER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}@`, 'i');
-
-function redactRtspUrl(url) {
-    try {
-        const u = new URL(String(url));
-        if (u.username || u.password) {
-            u.username = u.username ? RTSP_REDACTED_PLACEHOLDER : '';
-            u.password = u.password ? RTSP_REDACTED_PLACEHOLDER : '';
-        }
-        return u.toString();
-    } catch {
-        // Fallback: strip user:pass@ if present.
-        return String(url || '').replace(/rtsp:\/\/[^@/]+@/i, `rtsp://${RTSP_REDACTED_PLACEHOLDER}@`);
-    }
-}
-
-function safeCameraDirName(cameraId) {
-    const id = String(cameraId || '').trim();
-    const hash = crypto.createHash('sha1').update(id).digest('hex').slice(0, 10);
-    const base = id.toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 32) || 'camera';
-    return `${base}_${hash}`;
-}
-
-function ensureDir(p) {
-    fs.mkdirSync(p, { recursive: true });
-}
-
-function cleanupHlsDir(dir) {
-    try {
-        if (!fs.existsSync(dir)) return;
-        const entries = fs.readdirSync(dir, { withFileTypes: true });
-        for (const ent of entries) {
-            if (!ent.isFile()) continue;
-            const name = ent.name;
-            if (name === 'playlist.m3u8') continue;
-            // Keep only expected segment files.
-            if (!/^seg_\d+\.ts$/i.test(name)) continue;
-            try { fs.unlinkSync(path.join(dir, name)); } catch { /* ignore */ }
-        }
-        // Remove playlist file if present.
-        const playlistCandidate = path.join(dir, 'playlist.m3u8');
-        try { fs.unlinkSync(playlistCandidate); } catch { /* ignore */ }
-
-        // If something created a directory/special node at playlist.m3u8, remove it.
-        // (Some environments/filesystems may report EINVAL when ffmpeg tries to open it.)
-        try {
-            if (fs.existsSync(playlistCandidate)) {
-                const st = fs.statSync(playlistCandidate);
-                if (!st.isFile()) {
-                    fs.rmSync(playlistCandidate, { recursive: true, force: true });
-                }
-            }
-        } catch {
-            // ignore
-        }
-    } catch {
-        // ignore
-    }
-}
-
-function verifyHlsOutputWritable(dir, playlistPath) {
-    // Best-effort preflight so we can return a clear error before spawning ffmpeg.
-    // Returns null when OK, otherwise an error string.
-    try {
-        ensureDir(dir);
-        try {
-            const st = fs.statSync(dir);
-            if (!st.isDirectory()) return `HLS output path is not a directory: ${dir}`;
-        } catch {
-            // If it doesn't exist, ensureDir should have created it.
-        }
-
-        // If playlistPath exists but isn't a regular file, clean it up.
-        try {
-            if (fs.existsSync(playlistPath)) {
-                const st = fs.statSync(playlistPath);
-                if (!st.isFile()) {
-                    fs.rmSync(playlistPath, { recursive: true, force: true });
-                }
-            }
-        } catch {
-            // ignore
-        }
-
-        // Write test
-        const probe = path.join(dir, '.write_probe');
-        fs.writeFileSync(probe, 'ok');
-        fs.unlinkSync(probe);
-        return null;
-    } catch (err) {
-        const code = err?.code || err?.name;
-        const msg = err?.message || String(err);
-        return `${code || 'write_error'}: ${msg}`;
-    }
-}
-
-function stopHlsStream(cameraId) {
-    const id = String(cameraId || '').trim();
-    const existing = hlsStreams.get(id);
-    if (!existing) return;
-    try {
-        if (existing.ffmpeg && typeof existing.ffmpeg.kill === 'function') {
-            existing.ffmpeg.kill('SIGKILL');
-        }
-    } catch {
-        // ignore
-    }
-    try {
-        cleanupHlsDir(existing.dir);
-    } catch {
-        // ignore
-    }
-    hlsStreams.delete(id);
-}
-
-function startHlsStream(cameraId, streamUrl, ffmpegPath) {
-    const id = String(cameraId || '').trim();
-    if (!id) return null;
-
-    const existing = hlsStreams.get(id);
-    if (existing && existing.ffmpeg && existing.ffmpeg.exitCode === null) {
-        return existing;
-    }
-
-    const dir = path.join(RTSP_HLS_DIR, safeCameraDirName(id));
-    ensureDir(dir);
-    cleanupHlsDir(dir);
-
-    const playlistPath = path.join(dir, 'playlist.m3u8');
-    const segmentPattern = path.join(dir, 'seg_%d.ts');
-
-    const outputCheck = verifyHlsOutputWritable(dir, playlistPath);
-    if (outputCheck) {
-        const prevState = existing || {};
-        return {
-            dir,
-            playlistPath,
-            ffmpeg: null,
-            lastError: `HLS output not writable: ${outputCheck}`,
-            startedAtMs: Date.now(),
-            lastSegmentTimeMs: null,
-            restartAttempts: prevState.restartAttempts || 0,
-            currentBackoffMs: prevState.currentBackoffMs || RTSP_HLS_RESTART_BACKOFF_MS,
-            healthStatus: 'dead',
-            lastSuccessfulSegmentMs: null,
-            totalRestarts: prevState.totalRestarts || 0,
-            streamUrl,
-            ffmpegPath,
-        };
-    }
-
-    // Good defaults for compatibility and quality.
-    // - Generate sane timestamps even if the RTSP source has broken/non-monotonic PTS.
-    // - Transcode to H.264 yuv420p for broad playback support.
-    // - Use small segments/list size to keep latency reasonable.
-    const args = [
-        '-y',
-        // Make RTSP sources with bad/missing timestamps behave.
-        '-fflags', '+genpts+discardcorrupt',
-        '-use_wallclock_as_timestamps', '1',
-        '-avoid_negative_ts', 'make_zero',
-        '-analyzeduration', String(RTSP_HLS_ANALYZEDURATION),
-        '-probesize', String(RTSP_HLS_PROBESIZE),
-        '-rtsp_transport', RTSP_HLS_RTSP_TRANSPORT,
-        '-i', streamUrl,
-        '-an',
-        '-sn',
-        '-dn',
-        '-c:v', 'libx264',
-        '-tune', 'zerolatency',
-        '-preset', 'veryfast',
-        '-crf', String(process.env.RTSP_HLS_CRF || '20'),
-        '-pix_fmt', 'yuv420p',
-        // Force timestamps to advance consistently for HLS.
-        '-r', String(RTSP_HLS_OUTPUT_FPS),
-        '-g', String(process.env.RTSP_HLS_GOP || (RTSP_HLS_SEGMENT_SECONDS * 25)),
-        '-keyint_min', String(process.env.RTSP_HLS_GOP || (RTSP_HLS_SEGMENT_SECONDS * 25)),
-        '-sc_threshold', '0',
-        // Force periodic keyframes so HLS segments/playlist appear quickly.
-        '-force_key_frames', `expr:gte(t,n_forced*${RTSP_HLS_SEGMENT_SECONDS})`,
-        '-f', 'hls',
-        '-hls_time', String(RTSP_HLS_SEGMENT_SECONDS),
-        '-hls_list_size', String(RTSP_HLS_LIST_SIZE),
-        '-hls_flags', 'delete_segments+append_list+omit_endlist',
-        '-hls_segment_filename', segmentPattern,
-        playlistPath,
-    ];
-
-    const bin = ffmpegPath || 'ffmpeg';
-    const cp = require('child_process').spawn(bin, args, { detached: false });
-
-    // Preserve restart tracking if this is a restart
-    const prevState = existing || {};
-    const restartAttempts = (prevState.restartAttempts || 0);
-    const totalRestarts = (prevState.totalRestarts || 0);
-
-    const state = {
-        dir,
-        playlistPath,
-        ffmpeg: cp,
-        lastError: null,
-        stderrTail: [],
-        errorLines: [], // Separate buffer for actual error messages (not progress)
-        exitCode: null,
-        startedAtMs: Date.now(),
-        ffmpegArgs: args,
-        // Enhanced state tracking for health monitoring
-        lastSegmentTimeMs: null,
-        restartAttempts,
-        currentBackoffMs: prevState.currentBackoffMs || RTSP_HLS_RESTART_BACKOFF_MS,
-        healthStatus: 'starting', // starting, healthy, stale, dead, restarting
-        lastSuccessfulSegmentMs: null,
-        totalRestarts,
-        streamUrl,
-        ffmpegPath,
-        maxAttemptsLogged: false, // Track if we've logged the max attempts message
-    };
-    hlsStreams.set(id, state);
-
-    try {
-        cp.on('error', (err) => {
-            state.lastError = err?.message || String(err);
-            console.error(`HLS ffmpeg spawn error: ${state.lastError}`);
-        });
-        cp.stderr?.on?.('data', (buf) => {
-            const s = String(buf || '');
-            if (!s) return;
-            const lines = s.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-            if (!lines.length) return;
-            for (const line of lines) {
-                // Check if this is an ffmpeg progress line
-                const isProgressLine = FFMPEG_PROGRESS_LINE_REGEX.test(line);
-                
-                // Store all lines in tail for reference
-                state.stderrTail.push(line);
-                
-                // Separately track actual error/warning messages
-                const lineLower = line.toLowerCase();
-                const isErrorLine = FFMPEG_ERROR_KEYWORDS.some(keyword => lineLower.includes(keyword));
-                
-                if (isErrorLine && !isProgressLine) {
-                    state.errorLines.push(line);
-                    console.error(`HLS ffmpeg stderr (${id}): ${line}`);
-                } else if (RTSP_HLS_DEBUG && !isProgressLine) {
-                    console.error(`HLS ffmpeg stderr (${id}): ${line}`);
-                }
-            }
-            // Keep last ~60 lines.
-            if (state.stderrTail.length > 60) {
-                state.stderrTail = state.stderrTail.slice(-60);
-            }
-            if (state.errorLines.length > 30) {
-                state.errorLines = state.errorLines.slice(-30);
-            }
-            state.lastError = state.stderrTail[state.stderrTail.length - 1] || null;
-        });
-        cp.on('exit', (code) => {
-            state.exitCode = code;
-            if (code && code !== 0) {
-                console.error(`HLS ffmpeg exited with code ${code} (camera ${id})`);
-            }
-        });
-    } catch {
-        // ignore
-    }
-
-    return state;
-}
-
-// Health monitoring and auto-recovery functions
-
-function getNewestSegmentTimeMs(dir) {
-    // Returns the mtime of the newest segment file in the directory
-    try {
-        if (!fs.existsSync(dir)) return null;
-        const entries = fs.readdirSync(dir, { withFileTypes: true });
-        let newestMs = null;
-        for (const ent of entries) {
-            if (!ent.isFile()) continue;
-            if (!/^seg_\d+\.ts$/i.test(ent.name)) continue;
-            try {
-                const fullPath = path.join(dir, ent.name);
-                const stat = fs.statSync(fullPath);
-                const mtimeMs = stat.mtimeMs;
-                if (newestMs === null || mtimeMs > newestMs) {
-                    newestMs = mtimeMs;
-                }
-            } catch {
-                // ignore
-            }
-        }
-        return newestMs;
-    } catch {
-        return null;
-    }
-}
-
-function cleanupStaleSegments(dir) {
-    // Remove segments older than MAX_SEGMENT_AGE
-    try {
-        if (!fs.existsSync(dir)) return;
-        const entries = fs.readdirSync(dir, { withFileTypes: true });
-        const now = Date.now();
-        const maxAgeMs = RTSP_HLS_MAX_SEGMENT_AGE_SECONDS * 1000;
-        
-        for (const ent of entries) {
-            if (!ent.isFile()) continue;
-            if (!/^seg_\d+\.ts$/i.test(ent.name)) continue;
-            try {
-                const fullPath = path.join(dir, ent.name);
-                const stat = fs.statSync(fullPath);
-                const ageMs = now - stat.mtimeMs;
-                if (ageMs > maxAgeMs) {
-                    fs.unlinkSync(fullPath);
-                }
-            } catch {
-                // ignore
-            }
-        }
-    } catch {
-        // ignore
-    }
-}
-
-function isStreamHealthy(state) {
-    // Check if ffmpeg is running
-    if (!state.ffmpeg || state.ffmpeg.exitCode !== null) {
-        return { healthy: false, reason: 'ffmpeg_not_running' };
-    }
-    
-    // Check if we have segments
-    const newestSegmentMs = getNewestSegmentTimeMs(state.dir);
-    if (newestSegmentMs === null) {
-        // No segments yet - check startup timeout
-        const startupAge = Date.now() - state.startedAtMs;
-        if (startupAge > RTSP_HLS_STARTUP_TIMEOUT_MS) {
-            return { healthy: false, reason: 'startup_timeout' };
-        }
-        return { healthy: true, reason: 'starting' };
-    }
-    
-    // Check if segments are stale
-    const segmentAge = Date.now() - newestSegmentMs;
-    const staleThresholdMs = RTSP_HLS_STALE_THRESHOLD_SECONDS * 1000;
-    if (segmentAge > staleThresholdMs) {
-        return { healthy: false, reason: 'stale_segments' };
-    }
-    
-    return { healthy: true, reason: 'ok' };
-}
-
-function attemptRestartHlsStream(cameraId) {
-    const id = String(cameraId || '').trim();
-    const state = hlsStreams.get(id);
-    if (!state) return false;
-    
-    // Check if we've exceeded max restart attempts
-    if (state.restartAttempts >= RTSP_HLS_MAX_RESTART_ATTEMPTS) {
-        // Only log once when first reaching the limit
-        if (!state.maxAttemptsLogged) {
-            console.error(`HLS stream ${id} exceeded max restart attempts (${RTSP_HLS_MAX_RESTART_ATTEMPTS})`);
-            
-            // Log exit code if available
-            if (state.exitCode !== null && state.exitCode !== 0) {
-                console.error(`HLS stream ${id} ffmpeg exit code: ${state.exitCode}`);
-            }
-            
-            // Log actual error messages (not progress output)
-            if (state.errorLines && state.errorLines.length > 0) {
-                console.error(`HLS stream ${id} error messages:`);
-                state.errorLines.forEach(line => console.error(`  ${line}`));
-            } else if (state.stderrTail && state.stderrTail.length > 0) {
-                // If no specific errors captured, log last stderr lines
-                const stderrCount = Math.min(MAX_STDERR_LINES_TO_LOG, state.stderrTail.length);
-                console.error(`HLS stream ${id} no specific errors captured. Recent stderr (last ${stderrCount} lines):`);
-                const recentLines = state.stderrTail.slice(-stderrCount);
-                recentLines.forEach(line => console.error(`  ${line}`));
-            } else {
-                console.error(`HLS stream ${id} no error information available (stderr empty)`);
-            }
-            
-            state.maxAttemptsLogged = true;
-        }
-        state.healthStatus = 'dead';
-        return false;
-    }
-    
-    // Check if we need to backoff
-    const timeSinceStart = Date.now() - state.startedAtMs;
-    if (timeSinceStart < state.currentBackoffMs) {
-        // Still in backoff period
-        return false;
-    }
-    
-    console.log(`Attempting to restart HLS stream ${id} (attempt ${state.restartAttempts + 1}/${RTSP_HLS_MAX_RESTART_ATTEMPTS})`);
-    
-    // Stop existing stream
-    try {
-        if (state.ffmpeg && typeof state.ffmpeg.kill === 'function') {
-            state.ffmpeg.kill('SIGKILL');
-        }
-    } catch {
-        // ignore
-    }
-    
-    // Clean up stale segments
-    try {
-        cleanupHlsDir(state.dir);
-    } catch {
-        // ignore
-    }
-    
-    // Update restart tracking with exponential backoff
-    const newBackoffMs = Math.min(state.currentBackoffMs * 2, 60000); // Cap at 60 seconds
-    
-    // Update state for restart
-    hlsStreams.set(id, {
-        ...state,
-        restartAttempts: state.restartAttempts + 1,
-        currentBackoffMs: newBackoffMs,
-        totalRestarts: state.totalRestarts + 1,
-        healthStatus: 'restarting',
-    });
-    
-    // Restart the stream
-    const newState = startHlsStream(id, state.streamUrl, state.ffmpegPath);
-    
-    if (newState && newState.ffmpeg) {
-        return true;
-    }
-    
-    return false;
-}
-
-function performHealthCheck() {
-    // Check all active HLS streams
-    for (const [cameraId, state] of hlsStreams.entries()) {
-        try {
-            // Update last segment time
-            const newestSegmentMs = getNewestSegmentTimeMs(state.dir);
-            if (newestSegmentMs !== null && newestSegmentMs !== state.lastSegmentTimeMs) {
-                state.lastSegmentTimeMs = newestSegmentMs;
-                state.lastSuccessfulSegmentMs = newestSegmentMs;
-                
-                // Reset restart attempts after successful streaming
-                const timeSinceLastSegment = Date.now() - newestSegmentMs;
-                if (timeSinceLastSegment < RTSP_HLS_STALE_THRESHOLD_SECONDS * 1000) {
-                    if (state.restartAttempts > 0) {
-                        console.log(`HLS stream ${cameraId} recovered, resetting restart counter`);
-                    }
-                    state.restartAttempts = 0;
-                    state.currentBackoffMs = RTSP_HLS_RESTART_BACKOFF_MS;
-                    state.healthStatus = 'healthy';
-                    state.maxAttemptsLogged = false;
-                }
-            }
-            
-            // Clean up stale segments
-            cleanupStaleSegments(state.dir);
-            
-            // Check stream health
-            const health = isStreamHealthy(state);
-            if (!health.healthy) {
-                // Update health status
-                if (health.reason === 'stale_segments') {
-                    state.healthStatus = 'stale';
-                } else if (health.reason === 'ffmpeg_not_running') {
-                    state.healthStatus = 'dead';
-                } else if (health.reason === 'startup_timeout') {
-                    state.healthStatus = 'dead';
-                }
-                
-                // Attempt restart only if not already in terminal 'dead' state with max attempts exceeded
-                // Allow one call at the limit to trigger error logging, then stop if logged
-                const isNotDead = state.healthStatus !== 'dead';
-                const canStillAttempt = state.restartAttempts <= RTSP_HLS_MAX_RESTART_ATTEMPTS && !state.maxAttemptsLogged;
-                if (isNotDead || canStillAttempt) {
-                    attemptRestartHlsStream(cameraId);
-                }
-            }
-        } catch (err) {
-            console.error(`Health check error for camera ${cameraId}:`, err);
-        }
-    }
-}
-
-// Health check interval reference
-let hlsHealthCheckInterval = null;
-
-function startHlsHealthMonitoring() {
-    if (hlsHealthCheckInterval) return; // Already running
-    
-    console.log(`Starting HLS health monitoring (interval: ${RTSP_HLS_HEALTH_CHECK_INTERVAL_MS}ms)`);
-    hlsHealthCheckInterval = setInterval(() => {
-        try {
-            performHealthCheck();
-        } catch (err) {
-            console.error('HLS health check error:', err);
-        }
-    }, RTSP_HLS_HEALTH_CHECK_INTERVAL_MS);
-}
-
-function stopHlsHealthMonitoring() {
-    if (hlsHealthCheckInterval) {
-        clearInterval(hlsHealthCheckInterval);
-        hlsHealthCheckInterval = null;
-        console.log('Stopped HLS health monitoring');
-    }
-}
-
-function stopAllHlsStreams() {
-    console.log(`Stopping all HLS streams (${hlsStreams.size} active)`);
-    for (const [cameraId, state] of hlsStreams.entries()) {
-        try {
-            if (state.ffmpeg && typeof state.ffmpeg.kill === 'function') {
-                state.ffmpeg.kill('SIGKILL');
-            }
-        } catch (err) {
-            console.error(`Failed to kill ffmpeg for camera ${cameraId}:`, err);
-        }
-        
-        if (RTSP_HLS_CLEANUP_ON_SHUTDOWN) {
-            try {
-                cleanupHlsDir(state.dir);
-            } catch (err) {
-                console.error(`Failed to cleanup HLS dir for camera ${cameraId}:`, err);
-            }
-        }
-    }
-    hlsStreams.clear();
-}
+// HLS streaming functionality is now provided by ./services/hls.js
+// HLS configuration constants are imported from ./config/hls.js
+// Use hlsService methods: startHlsStream, stopHlsStream, stopAllHlsStreams, etc.
 
 function buildHttpUrl(req, p) {
     const proto = USE_HTTPS ? 'https' : 'http';
@@ -1014,58 +167,11 @@ function buildHttpUrl(req, p) {
     return `${proto}://${host}${cleaned}`;
 }
 
-function checkFfmpegAvailable(rawFfmpegPath) {
-    const ffmpegPath = String(rawFfmpegPath || '').trim();
-    const bin = ffmpegPath || 'ffmpeg';
-    try {
-        const result = spawnSync(bin, ['-version'], { stdio: 'ignore' });
-        if (result && result.error) {
-            const code = result.error.code || result.error.name;
-            const msg = result.error.message || String(result.error);
-            return { ok: false, bin, error: `${code || 'spawn_error'}: ${msg}` };
-        }
-        return { ok: true, bin };
-    } catch (err) {
-        const code = err?.code || err?.name;
-        const msg = err?.message || String(err);
-        return { ok: false, bin, error: `${code || 'spawn_error'}: ${msg}` };
-    }
-}
+// Note: checkFfmpegAvailable is now available from hlsService
 
-// Hubitat Maker API
-// Public-repo posture: no built-in defaults or legacy env var fallbacks.
-// If Hubitat isn't configured, the server still runs but Hubitat polling/commands are disabled.
-const envTrim = (name) => String(process.env[name] || '').trim();
-
-const normalizeHubitatHost = (raw) => {
-    const trimmed = String(raw || '').trim();
-    if (!trimmed) return '';
-    const noTrailingSlash = trimmed.replace(/\/$/, '');
-    // If the user provides just an IP/hostname, default to HTTPS.
-    // Use http:// explicitly if your Hubitat is only available over HTTP.
-    if (!/^https?:\/\//i.test(noTrailingSlash)) return `https://${noTrailingSlash}`;
-    return noTrailingSlash;
-};
-
-const HUBITAT_HOST = normalizeHubitatHost(envTrim('HUBITAT_HOST'));
-const HUBITAT_APP_ID = envTrim('HUBITAT_APP_ID');
-const HUBITAT_ACCESS_TOKEN = envTrim('HUBITAT_ACCESS_TOKEN');
-const HUBITAT_CONFIGURED = Boolean(HUBITAT_HOST && HUBITAT_APP_ID && HUBITAT_ACCESS_TOKEN);
-
-const HUBITAT_POLL_INTERVAL_MS = (() => {
-    const raw = String(process.env.HUBITAT_POLL_INTERVAL_MS || '').trim();
-    if (!raw) return 2000;
-    const parsed = Number(raw);
-    if (!Number.isFinite(parsed)) return 2000;
-    // Keep it sane: too-fast polling can overload Hubitat; too-slow can feel stale.
-    const clamped = Math.max(1000, Math.min(60 * 60 * 1000, Math.floor(parsed)));
-    return clamped;
-})();
-
-const HUBITAT_TLS_INSECURE = (() => {
-    const raw = String(process.env.HUBITAT_TLS_INSECURE || '').trim().toLowerCase();
-    return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
-})();
+// --- Hubitat Maker API ---
+// Note: Hubitat configuration constants are imported from ./config/hubitat
+// Functions: describeFetchError, redactAccessToken are imported from ./utils
 
 if (HUBITAT_TLS_INSECURE && !UndiciAgent) {
     console.warn('HUBITAT_TLS_INSECURE=1 was set but undici could not be loaded; TLS verification may still fail for Hubitat HTTPS.');
@@ -1082,43 +188,6 @@ function hubitatFetch(url, options) {
     }
     return fetch(url, base);
 }
-
-function redactAccessToken(url) {
-    try {
-        const u = new URL(String(url));
-        if (u.searchParams.has('access_token')) {
-            u.searchParams.set('access_token', 'REDACTED');
-        }
-        return u.toString();
-    } catch {
-        return String(url);
-    }
-}
-
-function describeFetchError(err) {
-    const message = err?.message || String(err);
-    const cause = err?.cause;
-    if (!cause || typeof cause !== 'object') return message;
-
-    const extra = [];
-    const code = cause.code || cause.name;
-    if (code) extra.push(String(code));
-    if (cause.errno) extra.push(`errno=${cause.errno}`);
-    if (cause.syscall) extra.push(`syscall=${cause.syscall}`);
-    if (cause.address) extra.push(`addr=${cause.address}`);
-    if (cause.port) extra.push(`port=${cause.port}`);
-    if (cause.message && cause.message !== message) extra.push(String(cause.message));
-
-    return extra.length ? `${message} (${extra.join(', ')})` : message;
-}
-
-const HUBITAT_API_BASE = HUBITAT_CONFIGURED ? `${HUBITAT_HOST}/apps/api/${HUBITAT_APP_ID}` : '';
-const HUBITAT_API_URL = HUBITAT_CONFIGURED
-    ? `${HUBITAT_API_BASE}/devices/all?access_token=${encodeURIComponent(HUBITAT_ACCESS_TOKEN)}`
-    : '';
-const HUBITAT_MODES_URL = HUBITAT_CONFIGURED
-    ? `${HUBITAT_API_BASE}/modes?access_token=${encodeURIComponent(HUBITAT_ACCESS_TOKEN)}`
-    : '';
 
 // Open-Meteo (free) weather
 // Config priority: env vars > server/data/config.json > defaults
@@ -1187,20 +256,8 @@ let lastWeatherError = null;
 let lastWeatherErrorLoggedAt = 0;
 
 // --- EVENT INBOX ---
-// Hubitat Maker API can POST back to our API via the Maker "postURL" endpoint.
-// This keeps a small in-memory ring buffer of recent events so the UI (or logs)
-// can inspect what is arriving.
-const MAX_INGESTED_EVENTS = (() => {
-    const raw = process.env.EVENTS_MAX;
-    const parsed = raw ? Number(raw) : 500;
-    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 500;
-})();
-
-const EVENTS_INGEST_TOKEN = String(process.env.EVENTS_INGEST_TOKEN || '').trim();
-const EVENTS_PERSIST_JSONL = (() => {
-    const raw = String(process.env.EVENTS_PERSIST_JSONL || '').trim().toLowerCase();
-    return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
-})();
+// Note: MAX_INGESTED_EVENTS, EVENTS_INGEST_TOKEN, EVENTS_PERSIST_JSONL are imported from ./config/events
+// Note: tryParseJsonFromText is imported from ./utils
 let ingestedEvents = [];
 
 function pruneIngestedEvents() {
@@ -1220,44 +277,6 @@ function shouldAcceptIngestedEvent(payload) {
     } catch {
         return true;
     }
-}
-
-function tryParseJsonFromText(rawText) {
-    const text = String(rawText || '').trim();
-    if (!text) return null;
-
-    // First try: direct JSON
-    try {
-        return JSON.parse(text);
-    } catch {
-        // continue
-    }
-
-    // Second try: extract the JSON object/array from a log-like prefix
-    // Example: "debugdevice event: { ... }" or "device event: {...}"
-    const firstBrace = text.indexOf('{');
-    const lastBrace = text.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-        const candidate = text.slice(firstBrace, lastBrace + 1);
-        try {
-            return JSON.parse(candidate);
-        } catch {
-            // continue
-        }
-    }
-
-    const firstBracket = text.indexOf('[');
-    const lastBracket = text.lastIndexOf(']');
-    if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
-        const candidate = text.slice(firstBracket, lastBracket + 1);
-        try {
-            return JSON.parse(candidate);
-        } catch {
-            // continue
-        }
-    }
-
-    return null;
 }
 
 function normalizePostedEventsBody(body) {
@@ -1292,24 +311,7 @@ function normalizePostedEventsBody(body) {
 }
 
 // --- UI DEVICE ALLOWLISTS ---
-// Controls (switch toggles, commands) are restricted to explicit allowlists.
-// There are two independent lists:
-// - Main dashboard controls (Environment page)
-// - Ctrl dashboard controls (Interactions page)
-//
-// Sources (priority): env vars > server/data/config.json
-// - UI_ALLOWED_CTRL_DEVICE_IDS (comma-separated) [recommended]
-// - UI_ALLOWED_MAIN_DEVICE_IDS (comma-separated)
-// Back-compat:
-// - UI_ALLOWED_DEVICE_IDS is treated as CTRL allowlist.
-//
-// Default: deny (no controls) when a list is empty.
-function parseCommaList(raw) {
-    return String(raw || '')
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-}
+// Note: parseCommaList is imported from ./utils
 
 function getUiAllowlistsInfo() {
     const envCtrl = parseCommaList(process.env.UI_ALLOWED_CTRL_DEVICE_IDS);
@@ -1402,9 +404,7 @@ function ensureDataDirs() {
     if (!fs.existsSync(BACKGROUNDS_DIR)) fs.mkdirSync(BACKGROUNDS_DIR);
 }
 
-function stableStringify(value) {
-    return JSON.stringify(value, null, 2);
-}
+// Note: stableStringify is imported from ./utils
 
 function pruneBackupsSync({ maxFiles = MAX_BACKUP_FILES } = {}) {
     try {
@@ -2658,28 +1658,8 @@ function pickCommands(commands = []) {
     }
 }
 
-function parseDmsOrDecimal(value) {
-    const raw = String(value || '').trim();
-    if (!raw) return null;
 
-    // Decimal
-    const asDec = Number(raw);
-    if (Number.isFinite(asDec)) return asDec;
-
-    // DMS like: 35°29'44.9"N
-    const m = raw.match(/^(\d+(?:\.\d+)?)\s*[°]\s*(\d+(?:\.\d+)?)\s*['’]\s*(\d+(?:\.\d+)?)\s*(?:["”])?\s*([NSEW])$/i);
-    if (!m) return null;
-
-    const deg = Number(m[1]);
-    const min = Number(m[2]);
-    const sec = Number(m[3]);
-    const hemi = String(m[4]).toUpperCase();
-    if (![deg, min, sec].every(Number.isFinite)) return null;
-
-    let dec = deg + (min / 60) + (sec / 3600);
-    if (hemi === 'S' || hemi === 'W') dec = -dec;
-    return dec;
-}
+// Note: parseDmsOrDecimal is imported from ./utils
 
 function getOpenMeteoCoords() {
     const open = settings?.weather?.openMeteo || {};
@@ -3294,12 +2274,12 @@ app.get('/api/cameras/:id/hls/ensure', async (req, res) => {
 
         // Reuse existing ffmpeg preflight (respects FFMPEG_PATH).
         const ffmpegPath = String(process.env.FFMPEG_PATH || '').trim() || null;
-        const ffmpegCheck = checkFfmpegAvailable(ffmpegPath);
+        const ffmpegCheck = hlsService.checkFfmpegAvailable(ffmpegPath);
         if (!ffmpegCheck.ok) {
             return res.status(500).json({ ok: false, error: 'ffmpeg_not_available', detail: ffmpegCheck.error || null });
         }
 
-        const state = startHlsStream(cameraId, rtspUrl, ffmpegPath);
+        const state = hlsService.startHlsStream(cameraId, rtspUrl, ffmpegPath);
         if (!state) {
             return res.status(500).json({ ok: false, error: 'failed_to_start_hls' });
         }
@@ -3336,7 +2316,7 @@ app.get('/api/cameras/:id/hls/ensure', async (req, res) => {
                     bin: String(ffmpegPath || 'ffmpeg'),
                     // Redact credentials in args (rtsp url).
                     args: (Array.isArray(state.ffmpegArgs)
-                        ? state.ffmpegArgs.map((a) => (a === rtspUrl ? redactRtspUrl(rtspUrl) : a))
+                        ? state.ffmpegArgs.map((a) => (a === rtspUrl ? hlsService.redactRtspUrl(rtspUrl) : a))
                         : null),
                 },
             }
@@ -3406,7 +2386,7 @@ app.get('/api/cameras/:id/hls/ensure', async (req, res) => {
 app.get('/api/cameras/:id/hls/playlist.m3u8', async (req, res) => {
     try {
         const cameraId = String(req.params.id || '').trim();
-        const state = hlsStreams.get(cameraId);
+        const state = hlsService.getHlsStreams().get(cameraId);
         if (!state) {
             return res.status(404).send('not_started');
         }
@@ -3430,7 +2410,7 @@ app.get('/api/cameras/:id/hls/:segment', async (req, res) => {
         if (!/^seg_\d+\.ts$/i.test(segment)) {
             return res.status(400).send('invalid_segment');
         }
-        const state = hlsStreams.get(cameraId);
+        const state = hlsService.getHlsStreams().get(cameraId);
         if (!state) {
             return res.status(404).send('not_started');
         }
@@ -3453,7 +2433,7 @@ app.get('/api/hls/health', (req, res) => {
         const streams = {};
         const now = Date.now();
         
-        for (const [cameraId, state] of hlsStreams.entries()) {
+        for (const [cameraId, state] of hlsService.getHlsStreams().entries()) {
             const newestSegmentMs = getNewestSegmentTimeMs(state.dir);
             const ffmpegRunning = state.ffmpeg && state.ffmpeg.exitCode === null;
             const uptime = now - state.startedAtMs;
@@ -3476,7 +2456,7 @@ app.get('/api/hls/health', (req, res) => {
         }
         
         const summary = {
-            totalStreams: hlsStreams.size,
+            totalStreams: hlsService.getHlsStreams().size,
             healthy: Object.values(streams).filter(s => s.healthStatus === 'healthy').length,
             stale: Object.values(streams).filter(s => s.healthStatus === 'stale').length,
             dead: Object.values(streams).filter(s => s.healthStatus === 'dead').length,
@@ -4069,7 +3049,7 @@ app.delete('/api/ui/cameras/:id', (req, res) => {
     }
 
     // Best-effort stop HLS stream if running.
-    stopHlsStream(id);
+    hlsService.stopHlsStream(id);
 
     const cleanRoomMap = (rawMap) => {
         const map = (rawMap && typeof rawMap === 'object') ? rawMap : {};
@@ -7293,7 +6273,7 @@ server.listen(PORT, '0.0.0.0', () => {
     }
     
     // Start HLS health monitoring
-    startHlsHealthMonitoring();
+    hlsService.startHlsHealthMonitoring();
 });
 
 // Graceful shutdown handling
@@ -7301,10 +6281,10 @@ function gracefulShutdown(signal) {
     console.log(`\nReceived ${signal}, shutting down gracefully...`);
     
     // Stop health monitoring
-    stopHlsHealthMonitoring();
+    hlsService.stopHlsHealthMonitoring();
     
     // Stop all HLS streams
-    stopAllHlsStreams();
+    hlsService.stopAllHlsStreams();
     
     // Close server
     server.close(() => {
