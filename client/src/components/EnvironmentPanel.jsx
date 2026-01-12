@@ -995,17 +995,13 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
 
     // Preload image and detect errors using Image constructor
     const img = new Image();
-    img.onload = () => {
-      // Image loaded successfully
-    };
     img.onerror = () => {
       setBackgroundImageError(true);
     };
     img.src = homeBackground.url;
 
     return () => {
-      // Clean up by removing event handlers
-      img.onload = null;
+      // Clean up by removing event handler
       img.onerror = null;
     };
   }, [homeBackground.enabled, homeBackground.url]);
