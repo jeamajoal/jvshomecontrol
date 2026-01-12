@@ -987,10 +987,28 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
   // Track background image load errors for graceful fallback
   const [backgroundImageError, setBackgroundImageError] = useState(false);
 
-  // Reset error state when URL changes
+  // Reset error state and preload image when URL changes
   useEffect(() => {
     setBackgroundImageError(false);
-  }, [homeBackground.url]);
+    
+    if (!homeBackground.enabled || !homeBackground.url) return;
+
+    // Preload image and detect errors using Image constructor
+    const img = new Image();
+    img.onload = () => {
+      // Image loaded successfully
+    };
+    img.onerror = () => {
+      setBackgroundImageError(true);
+    };
+    img.src = homeBackground.url;
+
+    return () => {
+      // Clean up by removing event handlers
+      img.onload = null;
+      img.onerror = null;
+    };
+  }, [homeBackground.enabled, homeBackground.url]);
 
   const cardScalePct = useMemo(() => {
     const raw = Number(config?.ui?.cardScalePct);
@@ -1475,24 +1493,15 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
   return (
     <div ref={viewportRef} className="relative w-full h-full overflow-auto p-2 md:p-3">
       {homeBackground.enabled && homeBackground.url && !backgroundImageError ? (
-        <>
-          <div
-            className="fixed inset-0 z-0 pointer-events-none"
-            style={{
-              backgroundImage: `url(${JSON.stringify(String(homeBackground.url))})`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-              opacity: homeBackground.opacityPct / 100,
-            }}
-          />
-          {/* Hidden img element to detect load errors and gracefully fallback to no background */}
-          <img
-            src={homeBackground.url}
-            alt=""
-            onError={() => setBackgroundImageError(true)}
-            style={{ display: 'none' }}
-          />
-        </>
+        <div
+          className="fixed inset-0 z-0 pointer-events-none"
+          style={{
+            backgroundImage: `url(${JSON.stringify(String(homeBackground.url))})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: homeBackground.opacityPct / 100,
+          }}
+        />
       ) : null}
 
       <div className="relative z-10 w-full">
