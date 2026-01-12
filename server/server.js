@@ -27,16 +27,20 @@ const {
     MAX_BACKUP_FILES,
     
     // Color Schemes
-    LEGACY_UI_COLOR_SCHEMES,
     ALLOWED_TOLERANCE_COLOR_IDS,
     DEFAULT_ACCENT_COLOR_ID,
-    ALLOWED_ACCENT_COLOR_IDS,
     
-    // UI Ranges
-    SECONDARY_TEXT_SIZE_PCT_RANGE,
-    PRIMARY_TEXT_SIZE_PCT_RANGE,
-    BLUR_SCALE_PCT_RANGE,
-    ICON_SIZE_PCT_RANGE,
+    // UI Defaults (from config/ui.js)
+    UI_CARD_OPACITY_SCALE_PCT_RANGE,
+    UI_BLUR_SCALE_PCT_RANGE,
+    UI_PRIMARY_TEXT_SIZE_PCT_RANGE,
+    UI_SECONDARY_TEXT_SIZE_PCT_RANGE,
+    UI_ICON_SIZE_PCT_RANGE,
+    UI_CARD_SCALE_PCT_RANGE,
+    UI_HOME_ROOM_COLUMNS_XL_RANGE,
+    UI_PRIMARY_TEXT_OPACITY_PCT_DEFAULT,
+    UI_SECONDARY_TEXT_OPACITY_PCT_DEFAULT,
+    UI_ICON_OPACITY_PCT_DEFAULT,
     
     // Home Dashboard
     HOME_TOP_ROW_CARD_IDS,
@@ -78,7 +82,9 @@ const {
     MAX_INGESTED_EVENTS,
     EVENTS_INGEST_TOKEN,
     EVENTS_PERSIST_JSONL,
-} = require('./config');
+} = require('./config/');
+// NOTE: Require the directory explicitly so this does not accidentally resolve
+// to a sibling file like server/config.json.
 
 // --- Import utility functions ---
 const {
@@ -88,6 +94,7 @@ const {
     stableStringify,
     clampInt,
     normalizeAccentColorId,
+    isAllowedAccentColorId,
     normalizePanelName,
     isPresetPanelProfile,
     rejectIfPresetPanelProfile,
@@ -572,7 +579,7 @@ function normalizePersistedConfig(raw) {
         return outMap;
     })();
 
-    const rawAccent = String(uiRaw.accentColorId || uiRaw.colorScheme || '').trim();
+    const rawAccent = String(uiRaw.accentColorId || '').trim();
     const accentColorId = normalizeAccentColorId(rawAccent);
 
     const colorizeHomeValues = uiRaw.colorizeHomeValues === true;
@@ -664,20 +671,32 @@ function normalizePersistedConfig(raw) {
 
     // Card background opacity scale.
     // 100 = default styling, 0 = fully transparent, 200 = twice as opaque (clamped per-card).
-    const cardOpacityScalePct = clampInt(uiRaw.cardOpacityScalePct, 0, 200, 100);
+    // Default is 20 (glassy look) so shipped presets can inherit this without specifying it.
+    const cardOpacityScalePct = clampInt(
+        uiRaw.cardOpacityScalePct,
+        UI_CARD_OPACITY_SCALE_PCT_RANGE.min,
+        UI_CARD_OPACITY_SCALE_PCT_RANGE.max,
+        UI_CARD_OPACITY_SCALE_PCT_RANGE.def,
+    );
 
     // Backdrop blur scale.
     // 100 = default blur, 0 = no blur, 200 = double blur.
-    const blurScalePct = clampInt(uiRaw.blurScalePct, BLUR_SCALE_PCT_RANGE.min, BLUR_SCALE_PCT_RANGE.max, BLUR_SCALE_PCT_RANGE.def);
+    // Default is 15 (light blur) so shipped presets can inherit this without specifying it.
+    const blurScalePct = clampInt(
+        uiRaw.blurScalePct,
+        UI_BLUR_SCALE_PCT_RANGE.min,
+        UI_BLUR_SCALE_PCT_RANGE.max,
+        UI_BLUR_SCALE_PCT_RANGE.def,
+    );
 
     // Secondary text styling (Home page).
     // Stored as a percent for easier UI controls; the client maps these to CSS.
-    const secondaryTextOpacityPct = clampInt(uiRaw.secondaryTextOpacityPct, 0, 100, 45);
+    const secondaryTextOpacityPct = clampInt(uiRaw.secondaryTextOpacityPct, 0, 100, UI_SECONDARY_TEXT_OPACITY_PCT_DEFAULT);
     const secondaryTextSizePct = clampInt(
         uiRaw.secondaryTextSizePct,
-        SECONDARY_TEXT_SIZE_PCT_RANGE.min,
-        SECONDARY_TEXT_SIZE_PCT_RANGE.max,
-        SECONDARY_TEXT_SIZE_PCT_RANGE.def,
+        UI_SECONDARY_TEXT_SIZE_PCT_RANGE.min,
+        UI_SECONDARY_TEXT_SIZE_PCT_RANGE.max,
+        UI_SECONDARY_TEXT_SIZE_PCT_RANGE.def,
     );
     const secondaryTextColorIdRaw = String(uiRaw.secondaryTextColorId ?? '').trim();
     const secondaryTextColorId = secondaryTextColorIdRaw
@@ -686,12 +705,12 @@ function normalizePersistedConfig(raw) {
 
     // Primary text styling (Home page).
     // Stored as a percent for easier UI controls; the client maps these to CSS.
-    const primaryTextOpacityPct = clampInt(uiRaw.primaryTextOpacityPct, 0, 100, 100);
+    const primaryTextOpacityPct = clampInt(uiRaw.primaryTextOpacityPct, 0, 100, UI_PRIMARY_TEXT_OPACITY_PCT_DEFAULT);
     const primaryTextSizePct = clampInt(
         uiRaw.primaryTextSizePct,
-        PRIMARY_TEXT_SIZE_PCT_RANGE.min,
-        PRIMARY_TEXT_SIZE_PCT_RANGE.max,
-        PRIMARY_TEXT_SIZE_PCT_RANGE.def,
+        UI_PRIMARY_TEXT_SIZE_PCT_RANGE.min,
+        UI_PRIMARY_TEXT_SIZE_PCT_RANGE.max,
+        UI_PRIMARY_TEXT_SIZE_PCT_RANGE.def,
     );
     const primaryTextColorIdRaw = String(uiRaw.primaryTextColorId ?? '').trim();
     const primaryTextColorId = primaryTextColorIdRaw
@@ -701,7 +720,12 @@ function normalizePersistedConfig(raw) {
     // Card scale percent.
     // 100 = default sizing, 50 = half-size, 200 = double-size.
     // Currently used by the Home panel to scale cards/controls for different screens.
-    const cardScalePct = clampInt(uiRaw.cardScalePct, 50, 200, 100);
+    const cardScalePct = clampInt(
+        uiRaw.cardScalePct,
+        UI_CARD_SCALE_PCT_RANGE.min,
+        UI_CARD_SCALE_PCT_RANGE.max,
+        UI_CARD_SCALE_PCT_RANGE.def,
+    );
 
     // Home top row visibility + scale.
     const homeTopRowEnabled = uiRaw.homeTopRowEnabled !== false;
@@ -721,7 +745,12 @@ function normalizePersistedConfig(raw) {
 
     // Home room grid columns at XL breakpoint (>= 1280px).
     // Default matches current layout (3 columns).
-    const homeRoomColumnsXl = clampInt(uiRaw.homeRoomColumnsXl, 1, 6, 3);
+    const homeRoomColumnsXl = clampInt(
+        uiRaw.homeRoomColumnsXl,
+        UI_HOME_ROOM_COLUMNS_XL_RANGE.min,
+        UI_HOME_ROOM_COLUMNS_XL_RANGE.max,
+        UI_HOME_ROOM_COLUMNS_XL_RANGE.def,
+    );
 
     // Home room metric grid columns (sub-cards inside each room panel).
     // 0 = auto (derived from room columns), 1-3 = forced columns.
@@ -861,8 +890,13 @@ function normalizePersistedConfig(raw) {
         ? (ALLOWED_TOLERANCE_COLOR_IDS.has(iconColorIdRaw) ? iconColorIdRaw : null)
         : null;
 
-    const iconOpacityPct = clampInt(uiRaw.iconOpacityPct, 0, 100, 100);
-    const iconSizePct = clampInt(uiRaw.iconSizePct, ICON_SIZE_PCT_RANGE.min, ICON_SIZE_PCT_RANGE.max, ICON_SIZE_PCT_RANGE.def);
+    const iconOpacityPct = clampInt(uiRaw.iconOpacityPct, 0, 100, UI_ICON_OPACITY_PCT_DEFAULT);
+    const iconSizePct = clampInt(
+        uiRaw.iconSizePct,
+        UI_ICON_SIZE_PCT_RANGE.min,
+        UI_ICON_SIZE_PCT_RANGE.max,
+        UI_ICON_SIZE_PCT_RANGE.def,
+    );
 
     const rawPanelProfiles = (uiRaw.panelProfiles && typeof uiRaw.panelProfiles === 'object') ? uiRaw.panelProfiles : {};
     // Always include shipped presets, but do not allow persisted config to override them.
@@ -883,18 +917,17 @@ function normalizePersistedConfig(raw) {
         if (!name) continue;
         const p = (rawProfile && typeof rawProfile === 'object') ? rawProfile : {};
 
-        const pSchemeRaw = String(p.accentColorId || p.colorScheme || '').trim();
+        const pSchemeRaw = String(p.accentColorId || '').trim();
         const pColorScheme = (() => {
             if (!pSchemeRaw) return null;
-            if (ALLOWED_ACCENT_COLOR_IDS.has(pSchemeRaw)) return pSchemeRaw;
-            if (LEGACY_UI_COLOR_SCHEMES.includes(pSchemeRaw)) return normalizeAccentColorId(pSchemeRaw);
+            if (isAllowedAccentColorId(pSchemeRaw)) return pSchemeRaw;
             return null;
         })();
         const pCardOpacityScalePct = Object.prototype.hasOwnProperty.call(p, 'cardOpacityScalePct')
-            ? clampInt(p.cardOpacityScalePct, 0, 200, cardOpacityScalePct)
+            ? clampInt(p.cardOpacityScalePct, UI_CARD_OPACITY_SCALE_PCT_RANGE.min, UI_CARD_OPACITY_SCALE_PCT_RANGE.max, cardOpacityScalePct)
             : null;
         const pBlurScalePct = Object.prototype.hasOwnProperty.call(p, 'blurScalePct')
-            ? clampInt(p.blurScalePct, BLUR_SCALE_PCT_RANGE.min, BLUR_SCALE_PCT_RANGE.max, blurScalePct)
+            ? clampInt(p.blurScalePct, UI_BLUR_SCALE_PCT_RANGE.min, UI_BLUR_SCALE_PCT_RANGE.max, blurScalePct)
             : null;
         const pSecondaryTextOpacityPct = Object.prototype.hasOwnProperty.call(p, 'secondaryTextOpacityPct')
             ? clampInt(p.secondaryTextOpacityPct, 0, 100, secondaryTextOpacityPct)
@@ -902,8 +935,8 @@ function normalizePersistedConfig(raw) {
         const pSecondaryTextSizePct = Object.prototype.hasOwnProperty.call(p, 'secondaryTextSizePct')
             ? clampInt(
                 p.secondaryTextSizePct,
-                SECONDARY_TEXT_SIZE_PCT_RANGE.min,
-                SECONDARY_TEXT_SIZE_PCT_RANGE.max,
+                UI_SECONDARY_TEXT_SIZE_PCT_RANGE.min,
+                UI_SECONDARY_TEXT_SIZE_PCT_RANGE.max,
                 secondaryTextSizePct,
             )
             : null;
@@ -920,8 +953,8 @@ function normalizePersistedConfig(raw) {
         const pPrimaryTextSizePct = Object.prototype.hasOwnProperty.call(p, 'primaryTextSizePct')
             ? clampInt(
                 p.primaryTextSizePct,
-                PRIMARY_TEXT_SIZE_PCT_RANGE.min,
-                PRIMARY_TEXT_SIZE_PCT_RANGE.max,
+                UI_PRIMARY_TEXT_SIZE_PCT_RANGE.min,
+                UI_PRIMARY_TEXT_SIZE_PCT_RANGE.max,
                 primaryTextSizePct,
             )
             : null;
@@ -932,7 +965,7 @@ function normalizePersistedConfig(raw) {
             ? (ALLOWED_TOLERANCE_COLOR_IDS.has(pPrimaryTextColorIdRaw) ? pPrimaryTextColorIdRaw : null)
             : null;
         const pCardScalePct = Object.prototype.hasOwnProperty.call(p, 'cardScalePct')
-            ? clampInt(p.cardScalePct, 50, 200, cardScalePct)
+            ? clampInt(p.cardScalePct, UI_CARD_SCALE_PCT_RANGE.min, UI_CARD_SCALE_PCT_RANGE.max, cardScalePct)
             : null;
         const pHomeTopRowEnabled = Object.prototype.hasOwnProperty.call(p, 'homeTopRowEnabled')
             ? (p.homeTopRowEnabled !== false)
@@ -952,7 +985,7 @@ function normalizePersistedConfig(raw) {
             })()
             : null;
         const pHomeRoomColumnsXl = Object.prototype.hasOwnProperty.call(p, 'homeRoomColumnsXl')
-            ? clampInt(p.homeRoomColumnsXl, 1, 6, homeRoomColumnsXl)
+            ? clampInt(p.homeRoomColumnsXl, UI_HOME_ROOM_COLUMNS_XL_RANGE.min, UI_HOME_ROOM_COLUMNS_XL_RANGE.max, homeRoomColumnsXl)
             : null;
 
         const pHomeRoomMetricColumns = Object.prototype.hasOwnProperty.call(p, 'homeRoomMetricColumns')
@@ -1035,7 +1068,7 @@ function normalizePersistedConfig(raw) {
             ? clampInt(p.iconOpacityPct, 0, 100, iconOpacityPct)
             : null;
         const pIconSizePct = Object.prototype.hasOwnProperty.call(p, 'iconSizePct')
-            ? clampInt(p.iconSizePct, ICON_SIZE_PCT_RANGE.min, ICON_SIZE_PCT_RANGE.max, iconSizePct)
+            ? clampInt(p.iconSizePct, UI_ICON_SIZE_PCT_RANGE.min, UI_ICON_SIZE_PCT_RANGE.max, iconSizePct)
             : null;
 
         const pVisibleRoomIds = Object.prototype.hasOwnProperty.call(p, 'visibleRoomIds')
@@ -1475,8 +1508,6 @@ function rebuildRuntimeConfigFromPersisted() {
             mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
             // Back-compat
             allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
-            // Back-compat (legacy clients)
-            colorScheme: persistedConfig?.ui?.accentColorId,
         },
     };
 }
@@ -2021,8 +2052,6 @@ async function syncHubitatDataInner() {
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 // Back-compat
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
-                // Back-compat (legacy clients)
-                colorScheme: persistedConfig?.ui?.accentColorId,
             },
         };
         sensorStatuses = newStatuses;
@@ -2717,8 +2746,6 @@ app.post('/api/rooms', (req, res) => {
                 ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
-                // Back-compat (legacy clients)
-                colorScheme: persistedConfig?.ui?.accentColorId,
             },
         };
         emitConfigUpdateSafe();
@@ -2766,8 +2793,6 @@ app.delete('/api/rooms/:id', (req, res) => {
                 ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
-                // Back-compat (legacy clients)
-                colorScheme: persistedConfig?.ui?.accentColorId,
             },
         };
         emitConfigUpdateSafe();
@@ -2804,8 +2829,6 @@ app.post('/api/labels', (req, res) => {
                 ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
-                // Back-compat (legacy clients)
-                colorScheme: persistedConfig?.ui?.accentColorId,
             },
         };
         emitConfigUpdateSafe();
@@ -2840,8 +2863,6 @@ app.put('/api/labels/:id', (req, res) => {
                 ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
-                // Back-compat (legacy clients)
-                colorScheme: persistedConfig?.ui?.accentColorId,
             },
         };
         emitConfigUpdateSafe();
@@ -2874,8 +2895,6 @@ app.delete('/api/labels/:id', (req, res) => {
                 ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
-                // Back-compat (legacy clients)
-                colorScheme: persistedConfig?.ui?.accentColorId,
             },
         };
         emitConfigUpdateSafe();
@@ -3777,13 +3796,40 @@ app.post('/api/ui/panels', (req, res) => {
     const seedFromPanelName = normalizePanelName(req.body?.seedFromPanelName);
     const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
     const profilesMap = (ui.panelProfiles && typeof ui.panelProfiles === 'object') ? ui.panelProfiles : {};
-    const seedFromProfile = (seedFromPanelName && profilesMap[seedFromPanelName] && typeof profilesMap[seedFromPanelName] === 'object')
+    
+    // Check for seed profile in both user profiles and shipped presets.
+    const userProfile = (seedFromPanelName && profilesMap[seedFromPanelName] && typeof profilesMap[seedFromPanelName] === 'object')
         ? profilesMap[seedFromPanelName]
         : null;
-    const effectiveUi = {
-        ...ui,
-        ...(seedFromProfile || {}),
-    };
+    const presetProfile = (seedFromPanelName && DEFAULT_PANEL_PROFILES_PRESETS[seedFromPanelName])
+        ? DEFAULT_PANEL_PROFILES_PRESETS[seedFromPanelName]
+        : null;
+    const seedFromProfile = userProfile || presetProfile || null;
+    const seedIsPreset = !userProfile && !!presetProfile;
+    
+    // When seeding from a shipped preset, merge:
+    // - COLOR IDENTITY from the preset (accentColorId, iconColorId, glowColorId, text colors, opacities, homeBackground)
+    // - SIZING/LAYOUT from the current global ui settings (so user's display tuning is preserved)
+    // When seeding from a user profile or no profile, use the full effective ui.
+    const effectiveUi = seedIsPreset
+        ? {
+            // Global sizing/layout (user's display settings)
+            ...ui,
+            // Preset color identity (overwrites globals for color fields only)
+            accentColorId: presetProfile.accentColorId ?? ui.accentColorId,
+            iconColorId: presetProfile.iconColorId ?? ui.iconColorId,
+            iconOpacityPct: presetProfile.iconOpacityPct ?? ui.iconOpacityPct,
+            glowColorId: presetProfile.glowColorId ?? ui.glowColorId,
+            primaryTextColorId: presetProfile.primaryTextColorId ?? ui.primaryTextColorId,
+            primaryTextOpacityPct: presetProfile.primaryTextOpacityPct ?? ui.primaryTextOpacityPct,
+            secondaryTextColorId: presetProfile.secondaryTextColorId ?? ui.secondaryTextColorId,
+            secondaryTextOpacityPct: presetProfile.secondaryTextOpacityPct ?? ui.secondaryTextOpacityPct,
+            homeBackground: presetProfile.homeBackground ?? ui.homeBackground,
+        }
+        : {
+            ...ui,
+            ...(seedFromProfile || {}),
+        };
 
     // Seed from "current" effective UI settings (global defaults, or the selected profile/preset).
     const seed = {
@@ -3850,21 +3896,22 @@ app.post('/api/ui/panels', (req, res) => {
 });
 
 const updateAccentColorId = (req, res, sourceLabel) => {
-    const raw = String(req.body?.accentColorId ?? req.body?.colorScheme ?? '').trim();
+    const raw = String(req.body?.accentColorId ?? '').trim();
     if (!raw) {
         return res.status(400).json({ error: 'Missing accentColorId' });
     }
 
     const normalized = (() => {
-        if (ALLOWED_ACCENT_COLOR_IDS.has(raw)) return raw;
-        if (LEGACY_UI_COLOR_SCHEMES.includes(raw)) return normalizeAccentColorId(raw);
+        if (isAllowedAccentColorId(raw)) return raw;
         return null;
     })();
 
     if (!normalized) {
         return res.status(400).json({
             error: 'Invalid accentColorId',
-            allowed: Array.from(ALLOWED_ACCENT_COLOR_IDS).sort((a, b) => a.localeCompare(b)),
+            allowed: Array.from(ALLOWED_TOLERANCE_COLOR_IDS)
+                .filter((id) => id !== 'none')
+                .sort((a, b) => a.localeCompare(b)),
         });
     }
 
@@ -3927,9 +3974,6 @@ const updateAccentColorId = (req, res, sourceLabel) => {
 
 // New endpoint name.
 app.put('/api/ui/accent-color', (req, res) => updateAccentColorId(req, res, 'api-ui-accent-color'));
-
-// Legacy alias.
-app.put('/api/ui/color-scheme', (req, res) => updateAccentColorId(req, res, 'api-ui-color-scheme'));
 
 // Update UI toggle for coloring Home values from the kiosk.
 // Expected payload: { colorizeHomeValues: boolean, colorizeHomeValuesOpacityPct?: number(0-100) }
@@ -4307,7 +4351,7 @@ app.put('/api/ui/blur-scale', (req, res) => {
         return res.status(400).json({ error: 'Missing blurScalePct (0-200)' });
     }
 
-    const blurScalePct = Math.max(BLUR_SCALE_PCT_RANGE.min, Math.min(BLUR_SCALE_PCT_RANGE.max, Math.round(num)));
+    const blurScalePct = Math.max(UI_BLUR_SCALE_PCT_RANGE.min, Math.min(UI_BLUR_SCALE_PCT_RANGE.max, Math.round(num)));
 
     const panelName = normalizePanelName(req.body?.panelName);
     if (panelName) {
@@ -4446,8 +4490,8 @@ app.put('/api/ui/secondary-text-size', (req, res) => {
     }
 
     const secondaryTextSizePct = Math.max(
-        SECONDARY_TEXT_SIZE_PCT_RANGE.min,
-        Math.min(SECONDARY_TEXT_SIZE_PCT_RANGE.max, Math.round(num)),
+        UI_SECONDARY_TEXT_SIZE_PCT_RANGE.min,
+        Math.min(UI_SECONDARY_TEXT_SIZE_PCT_RANGE.max, Math.round(num)),
     );
 
     const panelName = normalizePanelName(req.body?.panelName);
@@ -4658,8 +4702,8 @@ app.put('/api/ui/primary-text-size', (req, res) => {
     }
 
     const primaryTextSizePct = Math.max(
-        PRIMARY_TEXT_SIZE_PCT_RANGE.min,
-        Math.min(PRIMARY_TEXT_SIZE_PCT_RANGE.max, Math.round(num)),
+        UI_PRIMARY_TEXT_SIZE_PCT_RANGE.min,
+        Math.min(UI_PRIMARY_TEXT_SIZE_PCT_RANGE.max, Math.round(num)),
     );
 
     const panelName = normalizePanelName(req.body?.panelName);
@@ -5011,7 +5055,7 @@ app.put('/api/ui/icon-size', (req, res) => {
         return res.status(400).json({ error: 'Missing iconSizePct (50-200)' });
     }
 
-    const iconSizePct = Math.max(ICON_SIZE_PCT_RANGE.min, Math.min(ICON_SIZE_PCT_RANGE.max, Math.round(num)));
+    const iconSizePct = Math.max(UI_ICON_SIZE_PCT_RANGE.min, Math.min(UI_ICON_SIZE_PCT_RANGE.max, Math.round(num)));
 
     const panelName = normalizePanelName(req.body?.panelName);
     if (panelName) {
@@ -6209,8 +6253,6 @@ app.post('/api/layout', (req, res) => {
                 ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
-                // Back-compat (legacy clients)
-                colorScheme: persistedConfig?.ui?.accentColorId,
             },
         };
         io.emit('config_update', config);
@@ -6248,8 +6290,6 @@ app.delete('/api/layout', (req, res) => {
                 ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
-                // Back-compat (legacy clients)
-                colorScheme: persistedConfig?.ui?.accentColorId,
             },
         };
         io.emit('config_update', config);

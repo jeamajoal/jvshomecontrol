@@ -1293,6 +1293,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
           subClassName={`mt-1 text-[13px] jvs-secondary-text truncate ${secondaryTextColorClass}`.trim()}
           icon={Clock}
           accentClassName="border-white/10"
+          iconWrapClassName="bg-white/5"
           uiScheme={resolvedUiScheme}
           primaryTextColorClassName={primaryTextColorClass}
           secondaryTextClassName={secondaryTextColorClass}
@@ -1358,6 +1359,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
           subClassName={`mt-2 text-[13px] jvs-secondary-text ${secondaryTextColorClass}`.trim()}
           icon={Cloud}
           accentClassName="border-white/10"
+          iconWrapClassName="bg-white/5"
           valueClassName={getColorizedValueClass('temperature', outsideTempForValue, climateTolerances, climateToleranceColors, colorizeHomeValues)}
           valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
           uiScheme={resolvedUiScheme}
@@ -1414,6 +1416,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
           }
           subClassName={`mt-1 text-[13px] jvs-secondary-text truncate ${secondaryTextColorClass}`.trim()}
           icon={Activity}
+          iconWrapClassName="bg-white/5"
           accentClassName={
             connected
               ? ((overall.motionActive || overall.doorOpen) ? `${resolvedUiScheme.selectedCard}` : 'border-white/10')

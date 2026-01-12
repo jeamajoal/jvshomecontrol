@@ -26,6 +26,7 @@ function App() {
   const [autoFullscreenArmed, setAutoFullscreenArmed] = useState(true);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const [hubitatHealth, setHubitatHealth] = useState(null);
   const [page, setPage] = useState(0); // 0=Home, 1=Climate, 2=Weather, 3=Activity, 4=Controls, 5=Settings, 6=Info, 7=Events (hidden)
 
   const PANEL_NAME_STORAGE_KEY = 'jvs.panelName';
@@ -346,6 +347,31 @@ function App() {
     };
   }, [refreshNow]);
 
+  const roomsEmpty = Array.isArray(effectiveConfig?.rooms) && effectiveConfig.rooms.length === 0;
+
+  useEffect(() => {
+    if (!dataLoaded) return;
+    if (!roomsEmpty) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_HOST}/api/hubitat/health`);
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!cancelled) setHubitatHealth(json);
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dataLoaded, roomsEmpty]);
+
+  const hubitatConfigured = hubitatHealth?.configured === true;
+
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 767px)');
     const apply = () => setIsMobile(!!mq.matches);
@@ -486,7 +512,7 @@ function App() {
           <div className="flex items-center justify-center h-full text-gray-500 animate-pulse">LOADING SYSTEM...</div>
         ) : (
           <AppStateProvider value={{ config: effectiveConfig, statuses: sensors, connected, uiScheme, refreshNow, panelName, setPanelName }}>
-            {(Array.isArray(effectiveConfig?.rooms) && effectiveConfig.rooms.length === 0) ? (
+            {roomsEmpty ? (
               <div className="flex items-center justify-center h-full p-8">
                 <div className="glass-panel border border-white/10 p-6 max-w-xl w-full text-center">
                   <div className="text-[11px] uppercase tracking-[0.2em] text-white/55 font-semibold">No Data</div>
@@ -500,6 +526,23 @@ function App() {
                   <div className="mt-3 text-xs text-white/45">
                     Check <span className="text-white/70">{API_HOST}/api/config</span>
                   </div>
+
+                  {hubitatConfigured === false ? (
+                    <div className="mt-4 text-left text-sm text-white/55">
+                      <div className="text-[11px] uppercase tracking-[0.2em] text-white/55 font-semibold">First install</div>
+                      <div className="mt-2">
+                        Hubitat isn’t configured. Set these environment variables for the server and restart it:
+                      </div>
+                      <div className="mt-2 text-xs text-white/70 space-y-1">
+                        <div><span className="text-white/85 font-semibold">HUBITAT_HOST</span> (example: <span className="text-white/85">https://192.168.1.50</span>)</div>
+                        <div><span className="text-white/85 font-semibold">HUBITAT_APP_ID</span></div>
+                        <div><span className="text-white/85 font-semibold">HUBITAT_ACCESS_TOKEN</span></div>
+                      </div>
+                      <div className="mt-3 text-xs text-white/45">
+                        Then verify: <span className="text-white/70">{API_HOST}/api/hubitat/health</span>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -522,6 +565,7 @@ function App() {
             {page === 5 ? (
               <ConfigPanel
                 config={effectiveConfig}
+                baseConfig={config}
                 statuses={sensors}
                 connected={connected}
                 uiScheme={uiScheme}

@@ -732,9 +732,16 @@ const asNumber = (value) => {
 const RTSP_REDACTED_PLACEHOLDER = '***';
 const RTSP_REDACTED_PATTERN = new RegExp(`:\\/\\/[^/]*${RTSP_REDACTED_PLACEHOLDER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}@`, 'i');
 
-const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: connectedProp, onOpenEvents }) => {
+const ConfigPanel = ({
+  config: configProp,
+  baseConfig: baseConfigProp,
+  statuses: statusesProp,
+  connected: connectedProp,
+  onOpenEvents,
+}) => {
   const ctx = useAppState();
   const config = configProp ?? ctx?.config;
+  const baseConfig = baseConfigProp ?? configProp ?? ctx?.config;
   const statuses = statusesProp ?? ctx?.statuses;
   const connected = connectedProp ?? ctx?.connected;
 
@@ -788,15 +795,15 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   }));
   const [cameraFormError, setCameraFormError] = useState(null);
 
-  const [activeTab, setActiveTab] = useState('appearance');
+  const [activeTab, setActiveTab] = useState('display');
 
   const TABS = [
-    { id: 'devices', label: 'Devices' },
+    { id: 'display', label: 'Display' },
     { id: 'appearance', label: 'Appearance' },
-    { id: 'home', label: 'Home' },
     { id: 'cameras', label: 'Cameras' },
     { id: 'sounds', label: 'Sounds' },
     { id: 'climate', label: 'Climate' },
+    { id: 'devices', label: 'Devices' },
     { id: 'events', label: 'Events' },
   ];
 
@@ -830,6 +837,10 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     const panelName = payload && typeof payload === 'object' ? payload.panelName : null;
     return saveVisibleRoomIds(ids, panelName);
   });
+  const globalVisibleRoomsSave = useAsyncSave((payload) => {
+    const ids = payload && typeof payload === 'object' ? payload.visibleRoomIds : [];
+    return saveVisibleRoomIds(ids, null);
+  });
   const accentColorSave = useAsyncSave((nextAccentColorId) => saveAccentColorId(nextAccentColorId, selectedPanelName || null));
   const alertSoundsSave = useAsyncSave(saveAlertSounds);
   const homeValueSave = useAsyncSave(saveColorizeHomeValues);
@@ -860,6 +871,17 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const sensorColorsSave = useAsyncSave(saveSensorIndicatorColors);
   const climateTolSave = useAsyncSave(saveClimateTolerances);
   const climateColorsSave = useAsyncSave(saveClimateToleranceColors);
+
+  // Global display defaults (always saved without panelName)
+  const globalCardOpacitySave = useAsyncSave((cardOpacityScalePct) => saveCardOpacityScalePct(cardOpacityScalePct, null));
+  const globalBlurScaleSave = useAsyncSave((blurScalePct) => saveBlurScalePct(blurScalePct, null));
+  const globalSecondaryTextOpacitySave = useAsyncSave((secondaryTextOpacityPct) => saveSecondaryTextOpacityPct(secondaryTextOpacityPct, null));
+  const globalPrimaryTextOpacitySave = useAsyncSave((primaryTextOpacityPct) => savePrimaryTextOpacityPct(primaryTextOpacityPct, null));
+  const globalPrimaryTextSizeSave = useAsyncSave((primaryTextSizePct) => savePrimaryTextSizePct(primaryTextSizePct, null));
+  const globalSecondaryTextSizeSave = useAsyncSave((secondaryTextSizePct) => saveSecondaryTextSizePct(secondaryTextSizePct, null));
+  const globalIconSizeSave = useAsyncSave((iconSizePct) => saveIconSizePct(iconSizePct, null));
+  const globalCardScaleSave = useAsyncSave((cardScalePct) => saveCardScalePct(cardScalePct, null));
+  const globalHomeRoomColsSave = useAsyncSave((homeRoomColumnsXl) => saveHomeRoomColumnsXl(homeRoomColumnsXl, null));
   const openMeteoSave = useAsyncSave(async (openMeteo) => {
     const res = await saveOpenMeteoConfig(openMeteo);
     const overrides = (res?.overriddenByEnv && typeof res.overriddenByEnv === 'object') ? res.overriddenByEnv : {};
@@ -981,11 +1003,23 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return Math.max(0, Math.min(200, Math.round(raw)));
   }, [config?.ui?.cardOpacityScalePct]);
 
+  const globalCardOpacityScaleFromConfig = useMemo(() => {
+    const raw = Number(baseConfig?.ui?.cardOpacityScalePct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(0, Math.min(200, Math.round(raw)));
+  }, [baseConfig?.ui?.cardOpacityScalePct]);
+
   const blurScaleFromConfig = useMemo(() => {
     const raw = Number(config?.ui?.blurScalePct);
     if (!Number.isFinite(raw)) return 100;
     return Math.max(0, Math.min(200, Math.round(raw)));
   }, [config?.ui?.blurScalePct]);
+
+  const globalBlurScaleFromConfig = useMemo(() => {
+    const raw = Number(baseConfig?.ui?.blurScalePct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(0, Math.min(200, Math.round(raw)));
+  }, [baseConfig?.ui?.blurScalePct]);
 
   const secondaryTextOpacityFromConfig = useMemo(() => {
     const raw = Number(config?.ui?.secondaryTextOpacityPct);
@@ -993,11 +1027,23 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return Math.max(0, Math.min(100, Math.round(raw)));
   }, [config?.ui?.secondaryTextOpacityPct]);
 
+  const globalSecondaryTextOpacityFromConfig = useMemo(() => {
+    const raw = Number(baseConfig?.ui?.secondaryTextOpacityPct);
+    if (!Number.isFinite(raw)) return 45;
+    return Math.max(0, Math.min(100, Math.round(raw)));
+  }, [baseConfig?.ui?.secondaryTextOpacityPct]);
+
   const secondaryTextSizeFromConfig = useMemo(() => {
     const raw = Number(config?.ui?.secondaryTextSizePct);
     if (!Number.isFinite(raw)) return 100;
     return Math.max(50, Math.min(200, Math.round(raw)));
   }, [config?.ui?.secondaryTextSizePct]);
+
+  const globalSecondaryTextSizeFromConfig = useMemo(() => {
+    const raw = Number(baseConfig?.ui?.secondaryTextSizePct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(50, Math.min(200, Math.round(raw)));
+  }, [baseConfig?.ui?.secondaryTextSizePct]);
 
   const secondaryTextColorFromConfig = useMemo(() => {
     const raw = String(config?.ui?.secondaryTextColorId ?? '').trim();
@@ -1012,11 +1058,23 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return Math.max(0, Math.min(100, Math.round(raw)));
   }, [config?.ui?.primaryTextOpacityPct]);
 
+  const globalPrimaryTextOpacityFromConfig = useMemo(() => {
+    const raw = Number(baseConfig?.ui?.primaryTextOpacityPct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(0, Math.min(100, Math.round(raw)));
+  }, [baseConfig?.ui?.primaryTextOpacityPct]);
+
   const primaryTextSizeFromConfig = useMemo(() => {
     const raw = Number(config?.ui?.primaryTextSizePct);
     if (!Number.isFinite(raw)) return 100;
     return Math.max(50, Math.min(200, Math.round(raw)));
   }, [config?.ui?.primaryTextSizePct]);
+
+  const globalPrimaryTextSizeFromConfig = useMemo(() => {
+    const raw = Number(baseConfig?.ui?.primaryTextSizePct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(50, Math.min(200, Math.round(raw)));
+  }, [baseConfig?.ui?.primaryTextSizePct]);
 
   const primaryTextColorFromConfig = useMemo(() => {
     const raw = String(config?.ui?.primaryTextColorId ?? '').trim();
@@ -1051,11 +1109,23 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return Math.max(50, Math.min(200, Math.round(raw)));
   }, [config?.ui?.iconSizePct]);
 
+  const globalIconSizeFromConfig = useMemo(() => {
+    const raw = Number(baseConfig?.ui?.iconSizePct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(50, Math.min(200, Math.round(raw)));
+  }, [baseConfig?.ui?.iconSizePct]);
+
   const cardScaleFromConfig = useMemo(() => {
     const raw = Number(config?.ui?.cardScalePct);
     if (!Number.isFinite(raw)) return 100;
     return Math.max(50, Math.min(200, Math.round(raw)));
   }, [config?.ui?.cardScalePct]);
+
+  const globalCardScaleFromConfig = useMemo(() => {
+    const raw = Number(baseConfig?.ui?.cardScalePct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(50, Math.min(200, Math.round(raw)));
+  }, [baseConfig?.ui?.cardScalePct]);
 
   const homeTopRowEnabledFromConfig = config?.ui?.homeTopRowEnabled !== false;
 
@@ -1085,6 +1155,12 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     if (!Number.isFinite(raw)) return 3;
     return Math.max(1, Math.min(6, Math.round(raw)));
   }, [config?.ui?.homeRoomColumnsXl]);
+
+  const globalHomeRoomColumnsXlFromConfig = useMemo(() => {
+    const raw = Number(baseConfig?.ui?.homeRoomColumnsXl);
+    if (!Number.isFinite(raw)) return 3;
+    return Math.max(1, Math.min(6, Math.round(raw)));
+  }, [baseConfig?.ui?.homeRoomColumnsXl]);
 
   const homeRoomMetricColumnsFromConfig = useMemo(() => {
     const raw = Number(config?.ui?.homeRoomMetricColumns);
@@ -1139,17 +1215,33 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [cardOpacityScaleDirty, setCardOpacityScaleDirty] = useState(false);
   const [cardOpacityScaleError, setCardOpacityScaleError] = useState(null);
 
+  const [globalCardOpacityScaleDraft, setGlobalCardOpacityScaleDraft] = useState(() => 100);
+  const [globalCardOpacityScaleDirty, setGlobalCardOpacityScaleDirty] = useState(false);
+  const [globalCardOpacityScaleError, setGlobalCardOpacityScaleError] = useState(null);
+
   const [blurScaleDraft, setBlurScaleDraft] = useState(() => 100);
   const [blurScaleDirty, setBlurScaleDirty] = useState(false);
   const [blurScaleError, setBlurScaleError] = useState(null);
+
+  const [globalBlurScaleDraft, setGlobalBlurScaleDraft] = useState(() => 100);
+  const [globalBlurScaleDirty, setGlobalBlurScaleDirty] = useState(false);
+  const [globalBlurScaleError, setGlobalBlurScaleError] = useState(null);
 
   const [secondaryTextOpacityDraft, setSecondaryTextOpacityDraft] = useState(() => 45);
   const [secondaryTextOpacityDirty, setSecondaryTextOpacityDirty] = useState(false);
   const [secondaryTextOpacityError, setSecondaryTextOpacityError] = useState(null);
 
+  const [globalSecondaryTextOpacityDraft, setGlobalSecondaryTextOpacityDraft] = useState(() => 45);
+  const [globalSecondaryTextOpacityDirty, setGlobalSecondaryTextOpacityDirty] = useState(false);
+  const [globalSecondaryTextOpacityError, setGlobalSecondaryTextOpacityError] = useState(null);
+
   const [secondaryTextSizeDraft, setSecondaryTextSizeDraft] = useState(() => 100);
   const [secondaryTextSizeDirty, setSecondaryTextSizeDirty] = useState(false);
   const [secondaryTextSizeError, setSecondaryTextSizeError] = useState(null);
+
+  const [globalSecondaryTextSizeDraft, setGlobalSecondaryTextSizeDraft] = useState(() => 100);
+  const [globalSecondaryTextSizeDirty, setGlobalSecondaryTextSizeDirty] = useState(false);
+  const [globalSecondaryTextSizeError, setGlobalSecondaryTextSizeError] = useState(null);
 
   const [secondaryTextColorDraft, setSecondaryTextColorDraft] = useState(() => '');
   const [secondaryTextColorDirty, setSecondaryTextColorDirty] = useState(false);
@@ -1159,9 +1251,17 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [primaryTextOpacityDirty, setPrimaryTextOpacityDirty] = useState(false);
   const [primaryTextOpacityError, setPrimaryTextOpacityError] = useState(null);
 
+  const [globalPrimaryTextOpacityDraft, setGlobalPrimaryTextOpacityDraft] = useState(() => 100);
+  const [globalPrimaryTextOpacityDirty, setGlobalPrimaryTextOpacityDirty] = useState(false);
+  const [globalPrimaryTextOpacityError, setGlobalPrimaryTextOpacityError] = useState(null);
+
   const [primaryTextSizeDraft, setPrimaryTextSizeDraft] = useState(() => 100);
   const [primaryTextSizeDirty, setPrimaryTextSizeDirty] = useState(false);
   const [primaryTextSizeError, setPrimaryTextSizeError] = useState(null);
+
+  const [globalPrimaryTextSizeDraft, setGlobalPrimaryTextSizeDraft] = useState(() => 100);
+  const [globalPrimaryTextSizeDirty, setGlobalPrimaryTextSizeDirty] = useState(false);
+  const [globalPrimaryTextSizeError, setGlobalPrimaryTextSizeError] = useState(null);
 
   const [primaryTextColorDraft, setPrimaryTextColorDraft] = useState(() => '');
   const [primaryTextColorDirty, setPrimaryTextColorDirty] = useState(false);
@@ -1183,9 +1283,17 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [iconSizeDirty, setIconSizeDirty] = useState(false);
   const [iconSizeError, setIconSizeError] = useState(null);
 
+  const [globalIconSizeDraft, setGlobalIconSizeDraft] = useState(() => 100);
+  const [globalIconSizeDirty, setGlobalIconSizeDirty] = useState(false);
+  const [globalIconSizeError, setGlobalIconSizeError] = useState(null);
+
   const [cardScaleDraft, setCardScaleDraft] = useState(() => 100);
   const [cardScaleDirty, setCardScaleDirty] = useState(false);
   const [cardScaleError, setCardScaleError] = useState(null);
+
+  const [globalCardScaleDraft, setGlobalCardScaleDraft] = useState(() => 100);
+  const [globalCardScaleDirty, setGlobalCardScaleDirty] = useState(false);
+  const [globalCardScaleError, setGlobalCardScaleError] = useState(null);
 
   const [homeTopRowDraft, setHomeTopRowDraft] = useState(() => ({
     enabled: true,
@@ -1198,6 +1306,10 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [homeRoomColumnsXlDraft, setHomeRoomColumnsXlDraft] = useState(() => 3);
   const [homeRoomColumnsXlDirty, setHomeRoomColumnsXlDirty] = useState(false);
   const [homeRoomColumnsXlError, setHomeRoomColumnsXlError] = useState(null);
+
+  const [globalHomeRoomColumnsXlDraft, setGlobalHomeRoomColumnsXlDraft] = useState(() => 3);
+  const [globalHomeRoomColumnsXlDirty, setGlobalHomeRoomColumnsXlDirty] = useState(false);
+  const [globalHomeRoomColumnsXlError, setGlobalHomeRoomColumnsXlError] = useState(null);
 
   const [homeRoomMetricColumnsDraft, setHomeRoomMetricColumnsDraft] = useState(() => 0);
   const [homeRoomMetricColumnsDirty, setHomeRoomMetricColumnsDirty] = useState(false);
@@ -1290,9 +1402,19 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   }, [cardOpacityScaleDirty, cardOpacityScaleFromConfig]);
 
   useEffect(() => {
+    if (globalCardOpacityScaleDirty) return;
+    setGlobalCardOpacityScaleDraft(globalCardOpacityScaleFromConfig);
+  }, [globalCardOpacityScaleDirty, globalCardOpacityScaleFromConfig]);
+
+  useEffect(() => {
     if (blurScaleDirty) return;
     setBlurScaleDraft(blurScaleFromConfig);
   }, [blurScaleDirty, blurScaleFromConfig]);
+
+  useEffect(() => {
+    if (globalBlurScaleDirty) return;
+    setGlobalBlurScaleDraft(globalBlurScaleFromConfig);
+  }, [globalBlurScaleDirty, globalBlurScaleFromConfig]);
 
   useEffect(() => {
     if (secondaryTextOpacityDirty) return;
@@ -1300,9 +1422,19 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   }, [secondaryTextOpacityDirty, secondaryTextOpacityFromConfig]);
 
   useEffect(() => {
+    if (globalSecondaryTextOpacityDirty) return;
+    setGlobalSecondaryTextOpacityDraft(globalSecondaryTextOpacityFromConfig);
+  }, [globalSecondaryTextOpacityDirty, globalSecondaryTextOpacityFromConfig]);
+
+  useEffect(() => {
     if (secondaryTextSizeDirty) return;
     setSecondaryTextSizeDraft(secondaryTextSizeFromConfig);
   }, [secondaryTextSizeDirty, secondaryTextSizeFromConfig]);
+
+  useEffect(() => {
+    if (globalSecondaryTextSizeDirty) return;
+    setGlobalSecondaryTextSizeDraft(globalSecondaryTextSizeFromConfig);
+  }, [globalSecondaryTextSizeDirty, globalSecondaryTextSizeFromConfig]);
 
   useEffect(() => {
     if (secondaryTextColorDirty) return;
@@ -1315,9 +1447,19 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   }, [primaryTextOpacityDirty, primaryTextOpacityFromConfig]);
 
   useEffect(() => {
+    if (globalPrimaryTextOpacityDirty) return;
+    setGlobalPrimaryTextOpacityDraft(globalPrimaryTextOpacityFromConfig);
+  }, [globalPrimaryTextOpacityDirty, globalPrimaryTextOpacityFromConfig]);
+
+  useEffect(() => {
     if (primaryTextSizeDirty) return;
     setPrimaryTextSizeDraft(primaryTextSizeFromConfig);
   }, [primaryTextSizeDirty, primaryTextSizeFromConfig]);
+
+  useEffect(() => {
+    if (globalPrimaryTextSizeDirty) return;
+    setGlobalPrimaryTextSizeDraft(globalPrimaryTextSizeFromConfig);
+  }, [globalPrimaryTextSizeDirty, globalPrimaryTextSizeFromConfig]);
 
   useEffect(() => {
     if (primaryTextColorDirty) return;
@@ -1345,9 +1487,19 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   }, [iconSizeDirty, iconSizeFromConfig]);
 
   useEffect(() => {
+    if (globalIconSizeDirty) return;
+    setGlobalIconSizeDraft(globalIconSizeFromConfig);
+  }, [globalIconSizeDirty, globalIconSizeFromConfig]);
+
+  useEffect(() => {
     if (cardScaleDirty) return;
     setCardScaleDraft(cardScaleFromConfig);
   }, [cardScaleDirty, cardScaleFromConfig]);
+
+  useEffect(() => {
+    if (globalCardScaleDirty) return;
+    setGlobalCardScaleDraft(globalCardScaleFromConfig);
+  }, [globalCardScaleDirty, globalCardScaleFromConfig]);
 
   useEffect(() => {
     if (homeTopRowDirty) return;
@@ -1362,6 +1514,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     if (homeRoomColumnsXlDirty) return;
     setHomeRoomColumnsXlDraft(homeRoomColumnsXlFromConfig);
   }, [homeRoomColumnsXlDirty, homeRoomColumnsXlFromConfig]);
+
+  useEffect(() => {
+    if (globalHomeRoomColumnsXlDirty) return;
+    setGlobalHomeRoomColumnsXlDraft(globalHomeRoomColumnsXlFromConfig);
+  }, [globalHomeRoomColumnsXlDirty, globalHomeRoomColumnsXlFromConfig]);
 
   useEffect(() => {
     if (homeRoomMetricColumnsDirty) return;
@@ -1467,6 +1624,24 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return () => clearTimeout(t);
   }, [connected, cardOpacityScaleDirty, cardOpacityScaleDraft]);
 
+  // Autosave: Global card opacity scale.
+  useEffect(() => {
+    if (!connected) return;
+    if (!globalCardOpacityScaleDirty) return;
+
+    const t = setTimeout(async () => {
+      setGlobalCardOpacityScaleError(null);
+      try {
+        await globalCardOpacitySave.run(globalCardOpacityScaleDraft);
+        setGlobalCardOpacityScaleDirty(false);
+      } catch (err) {
+        setGlobalCardOpacityScaleError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, globalCardOpacityScaleDirty, globalCardOpacityScaleDraft]);
+
   // Autosave: Blur scale.
   useEffect(() => {
     if (!connected) return;
@@ -1484,6 +1659,24 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
     return () => clearTimeout(t);
   }, [connected, blurScaleDirty, blurScaleDraft]);
+
+  // Autosave: Global blur scale.
+  useEffect(() => {
+    if (!connected) return;
+    if (!globalBlurScaleDirty) return;
+
+    const t = setTimeout(async () => {
+      setGlobalBlurScaleError(null);
+      try {
+        await globalBlurScaleSave.run(globalBlurScaleDraft);
+        setGlobalBlurScaleDirty(false);
+      } catch (err) {
+        setGlobalBlurScaleError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, globalBlurScaleDirty, globalBlurScaleDraft]);
 
   // Autosave: Secondary text opacity.
   useEffect(() => {
@@ -1503,6 +1696,24 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return () => clearTimeout(t);
   }, [connected, secondaryTextOpacityDirty, secondaryTextOpacityDraft]);
 
+  // Autosave: Global secondary text opacity.
+  useEffect(() => {
+    if (!connected) return;
+    if (!globalSecondaryTextOpacityDirty) return;
+
+    const t = setTimeout(async () => {
+      setGlobalSecondaryTextOpacityError(null);
+      try {
+        await globalSecondaryTextOpacitySave.run(globalSecondaryTextOpacityDraft);
+        setGlobalSecondaryTextOpacityDirty(false);
+      } catch (err) {
+        setGlobalSecondaryTextOpacityError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, globalSecondaryTextOpacityDirty, globalSecondaryTextOpacityDraft]);
+
   // Autosave: Secondary text size.
   useEffect(() => {
     if (!connected) return;
@@ -1520,6 +1731,24 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
     return () => clearTimeout(t);
   }, [connected, secondaryTextSizeDirty, secondaryTextSizeDraft]);
+
+  // Autosave: Global secondary text size.
+  useEffect(() => {
+    if (!connected) return;
+    if (!globalSecondaryTextSizeDirty) return;
+
+    const t = setTimeout(async () => {
+      setGlobalSecondaryTextSizeError(null);
+      try {
+        await globalSecondaryTextSizeSave.run(globalSecondaryTextSizeDraft);
+        setGlobalSecondaryTextSizeDirty(false);
+      } catch (err) {
+        setGlobalSecondaryTextSizeError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, globalSecondaryTextSizeDirty, globalSecondaryTextSizeDraft]);
 
   // Autosave: Secondary text color.
   useEffect(() => {
@@ -1557,6 +1786,24 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return () => clearTimeout(t);
   }, [connected, primaryTextOpacityDirty, primaryTextOpacityDraft]);
 
+  // Autosave: Global primary text opacity.
+  useEffect(() => {
+    if (!connected) return;
+    if (!globalPrimaryTextOpacityDirty) return;
+
+    const t = setTimeout(async () => {
+      setGlobalPrimaryTextOpacityError(null);
+      try {
+        await globalPrimaryTextOpacitySave.run(globalPrimaryTextOpacityDraft);
+        setGlobalPrimaryTextOpacityDirty(false);
+      } catch (err) {
+        setGlobalPrimaryTextOpacityError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, globalPrimaryTextOpacityDirty, globalPrimaryTextOpacityDraft]);
+
   // Autosave: Primary text size.
   useEffect(() => {
     if (!connected) return;
@@ -1574,6 +1821,24 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
     return () => clearTimeout(t);
   }, [connected, primaryTextSizeDirty, primaryTextSizeDraft]);
+
+  // Autosave: Global primary text size.
+  useEffect(() => {
+    if (!connected) return;
+    if (!globalPrimaryTextSizeDirty) return;
+
+    const t = setTimeout(async () => {
+      setGlobalPrimaryTextSizeError(null);
+      try {
+        await globalPrimaryTextSizeSave.run(globalPrimaryTextSizeDraft);
+        setGlobalPrimaryTextSizeDirty(false);
+      } catch (err) {
+        setGlobalPrimaryTextSizeError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, globalPrimaryTextSizeDirty, globalPrimaryTextSizeDraft]);
 
   // Autosave: Primary text color.
   useEffect(() => {
@@ -1665,6 +1930,24 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return () => clearTimeout(t);
   }, [connected, iconSizeDirty, iconSizeDraft]);
 
+  // Autosave: Global icon size.
+  useEffect(() => {
+    if (!connected) return;
+    if (!globalIconSizeDirty) return;
+
+    const t = setTimeout(async () => {
+      setGlobalIconSizeError(null);
+      try {
+        await globalIconSizeSave.run(globalIconSizeDraft);
+        setGlobalIconSizeDirty(false);
+      } catch (err) {
+        setGlobalIconSizeError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, globalIconSizeDirty, globalIconSizeDraft]);
+
   // Autosave: Card scale.
   useEffect(() => {
     if (!connected) return;
@@ -1682,6 +1965,24 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
     return () => clearTimeout(t);
   }, [connected, cardScaleDirty, cardScaleDraft]);
+
+  // Autosave: Global card scale.
+  useEffect(() => {
+    if (!connected) return;
+    if (!globalCardScaleDirty) return;
+
+    const t = setTimeout(async () => {
+      setGlobalCardScaleError(null);
+      try {
+        await globalCardScaleSave.run(globalCardScaleDraft);
+        setGlobalCardScaleDirty(false);
+      } catch (err) {
+        setGlobalCardScaleError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, globalCardScaleDirty, globalCardScaleDraft]);
 
   // Autosave: Home top row.
   useEffect(() => {
@@ -1734,6 +2035,24 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
     return () => clearTimeout(t);
   }, [connected, homeRoomColumnsXlDirty, homeRoomColumnsXlDraft]);
+
+  // Autosave: Global home room columns (XL).
+  useEffect(() => {
+    if (!connected) return;
+    if (!globalHomeRoomColumnsXlDirty) return;
+
+    const t = setTimeout(async () => {
+      setGlobalHomeRoomColumnsXlError(null);
+      try {
+        await globalHomeRoomColsSave.run(globalHomeRoomColumnsXlDraft);
+        setGlobalHomeRoomColumnsXlDirty(false);
+      } catch (err) {
+        setGlobalHomeRoomColumnsXlError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, globalHomeRoomColumnsXlDirty, globalHomeRoomColumnsXlDraft]);
 
   // Autosave: Home room metric columns.
   useEffect(() => {
@@ -2187,6 +2506,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return new Set(ids.map((v) => String(v)));
   }, [config?.ui?.visibleRoomIds]);
 
+  const globalVisibleRoomIds = useMemo(() => {
+    const ids = Array.isArray(baseConfig?.ui?.visibleRoomIds) ? baseConfig.ui.visibleRoomIds : [];
+    return new Set(ids.map((v) => String(v)));
+  }, [baseConfig?.ui?.visibleRoomIds]);
+
   const allRoomsForVisibility = useMemo(() => {
     const rooms = Array.isArray(config?.rooms) ? config.rooms : [];
     const out = rooms
@@ -2210,6 +2534,25 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
       await visibleRoomsSave.run({
         visibleRoomIds: arr,
         ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
+      });
+    } catch (e) {
+      setError(e?.message || String(e));
+    }
+  };
+
+  const toggleGlobalVisibleRoom = async (roomId, nextVisible) => {
+    const id = String(roomId || '').trim();
+    if (!id) return;
+    setError(null);
+    try {
+      const next = new Set(Array.from(globalVisibleRoomIds));
+      if (nextVisible) next.add(id);
+      else next.delete(id);
+
+      // Empty list means "show all rooms".
+      const arr = Array.from(next);
+      await globalVisibleRoomsSave.run({
+        visibleRoomIds: arr,
       });
     } catch (e) {
       setError(e?.message || String(e));
@@ -2581,10 +2924,14 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                 }}
                 className="mt-1 menu-select w-full rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 jvs-menu-select"
               >
-                <option value="">Global defaults</option>
-                {panelNames.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
+                <optgroup label="Global defaults">
+                  <option value="">Global (not a profile)</option>
+                </optgroup>
+                <optgroup label="Panel profiles">
+                  {panelNames.map((name) => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </optgroup>
               </select>
               <div
                 className="mt-1 jvs-secondary-text text-white/60"
@@ -2958,6 +3305,812 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               ) : (
                 <div className="text-sm text-white/45">No devices discovered.</div>
               )}
+            </div>
+
+            {!connected ? (
+              <div className="mt-3 text-xs text-white/45">Server offline: editing disabled.</div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {activeTab === 'display' ? (
+          <div className="mt-4 utility-panel p-4 md:p-6">
+            <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+              Display
+            </div>
+            <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
+              Global Defaults
+            </div>
+            <div className="mt-1 text-xs text-white/45">
+              Tune size/spacing for this device. Panel profiles can override these.
+            </div>
+
+            <div className="mt-4 utility-group p-4">
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                Display Settings
+              </div>
+              <div className="mt-1 text-xs text-white/45">
+                Applies when a panel profile does not specify a value.
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="utility-group p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                        Card transparency
+                      </div>
+                      <div className="mt-1 text-xs text-white/45">
+                        Baseline card/panel background opacity scale. 100% = default.
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        max={200}
+                        step={1}
+                        value={globalCardOpacityScaleDraft}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          const next = Number.isFinite(n) ? Math.max(0, Math.min(200, Math.round(n))) : 100;
+                          setGlobalCardOpacityScaleError(null);
+                          setGlobalCardOpacityScaleDirty(true);
+                          setGlobalCardOpacityScaleDraft(next);
+                        }}
+                        className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      />
+                      <div className="text-xs text-white/45">%</div>
+                    </div>
+                  </div>
+
+                  <input
+                    type="range"
+                    min={0}
+                    max={200}
+                    step={1}
+                    value={globalCardOpacityScaleDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const next = Number.isFinite(n) ? Math.max(0, Math.min(200, Math.round(n))) : 100;
+                      setGlobalCardOpacityScaleError(null);
+                      setGlobalCardOpacityScaleDirty(true);
+                      setGlobalCardOpacityScaleDraft(next);
+                    }}
+                    className="mt-3 w-full"
+                  />
+
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="text-xs text-white/45">
+                      {globalCardOpacityScaleDirty ? 'Pending changes…' : 'Saved'}
+                    </div>
+                    <div className="text-xs text-white/45">
+                      {statusText(globalCardOpacitySave.status)}
+                    </div>
+                  </div>
+
+                  {globalCardOpacityScaleError ? (
+                    <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {globalCardOpacityScaleError}</div>
+                  ) : null}
+                </div>
+
+                <div className="utility-group p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                        Blur
+                      </div>
+                      <div className="mt-1 text-xs text-white/45">
+                        Baseline background blur on cards/panels. 100% = default.
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        max={200}
+                        step={1}
+                        value={globalBlurScaleDraft}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          const next = Number.isFinite(n) ? Math.max(0, Math.min(200, Math.round(n))) : 100;
+                          setGlobalBlurScaleError(null);
+                          setGlobalBlurScaleDirty(true);
+                          setGlobalBlurScaleDraft(next);
+                        }}
+                        className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      />
+                      <div className="text-xs text-white/45">%</div>
+                    </div>
+                  </div>
+
+                  <input
+                    type="range"
+                    min={0}
+                    max={200}
+                    step={1}
+                    value={globalBlurScaleDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const next = Number.isFinite(n) ? Math.max(0, Math.min(200, Math.round(n))) : 100;
+                      setGlobalBlurScaleError(null);
+                      setGlobalBlurScaleDirty(true);
+                      setGlobalBlurScaleDraft(next);
+                    }}
+                    className="mt-3 w-full"
+                  />
+
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="text-xs text-white/45">
+                      {globalBlurScaleDirty ? 'Pending changes…' : 'Saved'}
+                    </div>
+                    <div className="text-xs text-white/45">
+                      {statusText(globalBlurScaleSave.status)}
+                    </div>
+                  </div>
+
+                  {globalBlurScaleError ? (
+                    <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {globalBlurScaleError}</div>
+                  ) : null}
+                </div>
+
+                <div className="utility-group p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                        Primary text opacity
+                      </div>
+                      <div className="mt-1 text-xs text-white/45">
+                        Baseline transparency for primary text. 100% = default.
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={globalPrimaryTextOpacityDraft}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 100;
+                          setGlobalPrimaryTextOpacityError(null);
+                          setGlobalPrimaryTextOpacityDirty(true);
+                          setGlobalPrimaryTextOpacityDraft(next);
+                        }}
+                        className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      />
+                      <div className="text-xs text-white/45">%</div>
+                    </div>
+                  </div>
+
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={globalPrimaryTextOpacityDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 100;
+                      setGlobalPrimaryTextOpacityError(null);
+                      setGlobalPrimaryTextOpacityDirty(true);
+                      setGlobalPrimaryTextOpacityDraft(next);
+                    }}
+                    className="mt-3 w-full"
+                  />
+
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="text-xs text-white/45">
+                      {globalPrimaryTextOpacityDirty ? 'Pending changes…' : 'Saved'}
+                    </div>
+                    <div className="text-xs text-white/45">
+                      {statusText(globalPrimaryTextOpacitySave.status)}
+                    </div>
+                  </div>
+
+                  {globalPrimaryTextOpacityError ? (
+                    <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {globalPrimaryTextOpacityError}</div>
+                  ) : null}
+                </div>
+
+                <div className="utility-group p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                        Secondary text opacity
+                      </div>
+                      <div className="mt-1 text-xs text-white/45">
+                        Baseline transparency for secondary text. 100% = default.
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={globalSecondaryTextOpacityDraft}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 45;
+                          setGlobalSecondaryTextOpacityError(null);
+                          setGlobalSecondaryTextOpacityDirty(true);
+                          setGlobalSecondaryTextOpacityDraft(next);
+                        }}
+                        className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      />
+                      <div className="text-xs text-white/45">%</div>
+                    </div>
+                  </div>
+
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={globalSecondaryTextOpacityDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 45;
+                      setGlobalSecondaryTextOpacityError(null);
+                      setGlobalSecondaryTextOpacityDirty(true);
+                      setGlobalSecondaryTextOpacityDraft(next);
+                    }}
+                    className="mt-3 w-full"
+                  />
+
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="text-xs text-white/45">
+                      {globalSecondaryTextOpacityDirty ? 'Pending changes…' : 'Saved'}
+                    </div>
+                    <div className="text-xs text-white/45">
+                      {statusText(globalSecondaryTextOpacitySave.status)}
+                    </div>
+                  </div>
+
+                  {globalSecondaryTextOpacityError ? (
+                    <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {globalSecondaryTextOpacityError}</div>
+                  ) : null}
+                </div>
+
+                <div className="utility-group p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                        Primary text size
+                      </div>
+                      <div className="mt-1 text-xs text-white/45">
+                        Baseline scale for primary text. 100% = default.
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={50}
+                        max={200}
+                        step={1}
+                        value={globalPrimaryTextSizeDraft}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          const next = Number.isFinite(n) ? Math.max(50, Math.min(200, Math.round(n))) : 100;
+                          setGlobalPrimaryTextSizeError(null);
+                          setGlobalPrimaryTextSizeDirty(true);
+                          setGlobalPrimaryTextSizeDraft(next);
+                        }}
+                        className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      />
+                      <div className="text-xs text-white/45">%</div>
+                    </div>
+                  </div>
+
+                  <input
+                    type="range"
+                    min={50}
+                    max={200}
+                    step={1}
+                    value={globalPrimaryTextSizeDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const next = Number.isFinite(n) ? Math.max(50, Math.min(200, Math.round(n))) : 100;
+                      setGlobalPrimaryTextSizeError(null);
+                      setGlobalPrimaryTextSizeDirty(true);
+                      setGlobalPrimaryTextSizeDraft(next);
+                    }}
+                    className="mt-3 w-full"
+                  />
+
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="text-xs text-white/45">
+                      {globalPrimaryTextSizeDirty ? 'Pending changes…' : 'Saved'}
+                    </div>
+                    <div className="text-xs text-white/45">
+                      {statusText(globalPrimaryTextSizeSave.status)}
+                    </div>
+                  </div>
+
+                  {globalPrimaryTextSizeError ? (
+                    <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {globalPrimaryTextSizeError}</div>
+                  ) : null}
+                </div>
+
+                <div className="utility-group p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                        Secondary text size
+                      </div>
+                      <div className="mt-1 text-xs text-white/45">
+                        Baseline scale for secondary text. 100% = default.
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={50}
+                        max={200}
+                        step={1}
+                        value={globalSecondaryTextSizeDraft}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          const next = Number.isFinite(n) ? Math.max(50, Math.min(200, Math.round(n))) : 100;
+                          setGlobalSecondaryTextSizeError(null);
+                          setGlobalSecondaryTextSizeDirty(true);
+                          setGlobalSecondaryTextSizeDraft(next);
+                        }}
+                        className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      />
+                      <div className="text-xs text-white/45">%</div>
+                    </div>
+                  </div>
+
+                  <input
+                    type="range"
+                    min={50}
+                    max={200}
+                    step={1}
+                    value={globalSecondaryTextSizeDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const next = Number.isFinite(n) ? Math.max(50, Math.min(200, Math.round(n))) : 100;
+                      setGlobalSecondaryTextSizeError(null);
+                      setGlobalSecondaryTextSizeDirty(true);
+                      setGlobalSecondaryTextSizeDraft(next);
+                    }}
+                    className="mt-3 w-full"
+                  />
+
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="text-xs text-white/45">
+                      {globalSecondaryTextSizeDirty ? 'Pending changes…' : 'Saved'}
+                    </div>
+                    <div className="text-xs text-white/45">
+                      {statusText(globalSecondaryTextSizeSave.status)}
+                    </div>
+                  </div>
+
+                  {globalSecondaryTextSizeError ? (
+                    <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {globalSecondaryTextSizeError}</div>
+                  ) : null}
+                </div>
+
+                <div className="utility-group p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                        Icon size
+                      </div>
+                      <div className="mt-1 text-xs text-white/45">
+                        Baseline scale for metric icons. 100% = default.
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={50}
+                        max={200}
+                        step={1}
+                        value={globalIconSizeDraft}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          const next = Number.isFinite(n) ? Math.max(50, Math.min(200, Math.round(n))) : 100;
+                          setGlobalIconSizeError(null);
+                          setGlobalIconSizeDirty(true);
+                          setGlobalIconSizeDraft(next);
+                        }}
+                        className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      />
+                      <div className="text-xs text-white/45">%</div>
+                    </div>
+                  </div>
+
+                  <input
+                    type="range"
+                    min={50}
+                    max={200}
+                    step={1}
+                    value={globalIconSizeDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const next = Number.isFinite(n) ? Math.max(50, Math.min(200, Math.round(n))) : 100;
+                      setGlobalIconSizeError(null);
+                      setGlobalIconSizeDirty(true);
+                      setGlobalIconSizeDraft(next);
+                    }}
+                    className="mt-3 w-full"
+                  />
+
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="text-xs text-white/45">
+                      {globalIconSizeDirty ? 'Pending changes…' : 'Saved'}
+                    </div>
+                    <div className="text-xs text-white/45">
+                      {statusText(globalIconSizeSave.status)}
+                    </div>
+                  </div>
+
+                  {globalIconSizeError ? (
+                    <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {globalIconSizeError}</div>
+                  ) : null}
+                </div>
+
+                <div className="utility-group p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                        Card spacing
+                      </div>
+                      <div className="mt-1 text-xs text-white/45">
+                        Baseline Home card padding/spacing. 100% = default.
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={50}
+                        max={200}
+                        step={1}
+                        value={globalCardScaleDraft}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          const next = Number.isFinite(n) ? Math.max(50, Math.min(200, Math.round(n))) : 100;
+                          setGlobalCardScaleError(null);
+                          setGlobalCardScaleDirty(true);
+                          setGlobalCardScaleDraft(next);
+                        }}
+                        className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      />
+                      <div className="text-xs text-white/45">%</div>
+                    </div>
+                  </div>
+
+                  <input
+                    type="range"
+                    min={50}
+                    max={200}
+                    step={1}
+                    value={globalCardScaleDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const next = Number.isFinite(n) ? Math.max(50, Math.min(200, Math.round(n))) : 100;
+                      setGlobalCardScaleError(null);
+                      setGlobalCardScaleDirty(true);
+                      setGlobalCardScaleDraft(next);
+                    }}
+                    className="mt-3 w-full"
+                  />
+
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="text-xs text-white/45">
+                      {globalCardScaleDirty ? 'Pending changes…' : 'Saved'}
+                    </div>
+                    <div className="text-xs text-white/45">
+                      {statusText(globalCardScaleSave.status)}
+                    </div>
+                  </div>
+
+                  {globalCardScaleError ? (
+                    <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {globalCardScaleError}</div>
+                  ) : null}
+                </div>
+
+                <div className="utility-group p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                        Home columns (wide screens)
+                      </div>
+                      <div className="mt-1 text-xs text-white/45">
+                        Baseline room cards per row on XL screens.
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={6}
+                        step={1}
+                        value={globalHomeRoomColumnsXlDraft}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          const next = Number.isFinite(n) ? Math.max(1, Math.min(6, Math.round(n))) : 3;
+                          setGlobalHomeRoomColumnsXlError(null);
+                          setGlobalHomeRoomColumnsXlDirty(true);
+                          setGlobalHomeRoomColumnsXlDraft(next);
+                        }}
+                        className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      />
+                      <div className="text-xs text-white/45">cols</div>
+                    </div>
+                  </div>
+
+                  <input
+                    type="range"
+                    min={1}
+                    max={6}
+                    step={1}
+                    value={globalHomeRoomColumnsXlDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const next = Number.isFinite(n) ? Math.max(1, Math.min(6, Math.round(n))) : 3;
+                      setGlobalHomeRoomColumnsXlError(null);
+                      setGlobalHomeRoomColumnsXlDirty(true);
+                      setGlobalHomeRoomColumnsXlDraft(next);
+                    }}
+                    className="mt-3 w-full"
+                  />
+
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="text-xs text-white/45">
+                      {globalHomeRoomColumnsXlDirty ? 'Pending changes…' : 'Saved'}
+                    </div>
+                    <div className="text-xs text-white/45">
+                      {statusText(globalHomeRoomColsSave.status)}
+                    </div>
+                  </div>
+
+                  {globalHomeRoomColumnsXlError ? (
+                    <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {globalHomeRoomColumnsXlError}</div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 border-t border-white/10 pt-5">
+              <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+                Global
+              </div>
+              <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
+                Rooms & Labels
+              </div>
+              <div className="mt-1 text-xs text-white/45">
+                These apply to all profiles and affect both Home and Climate views.
+              </div>
+            </div>
+
+            <div className="mt-4 utility-group p-4">
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Manual Rooms</div>
+              <div className="mt-1 text-xs text-white/45">
+                Add/remove rooms that aren't discovered from Hubitat. Rooms can be placed/resized on the Climate page.
+              </div>
+
+              <div className="mt-4 flex gap-2">
+                <input
+                  value={newRoomName}
+                  onChange={(e) => setNewRoomName(e.target.value)}
+                  placeholder="New room name"
+                  className={`flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 placeholder:text-white/35 ${scheme.focusRing}`}
+                  disabled={!connected || busy}
+                />
+                <button
+                  type="button"
+                  disabled={!connected || busy || !newRoomName.trim()}
+                  onClick={async () => {
+                    setError(null);
+                    setBusy(true);
+                    try {
+                      await addManualRoom(newRoomName.trim());
+                      setNewRoomName('');
+                    } catch (e) {
+                      setError(e?.message || String(e));
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                  className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || !newRoomName.trim()) ? 'opacity-50' : 'hover:bg-white/5'}`}
+                >
+                  Add
+                </button>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                {manualRooms.length ? (
+                  manualRooms.map((r) => (
+                    <div key={r.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-[11px] uppercase tracking-[0.2em] font-semibold text-white/80 truncate">
+                            {r.name}
+                          </div>
+                          <div className="mt-1 text-xs text-white/45 truncate">ID: {r.id}</div>
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={!connected || busy}
+                          onClick={async () => {
+                            setError(null);
+                            setBusy(true);
+                            try {
+                              await deleteManualRoom(r.id);
+                            } catch (e) {
+                              setError(e?.message || String(e));
+                            } finally {
+                              setBusy(false);
+                            }
+                          }}
+                          className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors text-white/70 border-white/10 bg-black/20 ${(!connected || busy) ? 'opacity-50' : 'hover:bg-white/10'}`}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-white/45">No manual rooms.</div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 utility-group p-4">
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Visible Rooms (Global Default)</div>
+              <div className="mt-1 text-xs text-white/45">
+                Choose which rooms appear by default. Panels can still override this per profile. If none are selected, all rooms are shown.
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2">
+                {allRoomsForVisibility.map((r) => {
+                  const checked = globalVisibleRoomIds.has(r.id);
+                  return (
+                    <label key={r.id} className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={!connected || busy || globalVisibleRoomsSave.status === 'saving'}
+                        onChange={(e) => toggleGlobalVisibleRoom(r.id, Boolean(e.target.checked))}
+                      />
+                      <div className="min-w-0">
+                        <div className="text-sm text-white/80 truncate">{r.name}</div>
+                        <div className="text-[11px] text-white/45 truncate">{r.id}</div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="text-xs text-white/45">
+                  {globalVisibleRoomIds.size ? `${globalVisibleRoomIds.size} selected` : 'All rooms'}
+                </div>
+                <div className="text-xs text-white/45">
+                  {statusText(globalVisibleRoomsSave.status)}
+                </div>
+              </div>
+
+              {globalVisibleRoomsSave.error ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {globalVisibleRoomsSave.error}</div>
+              ) : null}
+            </div>
+
+            <div className="mt-4 utility-group p-4">
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Freeform Text Labels</div>
+              <div className="mt-1 text-xs text-white/45">
+                Add labels here, then position/resize them on the Climate page in Edit mode.
+              </div>
+
+              <div className="mt-4">
+                <button
+                  type="button"
+                  disabled={!connected || busy}
+                  onClick={async () => {
+                    setError(null);
+                    setBusy(true);
+                    try {
+                      await addLabel('Label');
+                    } catch (e) {
+                      setError(e?.message || String(e));
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                  className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy) ? 'opacity-50' : 'hover:bg-white/5'}`}
+                >
+                  Add Label
+                </button>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 gap-3">
+                {labels.length ? (
+                  labels.map((l) => (
+                    <div key={l.id} className="utility-group p-4">
+                      <div className="text-[10px] uppercase tracking-[0.2em] text-white/45 font-semibold">
+                        {l.id}
+                      </div>
+                      <textarea
+                        value={labelDrafts[l.id] ?? l.text}
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          setLabelDrafts((prev) => ({ ...prev, [l.id]: next }));
+                          queueLabelAutosave(l.id, next);
+                        }}
+                        rows={2}
+                        className={`mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 placeholder:text-white/35 ${scheme.focusRing}`}
+                        disabled={!connected || busy}
+                        placeholder="Label text"
+                      />
+
+                      <div className="mt-2 flex items-center justify-between gap-3">
+                        <div className="text-xs text-white/45">
+                          {statusText(labelSaveState[l.id]?.status) || 'Idle'}
+                        </div>
+                        {labelSaveState[l.id]?.error ? (
+                          <div className="text-xs text-neon-red break-words">{labelSaveState[l.id]?.error}</div>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          disabled={!connected || busy}
+                          onClick={async () => {
+                            setError(null);
+                            setBusy(true);
+                            try {
+                              await deleteLabel(l.id);
+                            } catch (e) {
+                              setError(e?.message || String(e));
+                            } finally {
+                              setBusy(false);
+                            }
+                          }}
+                          className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors text-white/70 border-white/10 bg-black/20 ${(!connected || busy) ? 'opacity-50' : 'hover:bg-white/10'}`}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-white/45">No labels yet.</div>
+                )}
+              </div>
             </div>
 
             {!connected ? (
@@ -4060,384 +5213,27 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               </div>
             </div>
 
-            </div>
-          </div>
-        ) : null}
-
-        {activeTab === 'home' ? (
-          <div className="mt-4 utility-panel p-4 md:p-6">
-            <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
-              Home
-            </div>
-            <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-              Background
-            </div>
-            <div className="mt-1 text-xs text-white/45">
-              Set an image URL to show behind all Home controls.
-            </div>
-
-            <div className="mt-4 utility-group p-4">
-              <label className="flex items-center justify-between gap-4 select-none">
-                <div className="min-w-0">
-                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
-                    Enable background
-                  </div>
-                  <div className="mt-1 text-xs text-white/45">
-                    When enabled, the image renders behind the Home dashboard.
-                  </div>
-                </div>
-
-                <input
-                  type="checkbox"
-                  className={`h-5 w-5 ${scheme.checkboxAccent}`}
-                  disabled={!connected || busy || homeBackgroundSave.status === 'saving'}
-                  checked={homeBackgroundDraft.enabled}
-                  onChange={(e) => {
-                    const nextEnabled = !!e.target.checked;
-                    const trimmedUrl = String(homeBackgroundDraft.url || '').trim();
-                    setHomeBackgroundError(null);
-
-                    if (nextEnabled && !trimmedUrl) {
-                      setHomeBackgroundError('Enter an image URL before enabling.');
-                      return;
-                    }
-
-                    setHomeBackgroundDirty(true);
-                    setHomeBackgroundDraft((prev) => ({ ...prev, enabled: nextEnabled }));
-                  }}
-                />
-              </label>
-
-              <label className="block mt-4">
-                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-                  Image URL
-                </div>
-                <input
-                  type="text"
-                  value={homeBackgroundDraft.url}
-                  disabled={!connected || busy}
-                  onChange={(e) => {
-                    const nextUrl = String(e.target.value);
-                    setHomeBackgroundError(null);
-                    setHomeBackgroundDirty(true);
-                    setHomeBackgroundDraft((prev) => {
-                      const trimmed = nextUrl.trim();
-                      // If the user clears the URL, force-disable to avoid an invalid enabled state.
-                      const nextEnabled = prev.enabled && trimmed.length ? prev.enabled : false;
-                      return { ...prev, url: nextUrl, enabled: nextEnabled };
-                    });
-                  }}
-                  className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
-                  placeholder="https://example.com/background.jpg (or /path/on-this-server.jpg)"
-                />
-              </label>
-
-              <label className="block mt-3">
-                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-                  Or pick a server background
-                </div>
-                <select
-                  value=""
-                  disabled={!connected || busy || !backgroundFiles.length}
-                  onChange={(e) => {
-                    const file = String(e.target.value || '').trim();
-                    if (!file) return;
-
-                    setHomeBackgroundError(null);
-                    setHomeBackgroundDirty(true);
-                    setHomeBackgroundDraft((prev) => {
-                      const nextUrl = `/backgrounds/${encodeURIComponent(file)}`;
-                      const nextEnabled = true;
-                      return { ...prev, url: nextUrl, enabled: nextEnabled };
-                    });
-
-                    // reset select back to placeholder
-                    try {
-                      e.target.value = '';
-                    } catch {
-                      // ignore
-                    }
-                  }}
-                  className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
-                >
-                  <option value="">
-                    {backgroundFilesError
-                      ? `Backgrounds unavailable (${backgroundFilesError})`
-                      : (backgroundFiles.length ? 'Select a background…' : 'No backgrounds found')}
-                  </option>
-                  {backgroundFiles.map((f) => (
-                    <option key={f} value={f}>{f}</option>
-                  ))}
-                </select>
-                <div className="mt-2 text-xs text-white/45">
-                  Put images in <span className="text-white/70">server/data/backgrounds</span> to appear here.
-                </div>
-              </label>
-
-              <div className="mt-4 utility-group p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-                      Opacity
-                    </div>
-                    <div className="mt-1 text-xs text-white/45">
-                      Lower = more translucent.
-                    </div>
-                  </div>
-
-                  <div className="shrink-0 flex items-center gap-2">
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={homeBackgroundDraft.opacityPct}
-                      disabled={!connected || busy}
-                      onChange={(e) => {
-                        const n = Number(e.target.value);
-                        const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 35;
-                        setHomeBackgroundError(null);
-                        setHomeBackgroundDirty(true);
-                        setHomeBackgroundDraft((prev) => ({ ...prev, opacityPct: next }));
-                      }}
-                      className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
-                    />
-                    <div className="text-xs text-white/45">%</div>
-                  </div>
-                </div>
-
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={homeBackgroundDraft.opacityPct}
-                  disabled={!connected || busy}
-                  onChange={(e) => {
-                    const n = Number(e.target.value);
-                    const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 35;
-                    setHomeBackgroundError(null);
-                    setHomeBackgroundDirty(true);
-                    setHomeBackgroundDraft((prev) => ({ ...prev, opacityPct: next }));
-                  }}
-                  className="mt-3 w-full"
-                />
-
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <div className="text-xs text-white/45">
-                    {homeBackgroundDirty ? 'Pending changes…' : 'Saved'}
-                  </div>
-                  <div className="text-xs text-white/45">
-                    {statusText(homeBackgroundSave.status)}
-                  </div>
-                </div>
+            <div className="mt-6 border-t border-white/10 pt-5">
+              <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+                Panel Content
+              </div>
+              <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
+                Cameras & Sensors
+              </div>
+              <div className="mt-1 text-xs text-white/45">
+                These settings are profile-aware and apply to the currently selected panel.
               </div>
 
-              {homeBackgroundError ? (
-                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {homeBackgroundError}</div>
-              ) : null}
-            </div>
-
-              <div className="mt-4 utility-group p-4">
+              <div
+                className={`mt-4 utility-group p-4 ${isPresetSelected ? 'opacity-50 pointer-events-none' : ''}`}
+                aria-disabled={isPresetSelected ? 'true' : 'false'}
+              >
                 <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
                   Camera Previews
                 </div>
                 <div className="mt-1 text-xs text-white/45">
                   Shows room camera snapshot tiles (from configured cameras).
                 </div>
-
-                {camerasFromConfig.length ? (
-                  <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
-                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-                      Visible cameras on this panel
-                    </div>
-                    <div className="mt-1 text-xs text-white/45">
-                      If none are selected, all cameras are shown.
-                    </div>
-
-                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
-                      {(() => {
-                        const allIds = camerasFromConfig
-                          .map((c) => String(c?.id || '').trim())
-                          .filter(Boolean);
-                        const allIdSet = new Set(allIds);
-                        const selected = new Set((Array.isArray(visibleCameraIdsDraft) ? visibleCameraIdsDraft : [])
-                          .map((v) => String(v || '').trim())
-                          .filter((v) => allIdSet.has(v)));
-                        const isAll = selected.size === 0;
-
-                        return camerasFromConfig.map((c) => {
-                          const id = String(c?.id || '').trim();
-                          if (!id) return null;
-                          const label = String(c?.label || id).trim() || id;
-                          const checked = isAll ? true : selected.has(id);
-                          return (
-                            <label key={id} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                disabled={!connected || busy || visibleCamerasSave.status === 'saving'}
-                                onChange={(e) => {
-                                  const nextChecked = e.target.checked === true;
-                                  const next = new Set(selected);
-
-                                  if (isAll) {
-                                    // If we're in "all" mode and user unchecks one, it becomes
-                                    // an explicit allowlist of all-but-that-one.
-                                    if (!nextChecked) {
-                                      for (const cid of allIds) next.add(cid);
-                                      next.delete(id);
-                                    }
-                                  } else {
-                                    if (nextChecked) next.add(id);
-                                    else next.delete(id);
-                                  }
-
-                                  // If they ended up selecting everything, collapse back to "all".
-                                  const normalized = (next.size === allIds.length) ? [] : Array.from(next);
-                                  setVisibleCameraIdsError(null);
-                                  setVisibleCameraIdsDirty(true);
-                                  setVisibleCameraIdsDraft(normalized);
-                                }}
-                              />
-                              <span className="min-w-0 truncate text-sm font-semibold text-white/85">{label}</span>
-                              {c?.enabled === false ? (
-                                <span className="ml-auto text-[10px] uppercase tracking-[0.18em] text-white/35">Disabled</span>
-                              ) : null}
-                              {c?.hasEmbed === true ? (
-                                <span className="ml-auto text-[10px] uppercase tracking-[0.18em] text-white/35">Embed</span>
-                              ) : null}
-                              {c?.hasRtsp === true ? (
-                                <span className="ml-auto text-[10px] uppercase tracking-[0.18em] text-white/35">RTSP</span>
-                              ) : null}
-                              {c?.hasSnapshot === true ? (
-                                <span className="ml-auto text-[10px] uppercase tracking-[0.18em] text-white/35">Snapshot</span>
-                              ) : null}
-                              {(c?.hasSnapshot !== true && c?.hasEmbed !== true && c?.hasRtsp !== true) ? (
-                                <span className="ml-auto text-[10px] uppercase tracking-[0.18em] text-white/35">No preview</span>
-                              ) : null}
-                            </label>
-                          );
-                        });
-                      })()}
-                    </div>
-
-                    <div className="mt-3 flex items-center justify-between gap-3">
-                      <div className="text-xs text-white/45">
-                        {visibleCameraIdsDirty ? 'Pending changes…' : (visibleCameraIdsDraft.length ? `${visibleCameraIdsDraft.length} selected` : 'All cameras')}
-                      </div>
-                      <div className="text-xs text-white/45">
-                        {statusText(visibleCamerasSave.status)}
-                      </div>
-                    </div>
-
-                    {visibleCameraIdsError ? (
-                      <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {visibleCameraIdsError}</div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="mt-3 text-xs text-white/45">
-                    No cameras registered yet. Add them in the <span className="text-white/70">Cameras</span> tab.
-                  </div>
-                )}
-
-                {camerasFromConfig.length ? (
-                  <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3">
-                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-                      Top Cameras (this panel)
-                    </div>
-                    <div className="mt-1 text-xs text-white/45">
-                      Select camera feeds to show across the top of the panel.
-                    </div>
-
-                    <div className="mt-3 grid grid-cols-1 gap-3">
-                      <label className="block">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45 truncate">
-                              Cameras
-                            </div>
-                            <div className="mt-1 text-[10px] text-white/35">
-                              {topCameraIdsFromConfig.length ? `${topCameraIdsFromConfig.length} selected` : 'None'}
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            disabled={!connected || busy || topCamerasSave.status === 'saving'}
-                            onClick={() => {
-                              setError(null);
-                              topCamerasSave.run({ cameraIds: [] })
-                                .catch((err) => setError(err?.message || String(err)));
-                            }}
-                            className={`shrink-0 rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || topCamerasSave.status === 'saving') ? 'opacity-50' : 'hover:bg-white/5'}`}
-                          >
-                            None
-                          </button>
-                        </div>
-                        <select
-                          multiple
-                          value={topCameraIdsFromConfig}
-                          disabled={!connected || busy || topCamerasSave.status === 'saving'}
-                          onChange={(e) => {
-                            const selected = Array.from(e.target.selectedOptions)
-                              .map((o) => String(o.value || '').trim())
-                              .filter(Boolean);
-                            setError(null);
-                            topCamerasSave.run({ cameraIds: selected })
-                              .catch((err) => setError(err?.message || String(err)));
-                          }}
-                          className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
-                          size={Math.min(6, Math.max(3, camerasFromConfig.length))}
-                        >
-                          {camerasFromConfig
-                            .filter((c) => c && typeof c === 'object')
-                            .map((c) => {
-                              const id = String(c?.id || '').trim();
-                              if (!id) return null;
-                              const label = String(c?.label || id).trim() || id;
-                              return (
-                                <option key={id} value={id}>
-                                  {label}
-                                </option>
-                              );
-                            })}
-                        </select>
-                      </label>
-
-                      <label className="block">
-                        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45 truncate">
-                          Size
-                        </div>
-                        <select
-                          value={topCameraSizeFromConfig}
-                          disabled={!connected || busy || topCamerasSave.status === 'saving'}
-                          onChange={(e) => {
-                            const size = String(e.target.value || '').trim().toLowerCase();
-                            setError(null);
-                            topCamerasSave.run({ size })
-                              .catch((err) => setError(err?.message || String(err)));
-                          }}
-                          className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
-                        >
-                          <option value="xs">Extra Small</option>
-                          <option value="sm">Small</option>
-                          <option value="md">Medium</option>
-                          <option value="lg">Large</option>
-                        </select>
-                      </label>
-                    </div>
-
-                    <div className="mt-3 flex items-center justify-between gap-3">
-                      <div className="text-xs text-white/45">
-                        {statusText(topCamerasSave.status)}
-                      </div>
-                    </div>
-
-                    {topCamerasSave.error ? (
-                      <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {topCamerasSave.error}</div>
-                    ) : null}
-                  </div>
-                ) : null}
 
                 <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
                   <label className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-black/20 px-3 py-3 select-none">
@@ -4516,7 +5312,10 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                 ) : null}
               </div>
 
-              <div className="mt-4 utility-group p-4">
+              <div
+                className={`mt-4 utility-group p-4 ${isPresetSelected ? 'opacity-50 pointer-events-none' : ''}`}
+                aria-disabled={isPresetSelected ? 'true' : 'false'}
+              >
                 <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
                   Sensor Badge Colors
                 </div>
@@ -4563,216 +5362,48 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                 ) : null}
               </div>
 
-              <div className="mt-6 border-t border-white/10 pt-5">
-                <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
-                  Layout
-                </div>
-                <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-                  Rooms & Labels
-                </div>
+              <div
+                className={`mt-4 utility-group p-4 ${isPresetSelected ? 'opacity-50 pointer-events-none' : ''}`}
+                aria-disabled={isPresetSelected ? 'true' : 'false'}
+              >
+                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Visible Rooms</div>
                 <div className="mt-1 text-xs text-white/45">
-                  These controls affect Home and the Climate (heatmap) view.
+                  Choose which rooms appear on this panel. If none are selected, all rooms are shown.
                 </div>
 
-                <div className="mt-4 utility-group p-4">
-                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Visible Rooms</div>
-                  <div className="mt-1 text-xs text-white/45">
-                    Choose which rooms appear on this panel. If none are selected, all rooms are shown.
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {allRoomsForVisibility.map((r) => {
-                      const checked = visibleRoomIds.has(r.id);
-                      return (
-                        <label key={r.id} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            disabled={!connected || busy || visibleRoomsSave.status === 'saving'}
-                            onChange={(e) => toggleVisibleRoom(r.id, Boolean(e.target.checked))}
-                          />
-                          <span className="min-w-0 truncate text-sm font-semibold text-white/85">{r.name}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <div className="text-xs text-white/45">
-                      {visibleRoomIds.size ? `${visibleRoomIds.size} selected` : 'All rooms'}
-                    </div>
-                    <div className="text-xs text-white/45">
-                      {statusText(visibleRoomsSave.status)}
-                    </div>
-                  </div>
-
-                  {visibleRoomsSave.error ? (
-                    <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {visibleRoomsSave.error}</div>
-                  ) : null}
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {allRoomsForVisibility.map((r) => {
+                    const checked = visibleRoomIds.has(r.id);
+                    return (
+                      <label key={r.id} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={!connected || busy || visibleRoomsSave.status === 'saving'}
+                          onChange={(e) => toggleVisibleRoom(r.id, Boolean(e.target.checked))}
+                        />
+                        <span className="min-w-0 truncate text-sm font-semibold text-white/85">{r.name}</span>
+                      </label>
+                    );
+                  })}
                 </div>
 
-                <div className="mt-4 utility-group p-4">
-                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Manual Rooms</div>
-                  <div className="mt-1 text-xs text-white/45">
-                    Add/remove rooms that aren’t discovered from Hubitat. Rooms can be placed/resized on the Climate page.
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="text-xs text-white/45">
+                    {visibleRoomIds.size ? `${visibleRoomIds.size} selected` : 'All rooms'}
                   </div>
-
-                  <div className="mt-4 flex gap-2">
-                    <input
-                      value={newRoomName}
-                      onChange={(e) => setNewRoomName(e.target.value)}
-                      placeholder="New room name"
-                      className={`flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 placeholder:text-white/35 ${scheme.focusRing}`}
-                      disabled={!connected || busy}
-                    />
-                    <button
-                      type="button"
-                      disabled={!connected || busy || !newRoomName.trim()}
-                      onClick={async () => {
-                        setError(null);
-                        setBusy(true);
-                        try {
-                          await addManualRoom(newRoomName.trim());
-                          setNewRoomName('');
-                        } catch (e) {
-                          setError(e?.message || String(e));
-                        } finally {
-                          setBusy(false);
-                        }
-                      }}
-                      className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || !newRoomName.trim()) ? 'opacity-50' : 'hover:bg-white/5'}`}
-                    >
-                      Add
-                    </button>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {manualRooms.length ? (
-                      manualRooms.map((r) => (
-                        <div key={r.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="text-[11px] uppercase tracking-[0.2em] font-semibold text-white/80 truncate">
-                                {r.name}
-                              </div>
-                              <div className="mt-1 text-xs text-white/45 truncate">ID: {r.id}</div>
-                            </div>
-
-                            <button
-                              type="button"
-                              disabled={!connected || busy}
-                              onClick={async () => {
-                                setError(null);
-                                setBusy(true);
-                                try {
-                                  await deleteManualRoom(r.id);
-                                } catch (e) {
-                                  setError(e?.message || String(e));
-                                } finally {
-                                  setBusy(false);
-                                }
-                              }}
-                              className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors text-white/70 border-white/10 bg-black/20 ${(!connected || busy) ? 'opacity-50' : 'hover:bg-white/10'}`}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-sm text-white/45">No manual rooms.</div>
-                    )}
+                  <div className="text-xs text-white/45">
+                    {statusText(visibleRoomsSave.status)}
                   </div>
                 </div>
 
-                <div className="mt-4 utility-group p-4">
-                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Freeform Text</div>
-                  <div className="mt-1 text-xs text-white/45">
-                    Add labels here, then position/resize them on the Climate page in Edit mode.
-                  </div>
-
-                  <div className="mt-4">
-                    <button
-                      type="button"
-                      disabled={!connected || busy}
-                      onClick={async () => {
-                        setError(null);
-                        setBusy(true);
-                        try {
-                          await addLabel('Label');
-                        } catch (e) {
-                          setError(e?.message || String(e));
-                        } finally {
-                          setBusy(false);
-                        }
-                      }}
-                      className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy) ? 'opacity-50' : 'hover:bg-white/5'}`}
-                    >
-                      Add Label
-                    </button>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-1 gap-3">
-                    {labels.length ? (
-                      labels.map((l) => (
-                        <div key={l.id} className="utility-group p-4">
-                          <div className="text-[10px] uppercase tracking-[0.2em] text-white/45 font-semibold">
-                            {l.id}
-                          </div>
-                          <textarea
-                            value={labelDrafts[l.id] ?? l.text}
-                            onChange={(e) => {
-                              const next = e.target.value;
-                              setLabelDrafts((prev) => ({ ...prev, [l.id]: next }));
-                              queueLabelAutosave(l.id, next);
-                            }}
-                            rows={2}
-                            className={`mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 placeholder:text-white/35 ${scheme.focusRing}`}
-                            disabled={!connected || busy}
-                            placeholder="Label text"
-                          />
-
-                          <div className="mt-2 flex items-center justify-between gap-3">
-                            <div className="text-xs text-white/45">
-                              {statusText(labelSaveState[l.id]?.status) || 'Idle'}
-                            </div>
-                            {labelSaveState[l.id]?.error ? (
-                              <div className="text-xs text-neon-red break-words">{labelSaveState[l.id]?.error}</div>
-                            ) : null}
-                          </div>
-
-                          <div className="mt-3 flex gap-2">
-                            <button
-                              type="button"
-                              disabled={!connected || busy}
-                              onClick={async () => {
-                                setError(null);
-                                setBusy(true);
-                                try {
-                                  await deleteLabel(l.id);
-                                } catch (e) {
-                                  setError(e?.message || String(e));
-                                } finally {
-                                  setBusy(false);
-                                }
-                              }}
-                              className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors text-white/70 border-white/10 bg-black/20 ${(!connected || busy) ? 'opacity-50' : 'hover:bg-white/10'}`}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-sm text-white/45">No labels yet.</div>
-                    )}
-                  </div>
-                </div>
+                {visibleRoomsSave.error ? (
+                  <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {visibleRoomsSave.error}</div>
+                ) : null}
               </div>
+            </div>
 
-            {!connected ? (
-              <div className="mt-3 text-xs text-white/45">Server offline: editing disabled.</div>
-            ) : null}
+            </div>
           </div>
         ) : null}
 

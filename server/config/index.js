@@ -7,10 +7,12 @@ const constants = require('./constants');
 const hlsConfig = require('./hls');
 const hubitatConfig = require('./hubitat');
 const eventsConfig = require('./events');
+const uiConfig = require('./ui');
 
 module.exports = {
     ...constants,
     ...hlsConfig,
     ...hubitatConfig,
     ...eventsConfig,
+    ...uiConfig,
 };

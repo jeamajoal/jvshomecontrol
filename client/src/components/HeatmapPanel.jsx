@@ -189,6 +189,19 @@ const HeatmapPanel = ({ config: configProp, statuses: statusesProp, uiScheme: ui
   const sensors = config?.sensors || [];
   const labels = Array.isArray(config?.labels) ? config.labels : [];
 
+  const visibleRoomIdSet = useMemo(() => {
+    const ids = Array.isArray(config?.ui?.visibleRoomIds)
+      ? config.ui.visibleRoomIds.map((v) => String(v || '').trim()).filter(Boolean)
+      : [];
+    // Empty list means "show all rooms".
+    return ids.length ? new Set(ids) : null;
+  }, [config?.ui?.visibleRoomIds]);
+
+  const roomsForTiles = useMemo(() => {
+    if (!visibleRoomIdSet) return rooms;
+    return rooms.filter((r) => visibleRoomIdSet.has(String(r?.id || '').trim()));
+  }, [rooms, visibleRoomIdSet]);
+
   const climateTolerances = useMemo(() => {
     const raw = (config?.ui?.climateTolerances && typeof config.ui.climateTolerances === 'object')
       ? config.ui.climateTolerances
@@ -250,7 +263,7 @@ const HeatmapPanel = ({ config: configProp, statuses: statusesProp, uiScheme: ui
 
   const roomTiles = useMemo(() => {
     const byRoomId = new Map();
-    for (const room of rooms) {
+    for (const room of roomsForTiles) {
       byRoomId.set(room.id, { room, sensors: [] });
     }
 
@@ -347,7 +360,7 @@ const HeatmapPanel = ({ config: configProp, statuses: statusesProp, uiScheme: ui
         },
       };
     });
-  }, [mode, rooms, sensors, statuses]);
+  }, [mode, roomsForTiles, sensors, statuses]);
 
   const classify = (value) => {
     const v = asNumber(value);

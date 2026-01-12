@@ -4,8 +4,7 @@
  */
 
 const {
-    LEGACY_UI_COLOR_SCHEMES,
-    ALLOWED_ACCENT_COLOR_IDS,
+    ALLOWED_TOLERANCE_COLOR_IDS,
     DEFAULT_ACCENT_COLOR_ID,
     PRESET_PANEL_PROFILE_NAMES,
 } = require('../config/constants');
@@ -34,32 +33,18 @@ function clampInt(n, min, max, fallback) {
 }
 
 // --- Color/UI Helpers ---
+function isAllowedAccentColorId(raw) {
+    const v = String(raw ?? '').trim();
+    if (!v) return false;
+    if (v === 'none') return false;
+    return ALLOWED_TOLERANCE_COLOR_IDS.has(v);
+}
+
 function normalizeAccentColorId(raw) {
     const v = String(raw ?? '').trim();
     if (!v) return DEFAULT_ACCENT_COLOR_ID;
 
-    // Accept new palette ids directly.
-    if (ALLOWED_ACCENT_COLOR_IDS.has(v)) return v;
-
-    // Migrate legacy scheme ids.
-    if (LEGACY_UI_COLOR_SCHEMES.includes(v)) {
-        const legacyMap = {
-            'electric-blue': 'neon-blue',
-            'classic-blue': 'primary',
-            emerald: 'success',
-            amber: 'warning',
-            copper: 'brown',
-            'neon-green': 'neon-green',
-            'neon-red': 'neon-red',
-            slate: 'slate',
-            stone: 'stone',
-            zinc: 'zinc',
-            white: 'white',
-        };
-
-        const mapped = legacyMap[v];
-        if (mapped && ALLOWED_ACCENT_COLOR_IDS.has(mapped)) return mapped;
-    }
+    if (isAllowedAccentColorId(v)) return v;
 
     return DEFAULT_ACCENT_COLOR_ID;
 }
@@ -210,6 +195,7 @@ module.exports = {
     clampInt,
     
     // Color/UI helpers
+    isAllowedAccentColorId,
     normalizeAccentColorId,
     
     // Panel profile helpers

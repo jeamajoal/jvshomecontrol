@@ -3,7 +3,7 @@
 Local-first home automation dashboard (UI + backend) designed for a wall tablet / kiosk.
 
 ## At a glance
-
+- ## What does it look like!?!? ![Examples](https://github.com/<owner>/<repo>/releases/download/screenshots-v1/)
 - **What is this?** A Hubitat-backed control panel: UI (React) + backend (Node/Express) with realtime updates.
 - **Who wrote it?** Jeremy Henderson from **JVS Automation** (this repo is a personal/demo project written for a spare 1080p tablet).
 - **JVS Automation**: Facebook **JVS_Automation** · Instagram **@jvs_automation**

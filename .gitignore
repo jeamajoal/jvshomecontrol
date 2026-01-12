@@ -36,3 +36,6 @@ server/data/config.json
 
 # Ignore generated TLS certs/keys (created locally by https-setup)
 server/data/certs/
+
+# Local-only screenshots (do not commit)
+screenshots/
