@@ -984,6 +984,14 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     return { enabled: true, url, opacityPct };
   }, [config?.ui?.homeBackground]);
 
+  // Track background image load errors for graceful fallback
+  const [backgroundImageError, setBackgroundImageError] = useState(false);
+
+  // Reset error state when URL changes
+  useEffect(() => {
+    setBackgroundImageError(false);
+  }, [homeBackground.url]);
+
   const cardScalePct = useMemo(() => {
     const raw = Number(config?.ui?.cardScalePct);
     if (!Number.isFinite(raw)) return 100;
@@ -1466,16 +1474,25 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
 
   return (
     <div ref={viewportRef} className="relative w-full h-full overflow-auto p-2 md:p-3">
-      {homeBackground.enabled && homeBackground.url ? (
-        <div
-          className="fixed inset-0 z-0 pointer-events-none"
-          style={{
-            backgroundImage: `url(${JSON.stringify(String(homeBackground.url))})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            opacity: homeBackground.opacityPct / 100,
-          }}
-        />
+      {homeBackground.enabled && homeBackground.url && !backgroundImageError ? (
+        <>
+          <div
+            className="fixed inset-0 z-0 pointer-events-none"
+            style={{
+              backgroundImage: `url(${JSON.stringify(String(homeBackground.url))})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              opacity: homeBackground.opacityPct / 100,
+            }}
+          />
+          {/* Hidden img element to detect load errors and gracefully fallback to no background */}
+          <img
+            src={homeBackground.url}
+            alt=""
+            onError={() => setBackgroundImageError(true)}
+            style={{ display: 'none' }}
+          />
+        </>
       ) : null}
 
       <div className="relative z-10 w-full">
