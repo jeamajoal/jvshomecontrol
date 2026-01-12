@@ -984,6 +984,28 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     return { enabled: true, url, opacityPct };
   }, [config?.ui?.homeBackground]);
 
+  // Track background image load errors for graceful fallback
+  const [backgroundImageError, setBackgroundImageError] = useState(false);
+
+  // Reset error state and preload image when URL changes
+  useEffect(() => {
+    setBackgroundImageError(false);
+    
+    if (!homeBackground.enabled || !homeBackground.url) return;
+
+    // Preload image and detect errors using Image constructor
+    const img = new Image();
+    img.onerror = () => {
+      setBackgroundImageError(true);
+    };
+    img.src = homeBackground.url;
+
+    return () => {
+      // Clean up by removing event handler
+      img.onerror = null;
+    };
+  }, [homeBackground.enabled, homeBackground.url]);
+
   const cardScalePct = useMemo(() => {
     const raw = Number(config?.ui?.cardScalePct);
     if (!Number.isFinite(raw)) return 100;
@@ -1466,7 +1488,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
 
   return (
     <div ref={viewportRef} className="relative w-full h-full overflow-auto p-2 md:p-3">
-      {homeBackground.enabled && homeBackground.url ? (
+      {homeBackground.enabled && homeBackground.url && !backgroundImageError ? (
         <div
           className="fixed inset-0 z-0 pointer-events-none"
           style={{
