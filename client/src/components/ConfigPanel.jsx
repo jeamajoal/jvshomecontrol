@@ -2911,73 +2911,75 @@ const ConfigPanel = ({
             })}
           </div>
 
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
-            <div className="md:col-span-4">
-              <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
-                Panel Profile
-              </label>
-              <select
-                value={selectedPanelName}
-                onChange={(e) => {
-                  const next = String(e.target.value || '').trim();
-                  if (ctx?.setPanelName) ctx.setPanelName(next);
-                }}
-                className="mt-1 menu-select w-full rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 jvs-menu-select"
-              >
-                <optgroup label="Global defaults">
-                  <option value="">Global (not a profile)</option>
-                </optgroup>
-                <optgroup label="Panel profiles">
-                  {panelNames.map((name) => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </optgroup>
-              </select>
-              <div
-                className="mt-1 jvs-secondary-text text-white/60"
-                style={{ fontSize: 'calc(11px * var(--jvs-secondary-text-size-scale, 1))' }}
-              >
-                {selectedPanelName ? 'Panel-specific overrides enabled.' : 'Editing global defaults.'}
-              </div>
-              {isPresetSelected ? (
+          {activeTab !== 'display' ? (
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
+              <div className="md:col-span-4">
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  Panel Profile
+                </label>
+                <select
+                  value={selectedPanelName}
+                  onChange={(e) => {
+                    const next = String(e.target.value || '').trim();
+                    if (ctx?.setPanelName) ctx.setPanelName(next);
+                  }}
+                  className="mt-1 menu-select w-full rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 jvs-menu-select"
+                >
+                  <optgroup label="Global defaults">
+                    <option value="">Global (not a profile)</option>
+                  </optgroup>
+                  <optgroup label="Panel profiles">
+                    {panelNames.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </optgroup>
+                </select>
                 <div
                   className="mt-1 jvs-secondary-text text-white/60"
                   style={{ fontSize: 'calc(11px * var(--jvs-secondary-text-size-scale, 1))' }}
                 >
-                  This is a shipped preset (read-only). Pick a preset you like, enter a new panel name, then click Create — the new panel profile starts from this preset.
+                  {selectedPanelName ? 'Panel-specific overrides enabled.' : 'Editing global defaults.'}
+                </div>
+                {isPresetSelected ? (
+                  <div
+                    className="mt-1 jvs-secondary-text text-white/60"
+                    style={{ fontSize: 'calc(11px * var(--jvs-secondary-text-size-scale, 1))' }}
+                  >
+                    This is a shipped preset (read-only). Pick a preset you like, enter a new panel name, then click Create — the new panel profile starts from this preset.
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="md:col-span-6">
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  New Panel Name
+                </label>
+                <input
+                  value={newPanelName}
+                  onChange={(e) => setNewPanelName(e.target.value)}
+                  placeholder="e.g. Kitchen Panel"
+                  className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white/85 placeholder:text-white/30"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <button
+                  type="button"
+                  onClick={() => createPanel().catch(() => undefined)}
+                  disabled={panelCreateStatus === 'creating' || !String(newPanelName || '').trim()}
+                  className={`w-full rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${panelCreateStatus === 'creating' ? 'border-white/10 bg-black/20 text-white/40' : 'border-white/10 bg-white/5 text-white/80 hover:bg-white/10'}`}
+                >
+                  {panelCreateStatus === 'creating' ? 'Creating…' : 'Create'}
+                </button>
+              </div>
+
+              {panelCreateError ? (
+                <div className="md:col-span-12 text-[11px] text-neon-red break-words">
+                  Panel create failed: {panelCreateError}
                 </div>
               ) : null}
             </div>
-
-            <div className="md:col-span-6">
-              <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
-                New Panel Name
-              </label>
-              <input
-                value={newPanelName}
-                onChange={(e) => setNewPanelName(e.target.value)}
-                placeholder="e.g. Kitchen Panel"
-                className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white/85 placeholder:text-white/30"
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <button
-                type="button"
-                onClick={() => createPanel().catch(() => undefined)}
-                disabled={panelCreateStatus === 'creating' || !String(newPanelName || '').trim()}
-                className={`w-full rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${panelCreateStatus === 'creating' ? 'border-white/10 bg-black/20 text-white/40' : 'border-white/10 bg-white/5 text-white/80 hover:bg-white/10'}`}
-              >
-                {panelCreateStatus === 'creating' ? 'Creating…' : 'Create'}
-              </button>
-            </div>
-
-            {panelCreateError ? (
-              <div className="md:col-span-12 text-[11px] text-neon-red break-words">
-                Panel create failed: {panelCreateError}
-              </div>
-            ) : null}
-          </div>
+          ) : null}
         </div>
 
         {activeTab === 'devices' ? (
