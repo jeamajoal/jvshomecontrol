@@ -30,7 +30,8 @@ The UI is intentionally conservative about device control.
 	- Persisted keys: `ui.mainAllowedDeviceIds` and `ui.ctrlAllowedDeviceIds`
 	- These can be locked by server env vars (see Settings → Devices).
 - **Panel profiles** let you save different configs per tablet/panel.
-	- Persisted under `ui.panelProfiles[panelName]`
+	- Built-in preset profiles (e.g., "Neon Glass", "Stealth Slate", etc.) are shipped with the server and automatically available.
+	- User-defined custom profiles can be persisted under `ui.panelProfiles[panelName]`.
 	- The client merges global defaults + the selected panel profile.
 	- Shipped presets (Neon Glass, Stealth Slate, etc.) are built-in and injected at runtime by the server. Set `ui.panelProfiles` to add or override user-defined profiles only.
 - **Visible rooms per panel** (optional):
