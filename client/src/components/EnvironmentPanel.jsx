@@ -554,7 +554,7 @@ const getDeviceCommandAllowlistForId = (deviceCommandAllowlist, deviceId) => {
   return arr.map((v) => String(v || '').trim()).filter(Boolean);
 };
 
-const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, deviceCommandAllowlist, deviceHomeMetricAllowlist, homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
+const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, deviceCommandAllowlist, deviceHomeMetricAllowlist, allowedPanelDeviceCommands = null, homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
 
   const scaleNumRaw = Number(contentScale);
@@ -567,7 +567,10 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
   );
 
   const supportedActions = useMemo(() => {
-    const allow = new Set(['on', 'off', 'toggle', 'refresh', 'push']);
+    const allowList = Array.isArray(allowedPanelDeviceCommands) && allowedPanelDeviceCommands.length
+      ? allowedPanelDeviceCommands
+      : ['on', 'off', 'toggle', 'refresh', 'push'];
+    const allow = new Set(allowList.map((c) => String(c || '').trim()).filter(Boolean));
     return devices
       .map((d) => ({
         id: d.id,
@@ -588,7 +591,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
         })(),
       }))
       .filter((d) => d.commands.length);
-  }, [devices, deviceCommandAllowlist]);
+  }, [devices, deviceCommandAllowlist, allowedPanelDeviceCommands]);
 
   const runAction = async (deviceId, command) => {
     const key = `${deviceId}:${command}`;
@@ -1599,6 +1602,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   colorizeHomeValuesOpacityPct={colorizeHomeValuesOpacityPct}
                   deviceCommandAllowlist={config?.ui?.deviceCommandAllowlist}
                   deviceHomeMetricAllowlist={config?.ui?.deviceHomeMetricAllowlist}
+                  allowedPanelDeviceCommands={config?.ui?.allowedPanelDeviceCommands}
                   homeRoomMetricKeys={homeRoomMetricKeys}
                   homeRoomMetricColumns={homeRoomMetricColumns}
                   homeRoomColumnsXl={homeRoomColumnsXl}

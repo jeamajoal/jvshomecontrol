@@ -2138,7 +2138,7 @@ async function syncHubitatDataInner() {
         });
 
         io.emit('config_update', config);
-        io.emit('device_refresh', sensorStatuses);
+        io.emit('device_refresh', getClientSafeStatuses());
 
     } catch (err) {
         lastHubitatError = describeFetchError(err);
@@ -2294,8 +2294,21 @@ function getPublicCamerasList() {
 function getClientSafeConfig() {
     const allowlists = getUiAllowlistsInfo();
     const publicCameras = getPublicCamerasList();
+
+    const sensorsRaw = Array.isArray(config?.sensors) ? config.sensors : [];
+    const globallyAvailableIds = new Set([
+        ...(Array.isArray(allowlists?.main?.ids) ? allowlists.main.ids : []),
+        ...(Array.isArray(allowlists?.ctrl?.ids) ? allowlists.ctrl.ids : []),
+    ].map((v) => String(v)));
+    // Back-compat: if allowlists are empty (never configured), do not hide devices.
+    const filterDevicesByAvailability = globallyAvailableIds.size > 0;
+    const sensors = filterDevicesByAvailability
+        ? sensorsRaw.filter((s) => globallyAvailableIds.has(String(s?.id)))
+        : sensorsRaw;
+
     return {
         ...config,
+        sensors,
         ui: {
             ...(config?.ui || {}),
             // Do not leak snapshot URLs or credentials to the browser.
@@ -2314,6 +2327,24 @@ function getClientSafeConfig() {
             mainAllowlistLocked: allowlists.main.locked,
         },
     };
+}
+
+function getClientSafeStatuses() {
+    const allowlists = getUiAllowlistsInfo();
+    const globallyAvailableIds = new Set([
+        ...(Array.isArray(allowlists?.main?.ids) ? allowlists.main.ids : []),
+        ...(Array.isArray(allowlists?.ctrl?.ids) ? allowlists.ctrl.ids : []),
+    ].map((v) => String(v)));
+
+    // Match getClientSafeConfig(): only filter when an allowlist is configured.
+    if (globallyAvailableIds.size === 0) return sensorStatuses;
+
+    const out = {};
+    const src = sensorStatuses && typeof sensorStatuses === 'object' ? sensorStatuses : {};
+    for (const [id, st] of Object.entries(src)) {
+        if (globallyAvailableIds.has(String(id))) out[id] = st;
+    }
+    return out;
 }
 
 // Ensure any socket "config_update" payloads are sanitized.
@@ -2651,7 +2682,7 @@ app.get('/api/config', (req, res) => {
     persistConfigToDiskIfChanged('api-config');
     res.json(getClientSafeConfig());
 });
-app.get('/api/status', (req, res) => res.json(sensorStatuses));
+app.get('/api/status', (req, res) => res.json(getClientSafeStatuses()));
 
 app.get('/api/sounds', (req, res) => {
     try {
@@ -5998,7 +6029,7 @@ app.post('/api/events', (req, res) => {
 
         if (appliedAny) {
             try {
-                io.emit('device_refresh', sensorStatuses);
+                io.emit('device_refresh', getClientSafeStatuses());
             } catch {
                 // ignore
             }
@@ -6362,7 +6393,7 @@ if (HAS_BUILT_CLIENT) {
 io.on('connection', (socket) => {
     console.log('Client connected');
     socket.emit('config_update', config);
-    socket.emit('device_refresh', sensorStatuses);
+    socket.emit('device_refresh', getClientSafeStatuses());
 });
 
 server.listen(PORT, '0.0.0.0', () => {

@@ -798,7 +798,7 @@ const ConfigPanel = ({
   const [activeTab, setActiveTab] = useState('display');
 
   useEffect(() => {
-    // Panel profile selection is only relevant on non-Display tabs.
+    // Panel profile selection is only relevant on non-Global tabs.
     // If no profile is selected, pick the first available profile.
     if (activeTab === 'display') return;
     if (selectedPanelName) return;
@@ -807,12 +807,10 @@ const ConfigPanel = ({
   }, [activeTab, selectedPanelName, panelNames, ctx]);
 
   const TABS = [
-    { id: 'display', label: 'Display' },
+    { id: 'display', label: 'Global Options' },
     { id: 'appearance', label: 'Appearance' },
-    { id: 'cameras', label: 'Cameras' },
     { id: 'sounds', label: 'Sounds' },
     { id: 'climate', label: 'Climate' },
-    { id: 'devices', label: 'Devices' },
     { id: 'events', label: 'Events' },
   ];
 
@@ -2373,7 +2371,6 @@ const ConfigPanel = ({
   const [deviceOverrideSaveState, setDeviceOverrideSaveState] = useState(() => ({}));
   const deviceOverrideTimersRef = useRef(new Map());
   const [selectedDeviceIdForEdit, setSelectedDeviceIdForEdit] = useState('');
-  const [selectedDeviceIdForGlobalAvailabilityEdit, setSelectedDeviceIdForGlobalAvailabilityEdit] = useState('');
   const UI_DEVICE_COMMANDS = useMemo(() => {
     const raw = config?.ui?.allowedPanelDeviceCommands;
     const cleaned = Array.isArray(raw)
@@ -2438,12 +2435,6 @@ const ConfigPanel = ({
     }
   }, [allDevices, selectedDeviceIdForEdit]);
 
-  useEffect(() => {
-    if (!selectedDeviceIdForGlobalAvailabilityEdit) return;
-    if (!allDevices.some((d) => String(d?.id) === String(selectedDeviceIdForGlobalAvailabilityEdit))) {
-      setSelectedDeviceIdForGlobalAvailabilityEdit('');
-    }
-  }, [allDevices, selectedDeviceIdForGlobalAvailabilityEdit]);
 
   const effectiveDeviceLabelOverrides = useMemo(() => {
     const v = config?.ui?.deviceLabelOverrides;
@@ -2624,7 +2615,8 @@ const ConfigPanel = ({
   }, []);
 
   useEffect(() => {
-    if (activeTab !== 'cameras') return;
+    // Cameras are global settings; load them when Global Options is open.
+    if (activeTab !== 'display') return;
 
     let cancelled = false;
     setUiCamerasError(null);
@@ -3003,10 +2995,10 @@ const ConfigPanel = ({
           ) : null}
         </div>
 
-        {activeTab === 'devices' ? (
+        {activeTab === 'appearance' ? (
           <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
-              Config
+              Appearance
             </div>
             <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
               Device Visibility
@@ -3326,10 +3318,10 @@ const ConfigPanel = ({
         {activeTab === 'display' ? (
           <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
-              Display
+              Global Options
             </div>
             <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-              Global Defaults
+              Global Options
             </div>
             <div className="mt-1 text-xs text-white/45">
               Tune size/spacing for this device. Panel profiles can override these.
@@ -3353,78 +3345,55 @@ const ConfigPanel = ({
                 </div>
               ) : null}
 
-              <div className="mt-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
-                  Device
-                </label>
-                <select
-                  value={selectedDeviceIdForGlobalAvailabilityEdit}
-                  onChange={(e) => setSelectedDeviceIdForGlobalAvailabilityEdit(String(e.target.value || '').trim())}
-                  className="mt-1 menu-select w-full rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 jvs-menu-select"
-                >
-                  <option value="">Select a device…</option>
-                  {allDevices.map((d) => {
-                    const src = String(d?.source || '').trim();
-                    const label = src ? `${d.label} (${src})` : d.label;
-                    return (
-                      <option key={d.id} value={d.id}>{label}</option>
-                    );
-                  })}
-                </select>
-                <div className="mt-1 text-xs text-white/45">
-                  This is global (not panel-specific).
-                </div>
+              <div className="mt-3 text-xs text-white/45">
+                {statusText(allowlistSave.status)}
               </div>
 
               {!allDevices.length ? (
                 <div className="mt-3 text-sm text-white/45">No devices discovered.</div>
-              ) : !selectedDeviceIdForGlobalAvailabilityEdit ? (
-                <div className="mt-3 text-sm text-white/45">Choose a device to edit its availability.</div>
-              ) : (() => {
-                const d = allDevices.find((x) => String(x.id) === String(selectedDeviceIdForGlobalAvailabilityEdit));
-                if (!d) return null;
-                const isMainAllowed = mainAllowedDeviceIds ? mainAllowedDeviceIds.has(String(d.id)) : false;
-                const isCtrlAllowed = ctrlAllowedDeviceIds ? ctrlAllowedDeviceIds.has(String(d.id)) : false;
-                return (
-                  <div className={`mt-3 rounded-2xl border p-4 bg-white/5 border-white/10 ${!connected ? 'opacity-50' : ''}`}>
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="min-w-0">
-                        <div className="text-[11px] uppercase tracking-[0.2em] font-semibold text-white/80 truncate">
-                          {d.label}
+              ) : (
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {allDevices.map((d) => {
+                    const isMainAllowed = mainAllowedDeviceIds ? mainAllowedDeviceIds.has(String(d.id)) : false;
+                    const isCtrlAllowed = ctrlAllowedDeviceIds ? ctrlAllowedDeviceIds.has(String(d.id)) : false;
+                    const src = String(d?.source || '').trim();
+                    const display = src ? `${d.label} (${src})` : d.label;
+
+                    return (
+                      <div key={d.id} className={`flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 ${!connected ? 'opacity-50' : ''}`}>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-semibold text-white/85 truncate">{display}</div>
+                          <div className="mt-1 text-[11px] text-white/45 truncate">ID: {d.id}</div>
                         </div>
-                        <div className="mt-1 text-xs text-white/45 truncate">ID: {d.id}</div>
-                      </div>
 
-                      <div className="shrink-0 flex flex-col gap-2">
-                        <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
-                          <input
-                            type="checkbox"
-                            className={`h-5 w-5 ${scheme.checkboxAccent}`}
-                            disabled={!connected || allowlistSave.status === 'saving' || mainAllowlistLocked}
-                            checked={isMainAllowed}
-                            onChange={(e) => setGlobalMainAllowed(d.id, e.target.checked)}
-                          />
-                          Home
-                        </label>
-                        <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
-                          <input
-                            type="checkbox"
-                            className={`h-5 w-5 ${scheme.checkboxAccent}`}
-                            disabled={!connected || allowlistSave.status === 'saving' || ctrlAllowlistLocked}
-                            checked={isCtrlAllowed}
-                            onChange={(e) => setGlobalControlsAllowed(d.id, e.target.checked)}
-                          />
-                          Controls
-                        </label>
-                      </div>
-                    </div>
+                        <div className="shrink-0 flex items-center gap-3">
+                          <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
+                            <input
+                              type="checkbox"
+                              className={`h-5 w-5 ${scheme.checkboxAccent}`}
+                              disabled={!connected || allowlistSave.status === 'saving' || mainAllowlistLocked}
+                              checked={isMainAllowed}
+                              onChange={(e) => setGlobalMainAllowed(d.id, e.target.checked)}
+                            />
+                            Home
+                          </label>
 
-                    <div className="mt-3 text-xs text-white/45">
-                      {statusText(allowlistSave.status)}
-                    </div>
-                  </div>
-                );
-              })()}
+                          <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
+                            <input
+                              type="checkbox"
+                              className={`h-5 w-5 ${scheme.checkboxAccent}`}
+                              disabled={!connected || allowlistSave.status === 'saving' || ctrlAllowlistLocked}
+                              checked={isCtrlAllowed}
+                              onChange={(e) => setGlobalControlsAllowed(d.id, e.target.checked)}
+                            />
+                            Controls
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="mt-4 utility-group p-4">
@@ -5509,10 +5478,10 @@ const ConfigPanel = ({
           </div>
         ) : null}
 
-        {activeTab === 'cameras' ? (
+        {activeTab === 'display' ? (
           <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
-              Settings
+              Global Options
             </div>
             <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
               Cameras
