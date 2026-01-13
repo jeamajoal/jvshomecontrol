@@ -1842,7 +1842,7 @@ async function syncHubitatDataInner() {
                     const label = String(d?.label ?? id).trim() || id;
                     const room = String(d?.room ?? '').trim();
                     const capabilities = Array.isArray(d?.capabilities) ? d.capabilities.map((c) => String(c)) : [];
-                    const commands = Array.isArray(d?.commands) ? d.commands.map((c) => String(c)) : [];
+                    const commands = pickCommands(d.commands);
                     return {
                         id,
                         label,
