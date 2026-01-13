@@ -5,11 +5,23 @@ const asText = (value) => {
 };
 
 export function getHomeVisibleDeviceIdSet(config) {
-  const ids = Array.isArray(config?.ui?.homeVisibleDeviceIds)
-    ? config.ui.homeVisibleDeviceIds.map((v) => String(v || '').trim()).filter(Boolean)
+  const uiObj = (config?.ui && typeof config.ui === 'object') ? config.ui : {};
+  const hasKey = Object.prototype.hasOwnProperty.call(uiObj, 'homeVisibleDeviceIds');
+  if (!hasKey) return null;
+  const ids = Array.isArray(uiObj.homeVisibleDeviceIds)
+    ? uiObj.homeVisibleDeviceIds.map((v) => String(v || '').trim()).filter(Boolean)
     : [];
-  // Empty means "show all".
-  return ids.length ? new Set(ids) : null;
+  return new Set(ids);
+}
+
+export function getCtrlVisibleDeviceIdSet(config) {
+  const uiObj = (config?.ui && typeof config.ui === 'object') ? config.ui : {};
+  const hasKey = Object.prototype.hasOwnProperty.call(uiObj, 'ctrlVisibleDeviceIds');
+  if (!hasKey) return null;
+  const ids = Array.isArray(uiObj.ctrlVisibleDeviceIds)
+    ? uiObj.ctrlVisibleDeviceIds.map((v) => String(v || '').trim()).filter(Boolean)
+    : [];
+  return new Set(ids);
 }
 
 function getVisibleRoomIdSet(config) {

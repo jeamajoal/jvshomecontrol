@@ -4,7 +4,7 @@ import { Loader2, Power, SlidersHorizontal } from 'lucide-react';
 import { getUiScheme } from '../uiScheme';
 import { API_HOST } from '../apiHost';
 import { useAppState } from '../appState';
-import { buildRoomsWithStatuses } from '../deviceSelectors';
+import { buildRoomsWithStatuses, getCtrlVisibleDeviceIdSet, getDeviceCommandAllowlist } from '../deviceSelectors';
 import HlsPlayer from './HlsPlayer';
 
 const asNumber = (value) => {
@@ -207,9 +207,11 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
     [uiScheme, config?.ui?.accentColorId],
   );
 
+  const ctrlVisibleDeviceIds = useMemo(() => getCtrlVisibleDeviceIdSet(config), [config]);
+
   const rooms = useMemo(() => {
-    return buildRoomsWithStatuses(config, statuses, { ignoreVisibleRooms: true });
-  }, [config, statuses]);
+    return buildRoomsWithStatuses(config, statuses, { ignoreVisibleRooms: true, deviceIdSet: ctrlVisibleDeviceIds });
+  }, [config, statuses, ctrlVisibleDeviceIds]);
 
   const controlsCameraPreviewsEnabled = useMemo(
     () => config?.ui?.controlsCameraPreviewsEnabled === true,
@@ -435,11 +437,18 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                   .map((d) => {
                     const attrs = d.status?.attributes || {};
                     const commandsRaw = Array.isArray(d.status?.commands) ? d.status.commands : [];
+                    const perDevice = getDeviceCommandAllowlist(config, d.id);
+                    const commands = perDevice === null
+                      ? commandsRaw
+                      : (() => {
+                        const set = new Set(perDevice.map((c) => String(c)));
+                        return commandsRaw.filter((c) => set.has(String(c)));
+                      })();
                     return {
                       id: d.id,
                       label: d.label,
                       attrs,
-                      commands: commandsRaw,
+                      commands,
                       state: d.status?.state,
                     };
                   })

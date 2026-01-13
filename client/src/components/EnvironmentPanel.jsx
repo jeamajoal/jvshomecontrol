@@ -554,7 +554,7 @@ const getDeviceCommandAllowlistForId = (deviceCommandAllowlist, deviceId) => {
   return arr.map((v) => String(v || '').trim()).filter(Boolean);
 };
 
-const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, deviceCommandAllowlist, deviceHomeMetricAllowlist, allowedPanelDeviceCommands = null, homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
+const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, deviceCommandAllowlist, deviceHomeMetricAllowlist, homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
 
   const scaleNumRaw = Number(contentScale);
@@ -567,10 +567,6 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
   );
 
   const supportedActions = useMemo(() => {
-    const allowList = Array.isArray(allowedPanelDeviceCommands) && allowedPanelDeviceCommands.length
-      ? allowedPanelDeviceCommands
-      : ['on', 'off', 'toggle', 'refresh', 'push'];
-    const allow = new Set(allowList.map((c) => String(c || '').trim()).filter(Boolean));
     return devices
       .map((d) => ({
         id: d.id,
@@ -582,16 +578,36 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
       .map((d) => ({
         ...d,
         commands: (() => {
-          const base = d.commands.filter((c) => allow.has(c));
           const perDevice = getDeviceCommandAllowlistForId(deviceCommandAllowlist, d.id);
-          // Home controls only appear when commands are explicitly selected.
-          if (!perDevice || perDevice.length === 0) return [];
+          let base = d.commands;
+
+          // Missing allowlist => allow all commands. Empty array => allow none.
+          if (perDevice === null) return base;
+          if (perDevice.length === 0) return [];
           const set = new Set(perDevice);
-          return base.filter((c) => set.has(c));
+          return base.filter((c) => set.has(String(c)));
         })(),
       }))
       .filter((d) => d.commands.length);
-  }, [devices, deviceCommandAllowlist, allowedPanelDeviceCommands]);
+  }, [devices, deviceCommandAllowlist]);
+
+  const formatCommandLabel = (cmd) => {
+    const s = String(cmd || '').trim();
+    if (!s) return '';
+    if (s === 'on') return 'On';
+    if (s === 'off') return 'Off';
+    if (s === 'toggle') return 'Toggle';
+    if (s === 'refresh') return 'Refresh';
+    if (s === 'push') return 'Push';
+    // human-ish label for arbitrary Hubitat commands
+    return s
+      .replace(/_/g, ' ')
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .trim()
+      .split(/\s+/)
+      .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : ''))
+      .join(' ');
+  };
 
   const runAction = async (deviceId, command) => {
     const key = `${deviceId}:${command}`;
@@ -811,71 +827,27 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
                   {d.label}
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {d.commands.includes('on') ? (
-                    <ActionButton
-                      label="On"
-                      icon={Power}
-                      accent="fixed"
-                      disabled={!connected}
-                      busy={busyActions.has(`${d.id}:on`)}
-                      onClick={() => runAction(d.id, 'on')}
-                      uiScheme={uiScheme}
-                      scaled
-                      scale={scaleNum}
-                    />
-                  ) : null}
-                  {d.commands.includes('off') ? (
-                    <ActionButton
-                      label="Off"
-                      icon={Power}
-                      accent="fixed"
-                      disabled={!connected}
-                      busy={busyActions.has(`${d.id}:off`)}
-                      onClick={() => runAction(d.id, 'off')}
-                      uiScheme={uiScheme}
-                      scaled
-                      scale={scaleNum}
-                    />
-                  ) : null}
-                  {!d.commands.includes('on') && !d.commands.includes('off') && d.commands.includes('toggle') ? (
-                    <ActionButton
-                      label="Toggle"
-                      icon={Power}
-                      accent="fixed"
-                      disabled={!connected}
-                      busy={busyActions.has(`${d.id}:toggle`)}
-                      onClick={() => runAction(d.id, 'toggle')}
-                      uiScheme={uiScheme}
-                      scaled
-                      scale={scaleNum}
-                    />
-                  ) : null}
-                  {d.commands.includes('refresh') ? (
-                    <ActionButton
-                      label="Refresh"
-                      icon={SlidersHorizontal}
-                      accent="blue"
-                      disabled={!connected}
-                      busy={busyActions.has(`${d.id}:refresh`)}
-                      onClick={() => runAction(d.id, 'refresh')}
-                      uiScheme={uiScheme}
-                      scaled
-                      scale={scaleNum}
-                    />
-                  ) : null}
-                  {d.commands.includes('push') ? (
-                    <ActionButton
-                      label="Push"
-                      icon={Activity}
-                      accent="blue"
-                      disabled={!connected}
-                      busy={busyActions.has(`${d.id}:push`)}
-                      onClick={() => runAction(d.id, 'push')}
-                      uiScheme={uiScheme}
-                      scaled
-                      scale={scaleNum}
-                    />
-                  ) : null}
+                  {d.commands.map((cmdRaw) => {
+                    const cmd = String(cmdRaw || '').trim();
+                    if (!cmd) return null;
+                    const isPower = cmd === 'on' || cmd === 'off' || cmd === 'toggle';
+                    const icon = isPower ? Power : (cmd === 'push' ? Activity : SlidersHorizontal);
+                    const accent = isPower ? 'fixed' : 'blue';
+                    return (
+                      <ActionButton
+                        key={cmd}
+                        label={formatCommandLabel(cmd)}
+                        icon={icon}
+                        accent={accent}
+                        disabled={!connected}
+                        busy={busyActions.has(`${d.id}:${cmd}`)}
+                        onClick={() => runAction(d.id, cmd)}
+                        uiScheme={uiScheme}
+                        scaled
+                        scale={scaleNum}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             ))}
@@ -1303,7 +1275,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     : outsideSensors.temperature;
 
   const topRowCards = useMemo(() => {
-    const selected = homeTopRowCards.length ? homeTopRowCards : HOME_TOP_ROW_CARD_IDS;
+    const selected = homeTopRowCards;
     const selectedSet = new Set(selected);
     const scaled = homeTopRowScalePct !== 100;
     const cards = [];
@@ -1602,7 +1574,6 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   colorizeHomeValuesOpacityPct={colorizeHomeValuesOpacityPct}
                   deviceCommandAllowlist={config?.ui?.deviceCommandAllowlist}
                   deviceHomeMetricAllowlist={config?.ui?.deviceHomeMetricAllowlist}
-                  allowedPanelDeviceCommands={config?.ui?.allowedPanelDeviceCommands}
                   homeRoomMetricKeys={homeRoomMetricKeys}
                   homeRoomMetricColumns={homeRoomMetricColumns}
                   homeRoomColumnsXl={homeRoomColumnsXl}
