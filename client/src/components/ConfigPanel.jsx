@@ -2521,6 +2521,10 @@ const ConfigPanel = ({
     return devices;
   }, [config?.sensors, statuses]);
 
+  const allDeviceIds = useMemo(() => {
+    return allDevices.map((x) => String(x.id));
+  }, [allDevices]);
+
   const availabilityDevices = useMemo(() => {
     // Prefer full discovered device catalog for Global Availability UI.
     // Fall back to the currently-available device list if server doesn't provide it.
@@ -3167,7 +3171,6 @@ const ConfigPanel = ({
             ) : (
               <div className={`mt-4 grid grid-cols-1 md:grid-cols-2 gap-2 ${isPresetSelected ? 'opacity-50 pointer-events-none' : ''}`} aria-disabled={isPresetSelected ? 'true' : 'false'}>
                 {allDevices.map((d) => {
-                  const allDeviceIds = allDevices.map((x) => String(x.id));
                   const isHome = homeVisibleDeviceIds ? homeVisibleDeviceIds.has(String(d.id)) : true;
                   const isCtrl = ctrlVisibleDeviceIds ? ctrlVisibleDeviceIds.has(String(d.id)) : true;
                   const src = String(d?.source || '').trim();
