@@ -830,8 +830,12 @@ const ConfigPanel = ({
   ];
 
   useEffect(() => {
-    // Back-compat for older builds that left the settings UI on the removed tab.
-    if (activeTab === 'sounds') setActiveTab('display');
+    // Back-compat for older builds that left the settings UI on removed tabs.
+    if (activeTab === 'sounds' || activeTab === 'cameras') {
+      setActiveTab('display');
+    } else if (activeTab === 'devices') {
+      setActiveTab('appearance');
+    }
   }, [activeTab]);
 
   const accentColorId = String(config?.ui?.accentColorId || 'neon-blue');
