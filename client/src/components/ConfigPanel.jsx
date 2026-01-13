@@ -2527,6 +2527,8 @@ const ConfigPanel = ({
     return discoveredDevices || allDevices;
   }, [discoveredDevices, allDevices]);
 
+  const allDeviceIds = useMemo(() => allDevices.map((x) => String(x.id)), [allDevices]);
+
   useEffect(() => {
     if (!selectedDeviceIdForEdit) return;
     if (!allDevices.some((d) => String(d?.id) === String(selectedDeviceIdForEdit))) {
@@ -3167,7 +3169,6 @@ const ConfigPanel = ({
             ) : (
               <div className={`mt-4 grid grid-cols-1 md:grid-cols-2 gap-2 ${isPresetSelected ? 'opacity-50 pointer-events-none' : ''}`} aria-disabled={isPresetSelected ? 'true' : 'false'}>
                 {allDevices.map((d) => {
-                  const allDeviceIds = allDevices.map((x) => String(x.id));
                   const isHome = homeVisibleDeviceIds ? homeVisibleDeviceIds.has(String(d.id)) : true;
                   const isCtrl = ctrlVisibleDeviceIds ? ctrlVisibleDeviceIds.has(String(d.id)) : true;
                   const src = String(d?.source || '').trim();
