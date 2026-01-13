@@ -3211,10 +3211,14 @@ const ConfigPanel = ({
 
             <div className={`mt-4 ${isPresetSelected ? 'opacity-50 pointer-events-none' : ''}`} aria-disabled={isPresetSelected ? 'true' : 'false'}>
               <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                <label
+                  htmlFor="device-override-select"
+                  className="block text-[10px] font-bold uppercase tracking-widest text-white/40"
+                >
                   Device
                 </label>
                 <select
+                  id="device-override-select"
                   value={selectedDeviceIdForEdit}
                   onChange={(e) => setSelectedDeviceIdForEdit(String(e.target.value || '').trim())}
                   className="mt-1 menu-select w-full rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 jvs-menu-select"
