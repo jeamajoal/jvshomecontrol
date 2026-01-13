@@ -402,6 +402,26 @@ function getUiAllowedDeviceIdsUnion() {
     return Array.from(new Set([...(ctrl.ids || []), ...(main.ids || []), ...profileCtrl, ...profileMain]));
 }
 
+function getAllowedPanelDeviceCommands() {
+    const cfg = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+    const cfgExtra = Array.isArray(cfg.extraAllowedPanelDeviceCommands) ? cfg.extraAllowedPanelDeviceCommands : [];
+    const envExtra = parseCommaList(process.env.UI_EXTRA_ALLOWED_PANEL_DEVICE_COMMANDS);
+
+    const cleanedExtra = [...cfgExtra, ...envExtra]
+        .map((v) => String(v || '').trim())
+        .filter(Boolean)
+        .filter((s) => s.length <= 64 && /^[A-Za-z0-9_]+$/.test(s));
+
+    return Array.from(new Set([
+        ...Array.from(ALLOWED_PANEL_DEVICE_COMMANDS),
+        ...cleanedExtra,
+    ]));
+}
+
+function getAllowedPanelDeviceCommandsSet() {
+    return new Set(getAllowedPanelDeviceCommands());
+}
+
 function isUiDeviceAllowedForControl(deviceId) {
     const allowed = getUiAllowedDeviceIdsUnion();
     if (!allowed.length) return false;
@@ -507,6 +527,24 @@ function normalizePersistedConfig(raw) {
         .filter(Boolean);
 
     const uiRaw = out.ui && typeof out.ui === 'object' ? out.ui : {};
+
+    const extraAllowedPanelDeviceCommands = (() => {
+        const rawArr = Array.isArray(uiRaw.extraAllowedPanelDeviceCommands) ? uiRaw.extraAllowedPanelDeviceCommands : [];
+        const cleaned = rawArr
+            .map((v) => String(v || '').trim())
+            .filter(Boolean)
+            .filter((s) => s.length <= 64 && /^[A-Za-z0-9_]+$/.test(s));
+        return Array.from(new Set(cleaned)).slice(0, 128);
+    })();
+
+    const allowedPanelDeviceCommandsSet = new Set([
+        ...Array.from(ALLOWED_PANEL_DEVICE_COMMANDS),
+        ...extraAllowedPanelDeviceCommands,
+        ...parseCommaList(process.env.UI_EXTRA_ALLOWED_PANEL_DEVICE_COMMANDS)
+            .map((v) => String(v || '').trim())
+            .filter(Boolean)
+            .filter((s) => s.length <= 64 && /^[A-Za-z0-9_]+$/.test(s)),
+    ]);
     const legacyAllowed = Array.isArray(uiRaw.allowedDeviceIds)
         ? uiRaw.allowedDeviceIds
         : [];
@@ -554,7 +592,7 @@ function normalizePersistedConfig(raw) {
             if (!Array.isArray(v)) continue;
             const cmds = v
                 .map((c) => String(c || '').trim())
-                .filter((c) => c && ALLOWED_PANEL_DEVICE_COMMANDS.has(c));
+                .filter((c) => c && allowedPanelDeviceCommandsSet.has(c));
             // Empty array is allowed (meaning: show no commands for this device on this panel).
             outMap[id] = Array.from(new Set(cmds)).slice(0, 32);
         }
@@ -1128,7 +1166,7 @@ function normalizePersistedConfig(raw) {
                 if (!Array.isArray(v)) continue;
                 const cmds = v
                     .map((c) => String(c || '').trim())
-                    .filter((c) => c && ALLOWED_PANEL_DEVICE_COMMANDS.has(c));
+                    .filter((c) => c && allowedPanelDeviceCommandsSet.has(c));
                 outMap[id] = Array.from(new Set(cmds)).slice(0, 32);
             }
             return outMap;
@@ -1234,6 +1272,7 @@ function normalizePersistedConfig(raw) {
         deviceLabelOverrides,
         deviceCommandAllowlist,
         deviceHomeMetricAllowlist,
+        extraAllowedPanelDeviceCommands,
         accentColorId,
         colorizeHomeValues,
         colorizeHomeValuesOpacityPct,
@@ -1916,9 +1955,18 @@ async function syncHubitatDataInner() {
         const newStatuses = {};
         const roomSensorCounts = {};
 
+        const allowlistedForControl = new Set(getUiAllowedDeviceIdsUnion().map((v) => String(v)));
+
+        const source = 'hubitat';
+        const sourceId = String(persistedConfig?.hubitat?.name || persistedConfig?.hubitat?.baseUrl || 'hubitat').trim() || 'hubitat';
+
         devices.forEach(dev => {
-            const isRelevant = dev.capabilities?.some(c => IMPORT_RELEVANT_CAPS.includes(c));
-            if (!isRelevant) return;
+            const caps = Array.isArray(dev?.capabilities) ? dev.capabilities : [];
+            const attrs = (dev?.attributes && typeof dev.attributes === 'object') ? dev.attributes : {};
+
+            const isRelevant = caps.some(c => IMPORT_RELEVANT_CAPS.includes(c));
+            const isAllowlisted = allowlistedForControl.has(String(dev?.id));
+            if (!isRelevant && !isAllowlisted) return;
 
             // ROOMS (persisted by id; mapped by Hubitat's room display name)
             const roomName = dev.room || "Unassigned";
@@ -1948,8 +1996,8 @@ async function syncHubitatDataInner() {
             }
 
             // TYPE & STATE
-            const type = mapDeviceType(dev.capabilities, dev.type);
-            const state = mapState(dev, type);
+            const type = mapDeviceType(caps, dev.type);
+            const state = mapState({ ...dev, attributes: attrs }, type);
 
             // SENSOR (persist position in config.json)
             const existingSensor = sensorById.get(String(dev.id));
@@ -1973,23 +2021,27 @@ async function syncHubitatDataInner() {
 
             newSensorsById.set(String(dev.id), {
                 id: dev.id,
+                source,
+                sourceId,
                 roomId: roomId,
                 label: dev.label,
                 type: type,
-                capabilities: dev.capabilities,
-                metadata: { battery: dev.attributes?.battery },
+                capabilities: caps,
+                metadata: { battery: attrs?.battery },
                 position
             });
 
             newStatuses[dev.id] = {
                 id: dev.id,
+                source,
+                sourceId,
                 label: dev.label,
                 roomId,
-                capabilities: dev.capabilities,
+                capabilities: caps,
                 commands: pickCommands(dev.commands),
                 type,
                 state,
-                attributes: pickAttributes(dev.attributes),
+                attributes: pickAttributes(attrs),
                 lastUpdated: new Date().toISOString(),
             };
         });
@@ -2252,6 +2304,9 @@ function getClientSafeConfig() {
             mainAllowedDeviceIds: allowlists.main.ids,
             // Back-compat for older clients
             allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+
+            // Server-validated list of commands that Settings/UI is allowed to surface.
+            allowedPanelDeviceCommands: getAllowedPanelDeviceCommands(),
 
             ctrlAllowlistSource: allowlists.ctrl.source,
             ctrlAllowlistLocked: allowlists.ctrl.locked,

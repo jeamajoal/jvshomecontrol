@@ -797,6 +797,15 @@ const ConfigPanel = ({
 
   const [activeTab, setActiveTab] = useState('display');
 
+  useEffect(() => {
+    // Panel profile selection is only relevant on non-Display tabs.
+    // If no profile is selected, pick the first available profile.
+    if (activeTab === 'display') return;
+    if (selectedPanelName) return;
+    if (!panelNames.length) return;
+    if (ctx?.setPanelName) ctx.setPanelName(panelNames[0]);
+  }, [activeTab, selectedPanelName, panelNames, ctx]);
+
   const TABS = [
     { id: 'display', label: 'Display' },
     { id: 'appearance', label: 'Appearance' },
@@ -2363,7 +2372,16 @@ const ConfigPanel = ({
   const [deviceOverrideDrafts, setDeviceOverrideDrafts] = useState(() => ({}));
   const [deviceOverrideSaveState, setDeviceOverrideSaveState] = useState(() => ({}));
   const deviceOverrideTimersRef = useRef(new Map());
-  const UI_DEVICE_COMMANDS = useMemo(() => (['on', 'off', 'toggle', 'setLevel', 'refresh', 'push']), []);
+  const [selectedDeviceIdForEdit, setSelectedDeviceIdForEdit] = useState('');
+  const [selectedDeviceIdForGlobalAvailabilityEdit, setSelectedDeviceIdForGlobalAvailabilityEdit] = useState('');
+  const UI_DEVICE_COMMANDS = useMemo(() => {
+    const raw = config?.ui?.allowedPanelDeviceCommands;
+    const cleaned = Array.isArray(raw)
+      ? raw.map((v) => String(v || '').trim()).filter(Boolean)
+      : [];
+    // Back-compat fallback (server historically hard-coded this list).
+    return cleaned.length ? cleaned : ['on', 'off', 'toggle', 'setLevel', 'refresh', 'push'];
+  }, [config?.ui?.allowedPanelDeviceCommands]);
   const UI_HOME_METRICS = useMemo(() => (['temperature', 'humidity', 'illuminance', 'motion', 'contact', 'door']), []);
 
   const [labelSaveState, setLabelSaveState] = useState(() => ({}));
@@ -2412,6 +2430,20 @@ const ConfigPanel = ({
     devices.sort((a, b) => String(a.label).localeCompare(String(b.label)));
     return devices;
   }, [config?.sensors, statuses]);
+
+  useEffect(() => {
+    if (!selectedDeviceIdForEdit) return;
+    if (!allDevices.some((d) => String(d?.id) === String(selectedDeviceIdForEdit))) {
+      setSelectedDeviceIdForEdit('');
+    }
+  }, [allDevices, selectedDeviceIdForEdit]);
+
+  useEffect(() => {
+    if (!selectedDeviceIdForGlobalAvailabilityEdit) return;
+    if (!allDevices.some((d) => String(d?.id) === String(selectedDeviceIdForGlobalAvailabilityEdit))) {
+      setSelectedDeviceIdForGlobalAvailabilityEdit('');
+    }
+  }, [allDevices, selectedDeviceIdForGlobalAvailabilityEdit]);
 
   const effectiveDeviceLabelOverrides = useMemo(() => {
     const v = config?.ui?.deviceLabelOverrides;
@@ -2804,7 +2836,7 @@ const ConfigPanel = ({
 
     setError(null);
     try {
-      // Update homeVisibleDeviceIds
+      // Update homeVisibleDeviceIds (panel-aware visibility)
       const visibleBase = homeVisibleDeviceIds
         ? new Set(Array.from(homeVisibleDeviceIds))
         : new Set(Array.isArray(allDeviceIds) ? allDeviceIds.map((v) => String(v)) : []);
@@ -2817,51 +2849,43 @@ const ConfigPanel = ({
         ? []
         : Array.from(visibleBase);
 
-      // Update mainAllowedDeviceIds - if shown, also allow control
-      const allowedBase = mainAllowedDeviceIds
-        ? new Set(Array.from(mainAllowedDeviceIds))
-        : new Set([]);
-
-      if (nextVisible) allowedBase.add(id);
-      else allowedBase.delete(id);
-
-      const nextAllowedArr = Array.from(allowedBase);
-
-      // Save both visibility and allowlist
-      await Promise.all([
-        homeVisibleSave.run({
-          homeVisibleDeviceIds: nextVisibleArr,
-          ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
-        }),
-        allowlistSave.run({
-          mainAllowedDeviceIds: nextAllowedArr,
-          ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
-        }),
-      ]);
+      // Save visibility only (availability is global and managed in Display → Global Defaults).
+      await homeVisibleSave.run({
+        homeVisibleDeviceIds: nextVisibleArr,
+        ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
+      });
     } catch (e) {
       setError(e?.message || String(e));
     }
   };
 
-  const setControlsAllowed = async (deviceId, nextAllowed) => {
+  const setGlobalMainAllowed = async (deviceId, nextAllowed) => {
     const id = String(deviceId || '').trim();
     if (!id) return;
+    setError(null);
+    try {
+      const base = mainAllowedDeviceIds
+        ? new Set(Array.from(mainAllowedDeviceIds))
+        : new Set([]);
+      if (nextAllowed) base.add(id);
+      else base.delete(id);
+      await allowlistSave.run({ mainAllowedDeviceIds: Array.from(base) });
+    } catch (e) {
+      setError(e?.message || String(e));
+    }
+  };
 
+  const setGlobalControlsAllowed = async (deviceId, nextAllowed) => {
+    const id = String(deviceId || '').trim();
+    if (!id) return;
     setError(null);
     try {
       const base = ctrlAllowedDeviceIds
         ? new Set(Array.from(ctrlAllowedDeviceIds))
         : new Set([]);
-
       if (nextAllowed) base.add(id);
       else base.delete(id);
-
-      const nextArr = Array.from(base);
-
-      await allowlistSave.run({
-        ctrlAllowedDeviceIds: nextArr,
-        ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
-      });
+      await allowlistSave.run({ ctrlAllowedDeviceIds: Array.from(base) });
     } catch (e) {
       setError(e?.message || String(e));
     }
@@ -2925,9 +2949,6 @@ const ConfigPanel = ({
                   }}
                   className="mt-1 menu-select w-full rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 jvs-menu-select"
                 >
-                  <optgroup label="Global defaults">
-                    <option value="">Global (not a profile)</option>
-                  </optgroup>
                   <optgroup label="Panel profiles">
                     {panelNames.map((name) => (
                       <option key={name} value={name}>{name}</option>
@@ -2938,7 +2959,7 @@ const ConfigPanel = ({
                   className="mt-1 jvs-secondary-text text-white/60"
                   style={{ fontSize: 'calc(11px * var(--jvs-secondary-text-size-scale, 1))' }}
                 >
-                  {selectedPanelName ? 'Panel-specific overrides enabled.' : 'Editing global defaults.'}
+                  {selectedPanelName ? 'Panel-specific overrides enabled.' : ''}
                 </div>
                 {isPresetSelected ? (
                   <div
@@ -2991,7 +3012,7 @@ const ConfigPanel = ({
               Device Visibility
             </div>
             <div className="mt-1 text-xs text-white/45">
-              Choose which devices appear on Home and Controls screens.
+              Choose which devices appear on the Home screen for this panel profile.
             </div>
 
             {isPresetSelected ? (
@@ -3008,68 +3029,68 @@ const ConfigPanel = ({
             ) : null}
 
             <div className="mt-2 text-xs text-white/45">
-              {[statusText(homeVisibleSave.status), statusText(allowlistSave.status)].filter(Boolean).join(' · ')}
+              {[statusText(homeVisibleSave.status)].filter(Boolean).join(' · ')}
             </div>
 
-            {(mainAllowlistLocked || ctrlAllowlistLocked) ? (
-              <div className="mt-3 rounded-xl border border-warning/20 bg-warning/5 px-3 py-2 text-xs text-warning">
-                {mainAllowlistLocked && ctrlAllowlistLocked
-                  ? 'Home and Controls allowlists are locked by environment variables. Contact your administrator to make changes.'
-                  : mainAllowlistLocked
-                  ? 'Home allowlist is locked by environment variables. Contact your administrator to make changes.'
-                  : 'Controls allowlist is locked by environment variables. Contact your administrator to make changes.'}
+            <div className={`mt-4 ${isPresetSelected ? 'opacity-50 pointer-events-none' : ''}`} aria-disabled={isPresetSelected ? 'true' : 'false'}>
+              <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  Device
+                </label>
+                <select
+                  value={selectedDeviceIdForEdit}
+                  onChange={(e) => setSelectedDeviceIdForEdit(String(e.target.value || '').trim())}
+                  className="mt-1 menu-select w-full rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 jvs-menu-select"
+                >
+                  <option value="">Select a device…</option>
+                  {allDevices.map((d) => (
+                    <option key={d.id} value={d.id}>{d.label}</option>
+                  ))}
+                </select>
+                <div className="mt-1 text-xs text-white/45">
+                  Pick the device you want to change.
+                </div>
               </div>
-            ) : null}
 
-            <div className="mt-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/60 mb-2">Info</div>
-              <div className="grid gap-1.5 text-xs text-white/60">
-                <div><span className="font-semibold text-white/80">Home:</span> Show and allow control on Home screen</div>
-                <div><span className="font-semibold text-white/80">Controls:</span> Allow control from Controls screen</div>
-              </div>
-            </div>
+              {!allDevices.length ? (
+                <div className="mt-3 text-sm text-white/45">No devices discovered.</div>
+              ) : !selectedDeviceIdForEdit ? (
+                <div className="mt-3 text-sm text-white/45">Choose a device to edit its visibility and overrides.</div>
+              ) : (() => {
+                const d = allDevices.find((x) => String(x.id) === String(selectedDeviceIdForEdit));
+                if (!d) return null;
 
-            <div
-              className={`mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 ${isPresetSelected ? 'opacity-50 pointer-events-none' : ''}`}
-              aria-disabled={isPresetSelected ? 'true' : 'false'}
-            >
-              {allDevices.length ? (
-                allDevices.map((d) => {
-                  const allDeviceIds = allDevices.map((x) => String(x.id));
-                  const isHome = homeVisibleDeviceIds ? homeVisibleDeviceIds.has(String(d.id)) : true;
-                  const isCtrlAllowed = ctrlAllowedDeviceIds ? ctrlAllowedDeviceIds.has(String(d.id)) : false;
+                const allDeviceIds = allDevices.map((x) => String(x.id));
+                const isHome = homeVisibleDeviceIds ? homeVisibleDeviceIds.has(String(d.id)) : true;
 
-                  const draft = (deviceOverrideDrafts && deviceOverrideDrafts[d.id] && typeof deviceOverrideDrafts[d.id] === 'object')
-                    ? deviceOverrideDrafts[d.id]
-                    : {};
-                  const displayNameDraft = String(draft.label ?? '');
-                  const explicitCommands = Array.isArray(draft.commands) ? draft.commands.map((c) => String(c)) : [];
-                  const explicitHomeMetrics = Array.isArray(draft.homeMetrics) ? draft.homeMetrics.map((c) => String(c)) : null;
-                  const availableAllowedCommands = UI_DEVICE_COMMANDS.filter((c) => Array.isArray(d.commands) && d.commands.includes(c));
+                const draft = (deviceOverrideDrafts && deviceOverrideDrafts[d.id] && typeof deviceOverrideDrafts[d.id] === 'object')
+                  ? deviceOverrideDrafts[d.id]
+                  : {};
+                const displayNameDraft = String(draft.label ?? '');
+                const explicitCommands = Array.isArray(draft.commands) ? draft.commands.map((c) => String(c)) : [];
+                const explicitHomeMetrics = Array.isArray(draft.homeMetrics) ? draft.homeMetrics.map((c) => String(c)) : null;
+                const availableAllowedCommands = UI_DEVICE_COMMANDS.filter((c) => Array.isArray(d.commands) && d.commands.includes(c));
 
-                  const attrs = statuses?.[String(d.id)]?.attributes || {};
-                  const availableHomeMetrics = (() => {
-                    const out = new Set();
-                    const caps = Array.isArray(d?.capabilities) ? d.capabilities : [];
-                    if (caps.includes('TemperatureMeasurement') || asNumber(attrs.temperature) !== null) out.add('temperature');
-                    if (caps.includes('RelativeHumidityMeasurement') || asNumber(attrs.humidity) !== null) out.add('humidity');
-                    if (caps.includes('IlluminanceMeasurement') || asNumber(attrs.illuminance) !== null) out.add('illuminance');
-                    if (caps.includes('MotionSensor') || typeof attrs.motion === 'string') out.add('motion');
-                    if (caps.includes('ContactSensor') || typeof attrs.contact === 'string') out.add('contact');
-                    if (caps.includes('GarageDoorControl') || typeof attrs.door === 'string') out.add('door');
-                    return Array.from(out);
-                  })();
+                const attrs = statuses?.[String(d.id)]?.attributes || {};
+                const availableHomeMetrics = (() => {
+                  const out = new Set();
+                  const caps = Array.isArray(d?.capabilities) ? d.capabilities : [];
+                  if (caps.includes('TemperatureMeasurement') || asNumber(attrs.temperature) !== null) out.add('temperature');
+                  if (caps.includes('RelativeHumidityMeasurement') || asNumber(attrs.humidity) !== null) out.add('humidity');
+                  if (caps.includes('IlluminanceMeasurement') || asNumber(attrs.illuminance) !== null) out.add('illuminance');
+                  if (caps.includes('MotionSensor') || typeof attrs.motion === 'string') out.add('motion');
+                  if (caps.includes('ContactSensor') || typeof attrs.contact === 'string') out.add('contact');
+                  if (caps.includes('GarageDoorControl') || typeof attrs.door === 'string') out.add('door');
+                  return Array.from(out);
+                })();
 
-                  const labelSave = deviceOverrideSaveState?.[d.id]?.label || null;
-                  const cmdSave = deviceOverrideSaveState?.[d.id]?.commands || null;
-                  const homeMetricsSave = deviceOverrideSaveState?.[d.id]?.homeMetrics || null;
-                  const isInheritHomeMetrics = explicitHomeMetrics === null;
+                const labelSave = deviceOverrideSaveState?.[d.id]?.label || null;
+                const cmdSave = deviceOverrideSaveState?.[d.id]?.commands || null;
+                const homeMetricsSave = deviceOverrideSaveState?.[d.id]?.homeMetrics || null;
+                const isInheritHomeMetrics = explicitHomeMetrics === null;
 
-                  return (
-                    <div
-                      key={d.id}
-                      className={`rounded-2xl border p-4 bg-white/5 border-white/10 ${!connected ? 'opacity-50' : ''}`}
-                    >
+                return (
+                  <div className={`mt-3 rounded-2xl border p-4 bg-white/5 border-white/10 ${!connected ? 'opacity-50' : ''}`}>
                       <div className="flex items-center justify-between gap-4">
                         <div className="min-w-0">
                           <div className="text-[11px] uppercase tracking-[0.2em] font-semibold text-white/80 truncate">
@@ -3083,21 +3104,11 @@ const ConfigPanel = ({
                             <input
                               type="checkbox"
                               className={`h-5 w-5 ${scheme.checkboxAccent}`}
-                              disabled={!connected || homeVisibleSave.status === 'saving' || allowlistSave.status === 'saving' || mainAllowlistLocked}
+                              disabled={!connected || homeVisibleSave.status === 'saving'}
                               checked={isHome}
                               onChange={(e) => setHomeVisible(d.id, e.target.checked, allDeviceIds)}
                             />
                             Home
-                          </label>
-                          <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
-                            <input
-                              type="checkbox"
-                              className={`h-5 w-5 ${scheme.checkboxAccent}`}
-                              disabled={!connected || allowlistSave.status === 'saving' || ctrlAllowlistLocked}
-                              checked={isCtrlAllowed}
-                              onChange={(e) => setControlsAllowed(d.id, e.target.checked)}
-                            />
-                            Controls
                           </label>
                         </div>
                       </div>
@@ -3301,12 +3312,9 @@ const ConfigPanel = ({
                           ) : null}
                         </div>
                       </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="text-sm text-white/45">No devices discovered.</div>
-              )}
+                  </div>
+                );
+              })()}
             </div>
 
             {!connected ? (
@@ -3325,6 +3333,98 @@ const ConfigPanel = ({
             </div>
             <div className="mt-1 text-xs text-white/45">
               Tune size/spacing for this device. Panel profiles can override these.
+            </div>
+
+            <div className="mt-4 utility-group p-4">
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                Global Device Availability
+              </div>
+              <div className="mt-1 text-xs text-white/45">
+                Server-enforced allowlists. If a device is not allowed here, controls will be blocked everywhere.
+              </div>
+
+              {(mainAllowlistLocked || ctrlAllowlistLocked) ? (
+                <div className="mt-3 rounded-xl border border-warning/20 bg-warning/5 px-3 py-2 text-xs text-warning">
+                  {mainAllowlistLocked && ctrlAllowlistLocked
+                    ? 'Home and Controls allowlists are locked by environment variables. Contact your administrator to make changes.'
+                    : mainAllowlistLocked
+                    ? 'Home allowlist is locked by environment variables. Contact your administrator to make changes.'
+                    : 'Controls allowlist is locked by environment variables. Contact your administrator to make changes.'}
+                </div>
+              ) : null}
+
+              <div className="mt-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  Device
+                </label>
+                <select
+                  value={selectedDeviceIdForGlobalAvailabilityEdit}
+                  onChange={(e) => setSelectedDeviceIdForGlobalAvailabilityEdit(String(e.target.value || '').trim())}
+                  className="mt-1 menu-select w-full rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 jvs-menu-select"
+                >
+                  <option value="">Select a device…</option>
+                  {allDevices.map((d) => {
+                    const src = String(d?.source || '').trim();
+                    const label = src ? `${d.label} (${src})` : d.label;
+                    return (
+                      <option key={d.id} value={d.id}>{label}</option>
+                    );
+                  })}
+                </select>
+                <div className="mt-1 text-xs text-white/45">
+                  This is global (not panel-specific).
+                </div>
+              </div>
+
+              {!allDevices.length ? (
+                <div className="mt-3 text-sm text-white/45">No devices discovered.</div>
+              ) : !selectedDeviceIdForGlobalAvailabilityEdit ? (
+                <div className="mt-3 text-sm text-white/45">Choose a device to edit its availability.</div>
+              ) : (() => {
+                const d = allDevices.find((x) => String(x.id) === String(selectedDeviceIdForGlobalAvailabilityEdit));
+                if (!d) return null;
+                const isMainAllowed = mainAllowedDeviceIds ? mainAllowedDeviceIds.has(String(d.id)) : false;
+                const isCtrlAllowed = ctrlAllowedDeviceIds ? ctrlAllowedDeviceIds.has(String(d.id)) : false;
+                return (
+                  <div className={`mt-3 rounded-2xl border p-4 bg-white/5 border-white/10 ${!connected ? 'opacity-50' : ''}`}>
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="text-[11px] uppercase tracking-[0.2em] font-semibold text-white/80 truncate">
+                          {d.label}
+                        </div>
+                        <div className="mt-1 text-xs text-white/45 truncate">ID: {d.id}</div>
+                      </div>
+
+                      <div className="shrink-0 flex flex-col gap-2">
+                        <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
+                          <input
+                            type="checkbox"
+                            className={`h-5 w-5 ${scheme.checkboxAccent}`}
+                            disabled={!connected || allowlistSave.status === 'saving' || mainAllowlistLocked}
+                            checked={isMainAllowed}
+                            onChange={(e) => setGlobalMainAllowed(d.id, e.target.checked)}
+                          />
+                          Home
+                        </label>
+                        <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
+                          <input
+                            type="checkbox"
+                            className={`h-5 w-5 ${scheme.checkboxAccent}`}
+                            disabled={!connected || allowlistSave.status === 'saving' || ctrlAllowlistLocked}
+                            checked={isCtrlAllowed}
+                            onChange={(e) => setGlobalControlsAllowed(d.id, e.target.checked)}
+                          />
+                          Controls
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 text-xs text-white/45">
+                      {statusText(allowlistSave.status)}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="mt-4 utility-group p-4">
