@@ -41,6 +41,62 @@
   --tw-bg-opacity: var(--jvs-glass-panel-bg-opacity, 0.30);
   -webkit-backdrop-filter: blur(var(--jvs-glass-panel-blur-px, 24px));
   backdrop-filter: blur(var(--jvs-glass-panel-blur-px, 24px));
+  /* Stacking context so content stays above glow pseudo-element */
+  position: relative;
+  isolation: isolate;
+}
+
+/* Glow animations rendered behind card content via pseudo-element */
+.glass-panel.animate-glow-accent,
+.glass-panel.animate-glow-blue,
+.glass-panel.animate-glow-red,
+.glass-panel.animate-glow-orange {
+  /* Remove glow from the element itself - it will be on ::after */
+  animation: none !important;
+  box-shadow: none;
+}
+
+.glass-panel.animate-glow-accent::after,
+.glass-panel.animate-glow-blue::after,
+.glass-panel.animate-glow-red::after,
+.glass-panel.animate-glow-orange::after {
+  content: '';
+  position: absolute;
+  inset: -1px; /* Slight outset to cover border */
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.glass-panel.animate-glow-accent::after {
+  animation: glow-accent 3s ease-in-out infinite;
+}
+.glass-panel.animate-glow-blue::after {
+  animation: glow-blue 3s ease-in-out infinite;
+}
+.glass-panel.animate-glow-red::after {
+  animation: glow-red 2s ease-in-out infinite;
+}
+.glass-panel.animate-glow-orange::after {
+  animation: glow-orange 3s ease-in-out infinite;
+}
+
+/* Keyframes for pseudo-element glow (box-shadow only, no border) */
+@keyframes glow-accent {
+  0%, 100% { box-shadow: 0 0 6px rgb(var(--jvs-glow-rgb, var(--accent-rgb)) / 0.30); }
+  50% { box-shadow: 0 0 12px rgb(var(--jvs-glow-rgb, var(--accent-rgb)) / 0.50); }
+}
+@keyframes glow-blue {
+  0%, 100% { box-shadow: 0 0 6px rgba(59, 130, 246, 0.3); }
+  50% { box-shadow: 0 0 12px rgba(59, 130, 246, 0.5); }
+}
+@keyframes glow-red {
+  0%, 100% { box-shadow: 0 0 8px rgba(239, 68, 68, 0.4); }
+  50% { box-shadow: 0 0 16px rgba(239, 68, 68, 0.6); }
+}
+@keyframes glow-orange {
+  0%, 100% { box-shadow: 0 0 6px rgba(245, 158, 11, 0.3); }
+  50% { box-shadow: 0 0 12px rgba(245, 158, 11, 0.5); }
 }
 
 /* Home: allow controlling the "secondary" (small/gray) text opacity via Settings. */
@@ -59,6 +115,15 @@
 
 .jvs-primary-text-strong {
   opacity: var(--jvs-primary-text-strong-opacity, 1);
+}
+
+/* Info Cards: allow controlling the "tertiary" (info card values) text opacity via Settings. */
+.jvs-tertiary-text {
+  opacity: var(--jvs-tertiary-text-opacity, 0.70);
+}
+
+.jvs-tertiary-text-strong {
+  opacity: var(--jvs-tertiary-text-strong-opacity, 0.80);
 }
 
 /* Home: primary metric values scale (in addition to card scaling). */
@@ -289,4 +354,46 @@ select.menu-select option {
 * {
   scrollbar-width: auto;
   scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Interactive Control Icons
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.interactive-control-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.interactive-control-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Ensure SVG internal hover/active states work */
+.interactive-control-icon [data-region] {
+  cursor: pointer;
+  transition: opacity 150ms ease-out;
+}
+
+.interactive-control-icon [data-region]:hover {
+  opacity: 0.9;
+}
+
+.interactive-control-icon [data-region]:active {
+  opacity: 0.7;
+}
+
+/* Slider regions use different cursor */
+.interactive-control-icon [data-region][data-action="slider"] {
+  cursor: grab;
+}
+
+.interactive-control-icon [data-region][data-action="slider"]:active {
+  cursor: grabbing;
 }

@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 128 128" aria-labelledby="title desc" role="img">
+  <title id="title">Dimmer</title>
+  <desc id="desc">A dimmer dial icon with rotating knob and brightness indicator.</desc>
+
+  <defs>
+    <linearGradient id="dimmerBaseGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1F2430"/>
+      <stop offset="1" stop-color="#121622"/>
+    </linearGradient>
+    <linearGradient id="dimmerKnobGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#E8ECF4"/>
+      <stop offset="1" stop-color="#B8C0D0"/>
+    </linearGradient>
+    <linearGradient id="dimmerKnobEdge" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.15"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    .dimmer-base { fill: url(#dimmerBaseGrad); stroke: rgba(255,255,255,0.10); stroke-width: 2; }
+    .dimmer-track {
+      fill: none;
+      stroke: rgba(255,255,255,0.12);
+      stroke-width: 6;
+      stroke-linecap: round;
+    }
+    .dimmer-level {
+      fill: none;
+      stroke: #3B82F6;
+      stroke-width: 6;
+      stroke-linecap: round;
+      stroke-dasharray: 188.5;
+      stroke-dashoffset: 188.5;
+      transition: stroke-dashoffset 400ms ease-out, stroke 300ms ease-out;
+      filter: drop-shadow(0 0 3px rgba(59,130,246,0.4));
+    }
+    .dimmer-knob {
+      fill: url(#dimmerKnobGrad);
+      stroke: rgba(0,0,0,0.25);
+      stroke-width: 1;
+    }
+    .dimmer-knob-highlight { fill: url(#dimmerKnobEdge); opacity: 0.6; }
+    .dimmer-indicator {
+      fill: #3B4559;
+      transition: fill 300ms ease-out;
+    }
+    .dimmer-knob-group {
+      transform-origin: center center;
+      transition: transform 400ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    /* Level ticks */
+    .dimmer-tick { stroke: rgba(255,255,255,0.2); stroke-width: 2; stroke-linecap: round; }
+
+    /* ON state (rotated to ~75% brightness) */
+    svg.is-on .dimmer-knob-group { transform: rotate(135deg); }
+    svg.is-on .dimmer-level {
+      stroke-dashoffset: 47; /* ~75% of arc */
+      stroke: #FBBF24;
+      filter: drop-shadow(0 0 6px rgba(251,191,36,0.5));
+    }
+    svg.is-on .dimmer-indicator {
+      fill: #FBBF24;
+      filter: drop-shadow(0 0 4px rgba(251,191,36,0.6));
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .dimmer-knob-group, .dimmer-level { transition: none !important; }
+    }
+  </style>
+
+  <!-- Base plate -->
+  <circle class="dimmer-base" cx="64" cy="64" r="52"/>
+  
+  <!-- Level track (arc from 7 o'clock to 5 o'clock) -->
+  <path class="dimmer-track" d="M 30 90 A 40 40 0 1 1 98 90"/>
+  
+  <!-- Level indicator (animated fill) -->
+  <path class="dimmer-level" d="M 30 90 A 40 40 0 1 1 98 90"/>
+  
+  <!-- Tick marks -->
+  <g class="dimmer-ticks">
+    <line class="dimmer-tick" x1="28" y1="88" x2="22" y2="94"/>
+    <line class="dimmer-tick" x1="24" y1="64" x2="16" y2="64"/>
+    <line class="dimmer-tick" x1="34" y1="38" x2="28" y2="32"/>
+    <line class="dimmer-tick" x1="64" y1="26" x2="64" y2="18"/>
+    <line class="dimmer-tick" x1="94" y1="38" x2="100" y2="32"/>
+    <line class="dimmer-tick" x1="104" y1="64" x2="112" y2="64"/>
+    <line class="dimmer-tick" x1="100" y1="88" x2="106" y2="94"/>
+  </g>
+
+  <!-- Knob -->
+  <g class="dimmer-knob-group">
+    <circle class="dimmer-knob" cx="64" cy="64" r="24"/>
+    <ellipse class="dimmer-knob-highlight" cx="64" cy="56" rx="16" ry="8"/>
+    <!-- Pointer line -->
+    <line x1="64" y1="64" x2="64" y2="46" stroke="#3B4559" stroke-width="3" stroke-linecap="round"/>
+    <circle class="dimmer-indicator" cx="64" cy="48" r="4"/>
+  </g>
+</svg>

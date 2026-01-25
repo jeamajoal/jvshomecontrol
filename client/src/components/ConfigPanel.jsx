@@ -111,6 +111,19 @@ async function saveDeviceTypeIcons(deviceTypeIcons) {
   return res.json().catch(() => ({}));
 }
 
+async function saveDeviceControlIcons(deviceControlIcons) {
+  const res = await fetch(`${API_HOST}/api/ui/device-control-icons`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deviceControlIcons: deviceControlIcons || {} }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Device control icons save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveAccentColorId(accentColorId, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/accent-color`, {
     method: 'PUT',
@@ -168,6 +181,17 @@ async function fetchDeviceIconsIndex() {
     out[String(k)] = files;
   }
   return { rootUrl: typeof data?.rootUrl === 'string' ? data.rootUrl : '/device-icons', byType: out };
+}
+
+async function fetchControlIconsIndex() {
+  const res = await fetch(`${API_HOST}/api/control-icons`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Control icons fetch failed (${res.status})`);
+  }
+  const data = await res.json().catch(() => ({}));
+  const icons = Array.isArray(data?.icons) ? data.icons : [];
+  return { rootUrl: data?.rootUrl || '/control-icons', icons };
 }
 
 async function fetchOpenMeteoConfig() {
@@ -374,6 +398,54 @@ async function savePrimaryTextColorId(primaryTextColorId, panelName) {
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(text || `Primary text color save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function saveTertiaryTextOpacityPct(tertiaryTextOpacityPct, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/tertiary-text-opacity`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      tertiaryTextOpacityPct,
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Tertiary text save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function saveTertiaryTextSizePct(tertiaryTextSizePct, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/tertiary-text-size`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      tertiaryTextSizePct,
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Tertiary text size save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function saveTertiaryTextColorId(tertiaryTextColorId, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/tertiary-text-color`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      tertiaryTextColorId: tertiaryTextColorId || null,
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Tertiary text color save failed (${res.status})`);
   }
   return res.json().catch(() => ({}));
 }
@@ -762,10 +834,21 @@ const ConfigPanel = ({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
+  // Ref to always have latest config for async click handlers (avoid stale closures)
+  const configRef = useRef(config);
+  configRef.current = config;
+
   const [soundFiles, setSoundFiles] = useState([]);
   const [soundFilesError, setSoundFilesError] = useState(null);
   const [deviceIconsIndex, setDeviceIconsIndex] = useState(() => ({ rootUrl: '/device-icons', byType: {} }));
   const [deviceIconsError, setDeviceIconsError] = useState(null);
+  const [controlIconsIndex, setControlIconsIndex] = useState(() => ({ rootUrl: '/control-icons', icons: [] }));
+  const [controlIconsError, setControlIconsError] = useState(null);
+  // Local optimistic state for control icon assignments (survives async save delays)
+  const [localIconAssignments, setLocalIconAssignments] = useState(() => ({}));
+  const localIconAssignmentsRef = useRef(localIconAssignments);
+  localIconAssignmentsRef.current = localIconAssignments;
+  const [localIconAssignmentsInited, setLocalIconAssignmentsInited] = useState(false);
   const [openMeteoDraft, setOpenMeteoDraft] = useState(() => ({ lat: '', lon: '', timezone: 'auto' }));
   const [openMeteoDirty, setOpenMeteoDirty] = useState(false);
   const [openMeteoError, setOpenMeteoError] = useState(null);
@@ -792,6 +875,18 @@ const ConfigPanel = ({
   const [cameraFormError, setCameraFormError] = useState(null);
 
   const [activeTab, setActiveTab] = useState('display');
+
+  // Sync local icon assignments from server config on initial load
+  useEffect(() => {
+    if (localIconAssignmentsInited) return;
+    const serverAssignments = (config?.ui?.deviceControlIcons && typeof config.ui.deviceControlIcons === 'object')
+      ? config.ui.deviceControlIcons
+      : {};
+    if (Object.keys(serverAssignments).length > 0 || config?.ui) {
+      setLocalIconAssignments(serverAssignments);
+      setLocalIconAssignmentsInited(true);
+    }
+  }, [config?.ui?.deviceControlIcons, config?.ui, localIconAssignmentsInited]);
 
   useEffect(() => {
     // Panel profile selection is only relevant on non-Global tabs.
@@ -835,7 +930,10 @@ const ConfigPanel = ({
       ? deviceIconsIndex.byType
       : {};
     const discovered = Object.keys(byType).map((v) => String(v));
-    return Array.from(new Set([...seeded, ...discovered])).sort((a, b) => a.localeCompare(b));
+    const observed = Array.isArray(config?.ui?.deviceTypesObserved)
+      ? config.ui.deviceTypesObserved.map((v) => String(v))
+      : [];
+    return Array.from(new Set([...seeded, ...discovered, ...observed])).sort((a, b) => a.localeCompare(b));
   }, [deviceIconsIndex]);
 
   const homeVisibleSave = useAsyncSave((payload) => {
@@ -885,6 +983,9 @@ const ConfigPanel = ({
   const primaryTextOpacitySave = useAsyncSave((primaryTextOpacityPct) => savePrimaryTextOpacityPct(primaryTextOpacityPct, selectedPanelName || null));
   const primaryTextSizeSave = useAsyncSave((primaryTextSizePct) => savePrimaryTextSizePct(primaryTextSizePct, selectedPanelName || null));
   const primaryTextColorSave = useAsyncSave((primaryTextColorId) => savePrimaryTextColorId(primaryTextColorId, selectedPanelName || null));
+  const tertiaryTextOpacitySave = useAsyncSave((tertiaryTextOpacityPct) => saveTertiaryTextOpacityPct(tertiaryTextOpacityPct, selectedPanelName || null));
+  const tertiaryTextSizeSave = useAsyncSave((tertiaryTextSizePct) => saveTertiaryTextSizePct(tertiaryTextSizePct, selectedPanelName || null));
+  const tertiaryTextColorSave = useAsyncSave((tertiaryTextColorId) => saveTertiaryTextColorId(tertiaryTextColorId, selectedPanelName || null));
   const glowColorSave = useAsyncSave((glowColorId) => saveGlowColorId(glowColorId, selectedPanelName || null));
   const iconColorSave = useAsyncSave((iconColorId) => saveIconColorId(iconColorId, selectedPanelName || null));
   const iconOpacitySave = useAsyncSave((iconOpacityPct) => saveIconOpacityPct(iconOpacityPct, selectedPanelName || null));
@@ -892,6 +993,7 @@ const ConfigPanel = ({
   const cardScaleSave = useAsyncSave((cardScalePct) => saveCardScalePct(cardScalePct, selectedPanelName || null));
   const deviceControlStylesSave = useAsyncSave((deviceControlStyles) => saveDeviceControlStyles(deviceControlStyles));
   const deviceTypeIconsSave = useAsyncSave((deviceTypeIcons) => saveDeviceTypeIcons(deviceTypeIcons));
+  const deviceControlIconsSave = useAsyncSave((deviceControlIcons) => saveDeviceControlIcons(deviceControlIcons));
   const homeTopRowSave = useAsyncSave((payload) => saveHomeTopRow(payload, selectedPanelName || null));
   const homeRoomColsSave = useAsyncSave((homeRoomColumnsXl) => saveHomeRoomColumnsXl(homeRoomColumnsXl, selectedPanelName || null));
   const homeRoomLayoutSave = useAsyncSave((payload) => saveHomeRoomLayout(payload, selectedPanelName || null));
@@ -909,6 +1011,8 @@ const ConfigPanel = ({
   const globalPrimaryTextOpacitySave = useAsyncSave((primaryTextOpacityPct) => savePrimaryTextOpacityPct(primaryTextOpacityPct, null));
   const globalPrimaryTextSizeSave = useAsyncSave((primaryTextSizePct) => savePrimaryTextSizePct(primaryTextSizePct, null));
   const globalSecondaryTextSizeSave = useAsyncSave((secondaryTextSizePct) => saveSecondaryTextSizePct(secondaryTextSizePct, null));
+  const globalTertiaryTextOpacitySave = useAsyncSave((tertiaryTextOpacityPct) => saveTertiaryTextOpacityPct(tertiaryTextOpacityPct, null));
+  const globalTertiaryTextSizeSave = useAsyncSave((tertiaryTextSizePct) => saveTertiaryTextSizePct(tertiaryTextSizePct, null));
   const globalIconSizeSave = useAsyncSave((iconSizePct) => saveIconSizePct(iconSizePct, null));
   const globalCardScaleSave = useAsyncSave((cardScalePct) => saveCardScalePct(cardScalePct, null));
   const globalHomeRoomColsSave = useAsyncSave((homeRoomColumnsXl) => saveHomeRoomColumnsXl(homeRoomColumnsXl, null));
@@ -999,6 +1103,10 @@ const ConfigPanel = ({
     return {
       motion: normalizeToleranceColorId(raw.motion, 'warning'),
       door: normalizeToleranceColorId(raw.door, 'neon-red'),
+      smoke: normalizeToleranceColorId(raw.smoke, 'neon-red'),
+      co: normalizeToleranceColorId(raw.co, 'neon-red'),
+      water: normalizeToleranceColorId(raw.water, 'neon-blue'),
+      presence: normalizeToleranceColorId(raw.presence, 'neon-green'),
     };
   }, [config?.ui?.sensorIndicatorColors]);
 
@@ -1112,6 +1220,37 @@ const ConfigPanel = ({
     if (TOLERANCE_COLOR_CHOICES.some((c) => c.id === raw)) return raw;
     return '';
   }, [config?.ui?.primaryTextColorId]);
+
+  const tertiaryTextOpacityFromConfig = useMemo(() => {
+    const raw = Number(config?.ui?.tertiaryTextOpacityPct);
+    if (!Number.isFinite(raw)) return 70;
+    return Math.max(0, Math.min(100, Math.round(raw)));
+  }, [config?.ui?.tertiaryTextOpacityPct]);
+
+  const globalTertiaryTextOpacityFromConfig = useMemo(() => {
+    const raw = Number(baseConfig?.ui?.tertiaryTextOpacityPct);
+    if (!Number.isFinite(raw)) return 70;
+    return Math.max(0, Math.min(100, Math.round(raw)));
+  }, [baseConfig?.ui?.tertiaryTextOpacityPct]);
+
+  const tertiaryTextSizeFromConfig = useMemo(() => {
+    const raw = Number(config?.ui?.tertiaryTextSizePct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(50, Math.min(200, Math.round(raw)));
+  }, [config?.ui?.tertiaryTextSizePct]);
+
+  const globalTertiaryTextSizeFromConfig = useMemo(() => {
+    const raw = Number(baseConfig?.ui?.tertiaryTextSizePct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(50, Math.min(200, Math.round(raw)));
+  }, [baseConfig?.ui?.tertiaryTextSizePct]);
+
+  const tertiaryTextColorFromConfig = useMemo(() => {
+    const raw = String(config?.ui?.tertiaryTextColorId ?? '').trim();
+    if (!raw) return '';
+    if (TOLERANCE_COLOR_CHOICES.some((c) => c.id === raw)) return raw;
+    return '';
+  }, [config?.ui?.tertiaryTextColorId]);
 
   const glowColorFromConfig = useMemo(() => {
     const raw = String(config?.ui?.glowColorId ?? '').trim();
@@ -1312,6 +1451,26 @@ const ConfigPanel = ({
   const [primaryTextColorDirty, setPrimaryTextColorDirty] = useState(false);
   const [primaryTextColorError, setPrimaryTextColorError] = useState(null);
 
+  const [tertiaryTextOpacityDraft, setTertiaryTextOpacityDraft] = useState(() => 70);
+  const [tertiaryTextOpacityDirty, setTertiaryTextOpacityDirty] = useState(false);
+  const [tertiaryTextOpacityError, setTertiaryTextOpacityError] = useState(null);
+
+  const [globalTertiaryTextOpacityDraft, setGlobalTertiaryTextOpacityDraft] = useState(() => 70);
+  const [globalTertiaryTextOpacityDirty, setGlobalTertiaryTextOpacityDirty] = useState(false);
+  const [globalTertiaryTextOpacityError, setGlobalTertiaryTextOpacityError] = useState(null);
+
+  const [tertiaryTextSizeDraft, setTertiaryTextSizeDraft] = useState(() => 100);
+  const [tertiaryTextSizeDirty, setTertiaryTextSizeDirty] = useState(false);
+  const [tertiaryTextSizeError, setTertiaryTextSizeError] = useState(null);
+
+  const [globalTertiaryTextSizeDraft, setGlobalTertiaryTextSizeDraft] = useState(() => 100);
+  const [globalTertiaryTextSizeDirty, setGlobalTertiaryTextSizeDirty] = useState(false);
+  const [globalTertiaryTextSizeError, setGlobalTertiaryTextSizeError] = useState(null);
+
+  const [tertiaryTextColorDraft, setTertiaryTextColorDraft] = useState(() => '');
+  const [tertiaryTextColorDirty, setTertiaryTextColorDirty] = useState(false);
+  const [tertiaryTextColorError, setTertiaryTextColorError] = useState(null);
+
   const [glowColorDraft, setGlowColorDraft] = useState(() => '');
   const [glowColorDirty, setGlowColorDirty] = useState(false);
   const [glowColorError, setGlowColorError] = useState(null);
@@ -1387,7 +1546,7 @@ const ConfigPanel = ({
   const [cameraPreviewsDirty, setCameraPreviewsDirty] = useState(false);
   const [cameraPreviewsError, setCameraPreviewsError] = useState(null);
 
-  const [sensorColorsDraft, setSensorColorsDraft] = useState(() => ({ motion: 'warning', door: 'neon-red' }));
+  const [sensorColorsDraft, setSensorColorsDraft] = useState(() => ({ motion: 'warning', door: 'neon-red', smoke: 'neon-red', co: 'neon-red', water: 'neon-blue', presence: 'neon-green' }));
   const [sensorColorsDirty, setSensorColorsDirty] = useState(false);
   const [sensorColorsError, setSensorColorsError] = useState(null);
 
@@ -1507,6 +1666,31 @@ const ConfigPanel = ({
     if (primaryTextColorDirty) return;
     setPrimaryTextColorDraft(primaryTextColorFromConfig);
   }, [primaryTextColorDirty, primaryTextColorFromConfig]);
+
+  useEffect(() => {
+    if (tertiaryTextOpacityDirty) return;
+    setTertiaryTextOpacityDraft(tertiaryTextOpacityFromConfig);
+  }, [tertiaryTextOpacityDirty, tertiaryTextOpacityFromConfig]);
+
+  useEffect(() => {
+    if (globalTertiaryTextOpacityDirty) return;
+    setGlobalTertiaryTextOpacityDraft(globalTertiaryTextOpacityFromConfig);
+  }, [globalTertiaryTextOpacityDirty, globalTertiaryTextOpacityFromConfig]);
+
+  useEffect(() => {
+    if (tertiaryTextSizeDirty) return;
+    setTertiaryTextSizeDraft(tertiaryTextSizeFromConfig);
+  }, [tertiaryTextSizeDirty, tertiaryTextSizeFromConfig]);
+
+  useEffect(() => {
+    if (globalTertiaryTextSizeDirty) return;
+    setGlobalTertiaryTextSizeDraft(globalTertiaryTextSizeFromConfig);
+  }, [globalTertiaryTextSizeDirty, globalTertiaryTextSizeFromConfig]);
+
+  useEffect(() => {
+    if (tertiaryTextColorDirty) return;
+    setTertiaryTextColorDraft(tertiaryTextColorFromConfig);
+  }, [tertiaryTextColorDirty, tertiaryTextColorFromConfig]);
 
   useEffect(() => {
     if (glowColorDirty) return;
@@ -1899,6 +2083,96 @@ const ConfigPanel = ({
 
     return () => clearTimeout(t);
   }, [connected, primaryTextColorDirty, primaryTextColorDraft]);
+
+  // Autosave: Tertiary text opacity.
+  useEffect(() => {
+    if (!connected) return;
+    if (!tertiaryTextOpacityDirty) return;
+
+    const t = setTimeout(async () => {
+      setTertiaryTextOpacityError(null);
+      try {
+        await tertiaryTextOpacitySave.run(tertiaryTextOpacityDraft);
+        setTertiaryTextOpacityDirty(false);
+      } catch (err) {
+        setTertiaryTextOpacityError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, tertiaryTextOpacityDirty, tertiaryTextOpacityDraft]);
+
+  // Autosave: Global tertiary text opacity.
+  useEffect(() => {
+    if (!connected) return;
+    if (!globalTertiaryTextOpacityDirty) return;
+
+    const t = setTimeout(async () => {
+      setGlobalTertiaryTextOpacityError(null);
+      try {
+        await globalTertiaryTextOpacitySave.run(globalTertiaryTextOpacityDraft);
+        setGlobalTertiaryTextOpacityDirty(false);
+      } catch (err) {
+        setGlobalTertiaryTextOpacityError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, globalTertiaryTextOpacityDirty, globalTertiaryTextOpacityDraft]);
+
+  // Autosave: Tertiary text size.
+  useEffect(() => {
+    if (!connected) return;
+    if (!tertiaryTextSizeDirty) return;
+
+    const t = setTimeout(async () => {
+      setTertiaryTextSizeError(null);
+      try {
+        await tertiaryTextSizeSave.run(tertiaryTextSizeDraft);
+        setTertiaryTextSizeDirty(false);
+      } catch (err) {
+        setTertiaryTextSizeError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, tertiaryTextSizeDirty, tertiaryTextSizeDraft]);
+
+  // Autosave: Global tertiary text size.
+  useEffect(() => {
+    if (!connected) return;
+    if (!globalTertiaryTextSizeDirty) return;
+
+    const t = setTimeout(async () => {
+      setGlobalTertiaryTextSizeError(null);
+      try {
+        await globalTertiaryTextSizeSave.run(globalTertiaryTextSizeDraft);
+        setGlobalTertiaryTextSizeDirty(false);
+      } catch (err) {
+        setGlobalTertiaryTextSizeError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, globalTertiaryTextSizeDirty, globalTertiaryTextSizeDraft]);
+
+  // Autosave: Tertiary text color.
+  useEffect(() => {
+    if (!connected) return;
+    if (!tertiaryTextColorDirty) return;
+
+    const t = setTimeout(async () => {
+      setTertiaryTextColorError(null);
+      try {
+        await tertiaryTextColorSave.run(tertiaryTextColorDraft || null);
+        setTertiaryTextColorDirty(false);
+      } catch (err) {
+        setTertiaryTextColorError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, tertiaryTextColorDirty, tertiaryTextColorDraft]);
 
   // Autosave: Glow color.
   useEffect(() => {
@@ -2370,6 +2644,53 @@ const ConfigPanel = ({
   const [selectedDeviceIdForEdit, setSelectedDeviceIdForEdit] = useState('');
   // Commands are discovered per-device. Missing per-device allowlist means "allow all".
   const UI_HOME_METRICS = useMemo(() => (['temperature', 'humidity', 'illuminance', 'motion', 'contact', 'door']), []);
+  const UI_INFO_METRIC_PRIORITY = useMemo(() => ([
+    'temperature',
+    'humidity',
+    'illuminance',
+    'battery',
+    'motion',
+    'contact',
+    'door',
+    'lock',
+    'presence',
+    'switch',
+    'level',
+    'volume',
+    'mute',
+    'position',
+    'power',
+    'energy',
+    'speed',
+  ]), []);
+
+  const isSafeInfoMetricKey = (key) => typeof key === 'string' && key.length <= 64 && /^[A-Za-z0-9_]+$/.test(key);
+
+  const isDisplayableInfoValue = (value) => {
+    if (value === null || value === undefined) return false;
+    if (Array.isArray(value)) {
+      return value.some((v) => ['string', 'number', 'boolean'].includes(typeof v));
+    }
+    if (typeof value === 'object') return false;
+    return ['string', 'number', 'boolean'].includes(typeof value);
+  };
+
+  const formatInfoMetricLabel = (key) => {
+    const s = String(key || '').trim();
+    if (!s) return '';
+    const upper = s.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
+    return upper.replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+
+  const sortInfoMetricKeys = (keys) => {
+    const priority = new Map(UI_INFO_METRIC_PRIORITY.map((k, i) => [k, i]));
+    return [...keys].sort((a, b) => {
+      const ia = priority.has(a) ? priority.get(a) : 999;
+      const ib = priority.has(b) ? priority.get(b) : 999;
+      if (ia !== ib) return ia - ib;
+      return String(a).localeCompare(String(b));
+    });
+  };
 
   const [labelSaveState, setLabelSaveState] = useState(() => ({}));
   const labelSaveTimersRef = useRef(new Map());
@@ -2508,19 +2829,44 @@ const ConfigPanel = ({
 
 
   const effectiveDeviceLabelOverrides = useMemo(() => {
+    // When a panel profile is selected, use its overrides; otherwise use global
+    if (selectedPanelName && selectedPanelProfile) {
+      const v = selectedPanelProfile.deviceLabelOverrides;
+      return (v && typeof v === 'object') ? v : {};
+    }
     const v = config?.ui?.deviceLabelOverrides;
     return (v && typeof v === 'object') ? v : {};
-  }, [config?.ui?.deviceLabelOverrides]);
+  }, [config?.ui?.deviceLabelOverrides, selectedPanelName, selectedPanelProfile]);
 
   const effectiveDeviceCommandAllowlist = useMemo(() => {
+    // When a panel profile is selected, use its allowlist; otherwise use global
+    if (selectedPanelName && selectedPanelProfile) {
+      const v = selectedPanelProfile.deviceCommandAllowlist;
+      return (v && typeof v === 'object') ? v : {};
+    }
     const v = config?.ui?.deviceCommandAllowlist;
     return (v && typeof v === 'object') ? v : {};
-  }, [config?.ui?.deviceCommandAllowlist]);
+  }, [config?.ui?.deviceCommandAllowlist, selectedPanelName, selectedPanelProfile]);
 
   const effectiveDeviceHomeMetricAllowlist = useMemo(() => {
+    // When a panel profile is selected, use its allowlist; otherwise use global
+    if (selectedPanelName && selectedPanelProfile) {
+      const v = selectedPanelProfile.deviceHomeMetricAllowlist;
+      return (v && typeof v === 'object') ? v : {};
+    }
     const v = config?.ui?.deviceHomeMetricAllowlist;
     return (v && typeof v === 'object') ? v : {};
-  }, [config?.ui?.deviceHomeMetricAllowlist]);
+  }, [config?.ui?.deviceHomeMetricAllowlist, selectedPanelName, selectedPanelProfile]);
+
+  const effectiveDeviceInfoMetricAllowlist = useMemo(() => {
+    // When a panel profile is selected, use its allowlist; otherwise use global
+    if (selectedPanelName && selectedPanelProfile) {
+      const v = selectedPanelProfile.deviceInfoMetricAllowlist;
+      return (v && typeof v === 'object') ? v : {};
+    }
+    const v = config?.ui?.deviceInfoMetricAllowlist;
+    return (v && typeof v === 'object') ? v : {};
+  }, [config?.ui?.deviceInfoMetricAllowlist, selectedPanelName, selectedPanelProfile]);
 
   useEffect(() => {
     setDeviceOverrideDrafts((prev) => {
@@ -2536,14 +2882,17 @@ const ConfigPanel = ({
         const normalizedCmds = Array.isArray(cmds) ? cmds.map((c) => String(c)) : null;
         const hm = effectiveDeviceHomeMetricAllowlist?.[id];
         const normalizedHomeMetrics = Array.isArray(hm) ? hm.map((c) => String(c)) : null;
+        const im = effectiveDeviceInfoMetricAllowlist?.[id];
+        const normalizedInfoMetrics = Array.isArray(im) ? im.map((c) => String(c)) : null;
 
         if (!existing) {
-          next[id] = { label, commands: normalizedCmds, homeMetrics: normalizedHomeMetrics };
+          next[id] = { label, commands: normalizedCmds, homeMetrics: normalizedHomeMetrics, infoMetrics: normalizedInfoMetrics };
         } else {
           // Only fill in missing keys to avoid clobbering in-progress edits.
           if (existing.label === undefined) existing.label = label;
           if (existing.commands === undefined) existing.commands = normalizedCmds;
           if (existing.homeMetrics === undefined) existing.homeMetrics = normalizedHomeMetrics;
+          if (existing.infoMetrics === undefined) existing.infoMetrics = normalizedInfoMetrics;
         }
       }
 
@@ -2552,11 +2901,18 @@ const ConfigPanel = ({
       }
       return next;
     });
-  }, [allDevices, effectiveDeviceLabelOverrides, effectiveDeviceCommandAllowlist, effectiveDeviceHomeMetricAllowlist]);
+  }, [allDevices, effectiveDeviceLabelOverrides, effectiveDeviceCommandAllowlist, effectiveDeviceHomeMetricAllowlist, effectiveDeviceInfoMetricAllowlist]);
 
   // When switching profiles, reset per-device override drafts to reflect the newly selected profile.
   // (Must live after the related useMemos to avoid TDZ errors.)
+  const prevSelectedPanelNameRef = useRef(selectedPanelName);
   useEffect(() => {
+    // Only do full reset when panel name actually changes
+    const panelChanged = prevSelectedPanelNameRef.current !== selectedPanelName;
+    prevSelectedPanelNameRef.current = selectedPanelName;
+
+    if (!panelChanged) return;
+
     const timers = deviceOverrideTimersRef.current;
     for (const t of timers.values()) clearTimeout(t);
     timers.clear();
@@ -2570,16 +2926,18 @@ const ConfigPanel = ({
         const label = String(effectiveDeviceLabelOverrides?.[id] ?? '');
         const cmds = effectiveDeviceCommandAllowlist?.[id];
         const hm = effectiveDeviceHomeMetricAllowlist?.[id];
+        const im = effectiveDeviceInfoMetricAllowlist?.[id];
         next[id] = {
           label,
           // Missing allowlist => inherit (allow all). Explicit empty array => allow none.
           commands: Array.isArray(cmds) ? cmds.map((c) => String(c)) : null,
           homeMetrics: Array.isArray(hm) ? hm.map((c) => String(c)) : null,
+          infoMetrics: Array.isArray(im) ? im.map((c) => String(c)) : null,
         };
       }
       return next;
     });
-  }, [selectedPanelName, allDevices, effectiveDeviceLabelOverrides, effectiveDeviceCommandAllowlist, effectiveDeviceHomeMetricAllowlist]);
+  }, [selectedPanelName, allDevices, effectiveDeviceLabelOverrides, effectiveDeviceCommandAllowlist, effectiveDeviceHomeMetricAllowlist, effectiveDeviceInfoMetricAllowlist]);
 
   const manualRooms = useMemo(() => {
     const rooms = Array.isArray(config?.rooms) ? config.rooms : [];
@@ -2696,6 +3054,23 @@ const ConfigPanel = ({
         if (!cancelled) setDeviceIconsIndex(idx);
       } catch (e) {
         if (!cancelled) setDeviceIconsError(e?.message || String(e));
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        setControlIconsError(null);
+        const idx = await fetchControlIconsIndex();
+        if (!cancelled) setControlIconsIndex(idx);
+      } catch (e) {
+        if (!cancelled) setControlIconsError(e?.message || String(e));
       }
     };
     run();
@@ -2923,6 +3298,63 @@ const ConfigPanel = ({
     }
   };
 
+  const getAvailableInfoMetrics = (device) => {
+    const id = String(device?.id || '').trim();
+    if (!id) return [];
+    const attrs = statuses?.[id]?.attributes || {};
+    const keys = Object.entries(attrs)
+      .filter(([key, value]) => isSafeInfoMetricKey(key) && isDisplayableInfoValue(value))
+      .map(([key]) => key);
+    return sortInfoMetricKeys(Array.from(new Set(keys)));
+  };
+
+  const toggleInfoMetric = async (device, metricKey, nextAllowed) => {
+    const id = String(device?.id || '').trim();
+    const key = String(metricKey || '').trim();
+    if (!id || !key) return;
+
+    const available = getAvailableInfoMetrics(device);
+    if (!available.includes(key)) return;
+
+    const existingArr = deviceOverrideDrafts?.[id]?.infoMetrics;
+    const baseSet = Array.isArray(existingArr)
+      ? new Set(existingArr.map((c) => String(c)))
+      : new Set();
+
+    if (nextAllowed) baseSet.add(key);
+    else baseSet.delete(key);
+
+    const nextArr = available.filter((k) => baseSet.has(k));
+
+    setDeviceOverrideDrafts((prev) => ({
+      ...prev,
+      [id]: { ...(prev[id] || {}), infoMetrics: nextArr },
+    }));
+
+    if (!connected) return;
+
+    setDeviceOverrideSaveState((prev) => ({
+      ...prev,
+      [id]: { ...(prev[id] || {}), infoMetrics: { status: 'saving', error: null } },
+    }));
+    try {
+      await saveDeviceOverrides({
+        deviceId: id,
+        infoMetrics: nextArr,
+        ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
+      });
+      setDeviceOverrideSaveState((prev) => ({
+        ...prev,
+        [id]: { ...(prev[id] || {}), infoMetrics: { status: 'saved', error: null } },
+      }));
+    } catch (e) {
+      setDeviceOverrideSaveState((prev) => ({
+        ...prev,
+        [id]: { ...(prev[id] || {}), infoMetrics: { status: 'error', error: e?.message || String(e) } },
+      }));
+    }
+  };
+
   const setHomeVisible = async (deviceId, nextVisible, allDeviceIds) => {
     const id = String(deviceId || '').trim();
     if (!id) return;
@@ -3025,13 +3457,14 @@ const ConfigPanel = ({
   };
 
   return (
-    <div className="w-full h-full overflow-auto utility-page">
-      <div className="w-full">
+    <div className="w-full h-full flex flex-col utility-page">
+      {/* Sticky header with tabs */}
+      <div className="shrink-0 sticky top-0 z-20 bg-black/80 backdrop-blur-xl -mx-3 md:-mx-4 px-3 md:px-4 pt-0 pb-3 md:pb-4 border-b border-white/10">
         <div className="utility-panel p-3 md:p-4">
           <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
             Settings
           </div>
-          <div className="mt-3 flex items-center gap-2 overflow-x-auto">
+          <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1">
             {TABS.map((t) => {
               const selected = t.id === activeTab;
               return (
@@ -3115,9 +3548,14 @@ const ConfigPanel = ({
             </div>
           ) : null}
         </div>
+      </div>
+
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-auto">
+        <div className="w-full pt-4">
 
         {activeTab === 'appearance' ? (
-          <div className="mt-4 utility-panel p-4 md:p-6">
+          <div className="utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
               Panel Options
             </div>
@@ -3238,6 +3676,7 @@ const ConfigPanel = ({
                     : (Array.isArray(draft.commands) ? draft.commands.map((c) => String(c)) : []))
                   : null;
                 const explicitHomeMetrics = Array.isArray(draft.homeMetrics) ? draft.homeMetrics.map((c) => String(c)) : null;
+                const explicitInfoMetrics = Array.isArray(draft.infoMetrics) ? draft.infoMetrics.map((c) => String(c)) : null;
                 const availableAllowedCommands = Array.isArray(d.commands)
                   ? Array.from(new Set(d.commands.map((c) => String(c || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b))
                   : [];
@@ -3255,10 +3694,14 @@ const ConfigPanel = ({
                   return Array.from(out);
                 })();
 
+                const availableInfoMetrics = getAvailableInfoMetrics(d);
+
                 const labelSave = deviceOverrideSaveState?.[d.id]?.label || null;
                 const cmdSave = deviceOverrideSaveState?.[d.id]?.commands || null;
                 const homeMetricsSave = deviceOverrideSaveState?.[d.id]?.homeMetrics || null;
+                const infoMetricsSave = deviceOverrideSaveState?.[d.id]?.infoMetrics || null;
                 const isInheritHomeMetrics = explicitHomeMetrics === null;
+                const isInheritInfoMetrics = explicitInfoMetrics === null;
                 const isInheritCommands = explicitCommands === null;
 
                 return (
@@ -3279,7 +3722,7 @@ const ConfigPanel = ({
                           Overrides
                         </div>
                         <div className="mt-1 text-xs text-white/45">
-                          Display name, Home metrics, and which commands show on this panel.
+                          Display name, Home metrics, info cards, and which commands show on this panel.
                         </div>
 
                         <div className="mt-4">
@@ -3362,6 +3805,85 @@ const ConfigPanel = ({
 
                           {homeMetricsSave?.status === 'error' ? (
                             <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {homeMetricsSave.error}</div>
+                          ) : null}
+                        </div>
+
+                        <div className="mt-4">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                              Info Cards
+                            </div>
+                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">
+                              {infoMetricsSave?.status === 'saving'
+                                ? 'Saving…'
+                                : (infoMetricsSave?.status === 'saved'
+                                  ? 'Saved'
+                                  : (infoMetricsSave?.status === 'error'
+                                    ? 'Error'
+                                    : (isInheritInfoMetrics
+                                      ? 'Default'
+                                      : (explicitInfoMetrics.length ? 'Selected' : 'None'))))}
+                            </div>
+                          </div>
+
+                          {availableInfoMetrics.length ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {availableInfoMetrics.map((k) => {
+                                const checked = isInheritInfoMetrics ? false : explicitInfoMetrics.includes(k);
+                                return (
+                                  <label key={k} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      disabled={!connected || busy}
+                                      onChange={(e) => toggleInfoMetric(d, k, Boolean(e.target.checked))}
+                                    />
+                                    <span className="text-xs font-semibold text-white/80">{formatInfoMetricLabel(k)}</span>
+                                  </label>
+                                );
+                              })}
+
+                              <button
+                                type="button"
+                                disabled={!connected || busy || isInheritInfoMetrics}
+                                onClick={async () => {
+                                  setDeviceOverrideDrafts((prev) => ({
+                                    ...prev,
+                                    [d.id]: { ...(prev[d.id] || {}), infoMetrics: null },
+                                  }));
+                                  if (!connected) return;
+                                  setDeviceOverrideSaveState((prev) => ({
+                                    ...prev,
+                                    [d.id]: { ...(prev[d.id] || {}), infoMetrics: { status: 'saving', error: null } },
+                                  }));
+                                  try {
+                                    await saveDeviceOverrides({
+                                      deviceId: String(d.id),
+                                      infoMetrics: null,
+                                      ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
+                                    });
+                                    setDeviceOverrideSaveState((prev) => ({
+                                      ...prev,
+                                      [d.id]: { ...(prev[d.id] || {}), infoMetrics: { status: 'saved', error: null } },
+                                    }));
+                                  } catch (e) {
+                                    setDeviceOverrideSaveState((prev) => ({
+                                      ...prev,
+                                      [d.id]: { ...(prev[d.id] || {}), infoMetrics: { status: 'error', error: e?.message || String(e) } },
+                                    }));
+                                  }
+                                }}
+                                className={`rounded-xl border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || isInheritInfoMetrics) ? 'opacity-50' : 'hover:bg-white/5'}`}
+                              >
+                                Reset
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="mt-2 text-xs text-white/45">No attributes available for info cards.</div>
+                          )}
+
+                          {infoMetricsSave?.status === 'error' ? (
+                            <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {infoMetricsSave.error}</div>
                           ) : null}
                         </div>
 
@@ -4103,6 +4625,132 @@ const ConfigPanel = ({
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                        Tertiary text opacity (Info Cards)
+                      </div>
+                      <div className="mt-1 text-xs text-white/45">
+                        Baseline transparency for info card values. 70% = default.
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={globalTertiaryTextOpacityDraft}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 70;
+                          setGlobalTertiaryTextOpacityError(null);
+                          setGlobalTertiaryTextOpacityDirty(true);
+                          setGlobalTertiaryTextOpacityDraft(next);
+                        }}
+                        className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      />
+                      <div className="text-xs text-white/45">%</div>
+                    </div>
+                  </div>
+
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={globalTertiaryTextOpacityDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 70;
+                      setGlobalTertiaryTextOpacityError(null);
+                      setGlobalTertiaryTextOpacityDirty(true);
+                      setGlobalTertiaryTextOpacityDraft(next);
+                    }}
+                    className="mt-3 w-full"
+                  />
+
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="text-xs text-white/45">
+                      {globalTertiaryTextOpacityDirty ? 'Pending changes…' : 'Saved'}
+                    </div>
+                    <div className="text-xs text-white/45">
+                      {statusText(globalTertiaryTextOpacitySave.status)}
+                    </div>
+                  </div>
+
+                  {globalTertiaryTextOpacityError ? (
+                    <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {globalTertiaryTextOpacityError}</div>
+                  ) : null}
+                </div>
+
+                <div className="utility-group p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                        Tertiary text size (Info Cards)
+                      </div>
+                      <div className="mt-1 text-xs text-white/45">
+                        Baseline scale for info card values. 100% = default.
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={50}
+                        max={200}
+                        step={1}
+                        value={globalTertiaryTextSizeDraft}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          const next = Number.isFinite(n) ? Math.max(50, Math.min(200, Math.round(n))) : 100;
+                          setGlobalTertiaryTextSizeError(null);
+                          setGlobalTertiaryTextSizeDirty(true);
+                          setGlobalTertiaryTextSizeDraft(next);
+                        }}
+                        className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      />
+                      <div className="text-xs text-white/45">%</div>
+                    </div>
+                  </div>
+
+                  <input
+                    type="range"
+                    min={50}
+                    max={200}
+                    step={1}
+                    value={globalTertiaryTextSizeDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const next = Number.isFinite(n) ? Math.max(50, Math.min(200, Math.round(n))) : 100;
+                      setGlobalTertiaryTextSizeError(null);
+                      setGlobalTertiaryTextSizeDirty(true);
+                      setGlobalTertiaryTextSizeDraft(next);
+                    }}
+                    className="mt-3 w-full"
+                  />
+
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="text-xs text-white/45">
+                      {globalTertiaryTextSizeDirty ? 'Pending changes…' : 'Saved'}
+                    </div>
+                    <div className="text-xs text-white/45">
+                      {statusText(globalTertiaryTextSizeSave.status)}
+                    </div>
+                  </div>
+
+                  {globalTertiaryTextSizeError ? (
+                    <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {globalTertiaryTextSizeError}</div>
+                  ) : null}
+                </div>
+
+                <div className="utility-group p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
                         Icon size
                       </div>
                       <div className="mt-1 text-xs text-white/45">
@@ -4300,10 +4948,9 @@ const ConfigPanel = ({
               <div className="mt-1 text-xs text-white/45">
                 These apply to all profiles and affect both Home and Climate views.
               </div>
-            </div>
 
-            <div className="mt-4 utility-group p-4">
-              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Manual Rooms</div>
+              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Manual Rooms</div>
               <div className="mt-1 text-xs text-white/45">
                 Add/remove rooms that aren't discovered from Hubitat. Rooms can be placed/resized on the Climate page.
               </div>
@@ -4374,10 +5021,10 @@ const ConfigPanel = ({
                   <div className="text-sm text-white/45">No manual rooms.</div>
                 )}
               </div>
-            </div>
+              </div>
 
-            <div className="mt-4 utility-group p-4">
-              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Visible Rooms (Global Default)</div>
+              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Visible Rooms (Global Default)</div>
               <div className="mt-1 text-xs text-white/45">
                 Choose which rooms appear by default. Panels can still override this per profile. If none are selected, all rooms are shown.
               </div>
@@ -4414,10 +5061,10 @@ const ConfigPanel = ({
               {globalVisibleRoomsSave.error ? (
                 <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {globalVisibleRoomsSave.error}</div>
               ) : null}
-            </div>
+              </div>
 
-            <div className="mt-4 utility-group p-4">
-              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Freeform Text Labels</div>
+              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Freeform Text Labels</div>
               <div className="mt-1 text-xs text-white/45">
                 Add labels here, then position/resize them on the Climate page in Edit mode.
               </div>
@@ -4497,6 +5144,7 @@ const ConfigPanel = ({
                 ) : (
                   <div className="text-sm text-white/45">No labels yet.</div>
                 )}
+              </div>
               </div>
             </div>
 
@@ -5045,6 +5693,171 @@ const ConfigPanel = ({
                   <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {secondaryTextColorError}</div>
                 ) : null}
               </div>
+            </div>
+
+            <div className="utility-group p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                    Tertiary text (Info Cards)
+                  </div>
+                  <div className="mt-1 text-xs text-white/45">
+                    Transparency for info card values.
+                  </div>
+                </div>
+
+                <div className="shrink-0 flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={tertiaryTextOpacityDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 70;
+                      setTertiaryTextOpacityError(null);
+                      setTertiaryTextOpacityDirty(true);
+                      setTertiaryTextOpacityDraft(next);
+                    }}
+                    className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                  />
+                  <div className="text-xs text-white/45">%</div>
+                </div>
+              </div>
+
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={tertiaryTextOpacityDraft}
+                disabled={!connected || busy}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 70;
+                  setTertiaryTextOpacityError(null);
+                  setTertiaryTextOpacityDirty(true);
+                  setTertiaryTextOpacityDraft(next);
+                }}
+                className="mt-3 w-full"
+              />
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="text-xs text-white/45">
+                  {tertiaryTextOpacityDirty ? 'Pending changes…' : 'Saved'}
+                </div>
+                <div className="text-xs text-white/45">
+                  {statusText(tertiaryTextOpacitySave.status)}
+                </div>
+              </div>
+
+              {tertiaryTextOpacityError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {tertiaryTextOpacityError}</div>
+              ) : null}
+
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                    Tertiary text size
+                  </div>
+                  <div className="mt-1 text-xs text-white/45">
+                    Baseline scale for info card values. 100% = default.
+                  </div>
+                </div>
+
+                <div className="shrink-0 flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={50}
+                    max={200}
+                    step={1}
+                    value={tertiaryTextSizeDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const next = Number.isFinite(n) ? Math.max(50, Math.min(200, Math.round(n))) : 100;
+                      setTertiaryTextSizeError(null);
+                      setTertiaryTextSizeDirty(true);
+                      setTertiaryTextSizeDraft(next);
+                    }}
+                    className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                  />
+                  <div className="text-xs text-white/45">%</div>
+                </div>
+              </div>
+
+              <input
+                type="range"
+                min={50}
+                max={200}
+                step={1}
+                value={tertiaryTextSizeDraft}
+                disabled={!connected || busy}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  const next = Number.isFinite(n) ? Math.max(50, Math.min(200, Math.round(n))) : 100;
+                  setTertiaryTextSizeError(null);
+                  setTertiaryTextSizeDirty(true);
+                  setTertiaryTextSizeDraft(next);
+                }}
+                className="mt-3 w-full"
+              />
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="text-xs text-white/45">
+                  {tertiaryTextSizeDirty ? 'Pending changes…' : 'Saved'}
+                </div>
+                <div className="text-xs text-white/45">
+                  {statusText(tertiaryTextSizeSave.status)}
+                </div>
+              </div>
+
+              {tertiaryTextSizeError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {tertiaryTextSizeError}</div>
+              ) : null}
+
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                    Tertiary text color
+                  </div>
+                  <div className="mt-1 text-xs text-white/45">
+                    Choose a color for info card values.
+                  </div>
+                </div>
+
+                <select
+                  value={tertiaryTextColorDraft}
+                  disabled={!connected || busy}
+                  onChange={(e) => {
+                    const v = String(e.target.value || '').trim();
+                    setTertiaryTextColorError(null);
+                    setTertiaryTextColorDirty(true);
+                    setTertiaryTextColorDraft(v);
+                  }}
+                  className="w-[220px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                >
+                  <option value="">Default</option>
+                  {TOLERANCE_COLOR_CHOICES.map((c) => (
+                    <option key={c.id} value={c.id}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="text-xs text-white/45">
+                  {tertiaryTextColorDirty ? 'Pending changes…' : 'Saved'}
+                </div>
+                <div className="text-xs text-white/45">
+                  {statusText(tertiaryTextColorSave.status)}
+                </div>
+              </div>
+
+              {tertiaryTextColorError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {tertiaryTextColorError}</div>
+              ) : null}
             </div>
 
             <div className="utility-group p-4">
@@ -6015,11 +6828,18 @@ const ConfigPanel = ({
                   Sensor Badge Colors
                 </div>
                 <div className="mt-1 text-xs text-white/45">
-                  Controls the color of the "Motion" and "Door" badges on Home.
+                  Controls the color of sensor indicator icons on Home when active.
                 </div>
 
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  {[{ k: 'motion', label: 'Motion' }, { k: 'door', label: 'Door' }].map(({ k, label }) => (
+                  {[
+                    { k: 'motion', label: 'Motion' },
+                    { k: 'door', label: 'Door' },
+                    { k: 'smoke', label: 'Smoke' },
+                    { k: 'co', label: 'CO' },
+                    { k: 'water', label: 'Water/Leak' },
+                    { k: 'presence', label: 'Presence' },
+                  ].map(({ k, label }) => (
                     <label key={k} className="block">
                       <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
                         <span>{label} Color</span>
@@ -6574,64 +7394,161 @@ const ConfigPanel = ({
 
             <div className="mt-4 utility-group p-4">
               <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
-                Device icons
+                Control Icons
               </div>
               <div className="mt-1 text-xs text-white/45">
-                Choose an SVG filename per device type. Files are loaded from <span className="font-mono text-[11px] text-white/60">server/data/device-icons/&lt;deviceType&gt;/</span>.
+                Assign interactive toggle icons to devices. Only compatible icons are shown for each device.
               </div>
 
-              {deviceIconsError ? (
+              {controlIconsError ? (
                 <div className="mt-2 text-[11px] text-neon-red break-words">
-                  Device icons unavailable: {deviceIconsError}
+                  Control icons unavailable: {controlIconsError}
                 </div>
               ) : null}
 
-              <div className="mt-4 grid grid-cols-1 gap-3">
-                {deviceIconTypes.map((t) => {
-                  const byType = (deviceIconsIndex && typeof deviceIconsIndex === 'object' && deviceIconsIndex.byType && typeof deviceIconsIndex.byType === 'object')
-                    ? deviceIconsIndex.byType
-                    : {};
-                  const files = Array.isArray(byType[t]) ? byType[t] : [];
-
-                  const current = (config?.ui?.deviceTypeIcons && typeof config.ui.deviceTypeIcons === 'object')
-                    ? String(config.ui.deviceTypeIcons[t] || '')
-                    : '';
-
+              {/* Device list with multi-icon assignment */}
+              {(() => {
+                const icons = Array.isArray(controlIconsIndex?.icons) ? controlIconsIndex.icons : [];
+                
+                // Use local state for display (optimistic updates)
+                const currentAssignments = localIconAssignments;
+                
+                // Get devices with commands that could use control icons
+                const commandDevices = allDevices
+                  .filter((d) => Array.isArray(d.commands) && d.commands.length > 0)
+                  .map((d) => {
+                    const cmds = Array.isArray(d.commands) ? d.commands : [];
+                    // Find compatible icons for this device
+                    const compatibleIcons = icons.filter((icon) => {
+                      const required = Array.isArray(icon.requiredCommands) ? icon.requiredCommands : [];
+                      return required.every((cmd) => cmds.includes(cmd));
+                    });
+                    return { ...d, compatibleIcons };
+                  })
+                  .filter((d) => d.compatibleIcons.length > 0); // Only show devices with at least one compatible icon
+                
+                if (commandDevices.length === 0) {
                   return (
-                    <label key={t} className="block">
-                      <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-                        {t}
-                      </div>
-                      <select
-                        value={current}
-                        disabled={!connected || busy}
-                        onChange={async (e) => {
-                          const next = String(e.target.value || '').trim();
-                          setError(null);
-                          try {
-                            await deviceTypeIconsSave.run({ [t]: next || null });
-                            // Refresh index (helps when user just dropped files into the folder).
-                            const idx = await fetchDeviceIconsIndex();
-                            setDeviceIconsIndex(idx);
-                          } catch (err) {
-                            setError(err?.message || String(err));
-                          }
-                        }}
-                        className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
-                      >
-                        <option value="">None</option>
-                        {files.map((f) => (
-                          <option key={f} value={f}>{f}</option>
-                        ))}
-                      </select>
-                    </label>
+                    <div className="mt-4 text-xs text-white/45">
+                      No devices with compatible control icons.
+                    </div>
                   );
-                })}
-              </div>
+                }
+
+                // Helper to get current icons array for a device
+                const getDeviceIcons = (deviceId) => {
+                  const val = currentAssignments[deviceId];
+                  if (!val) return [];
+                  if (Array.isArray(val)) return val;
+                  return [val]; // backward compat: single string → array
+                };
+
+                return (
+                  <div className="mt-4 space-y-3">
+                    {commandDevices.map((device) => {
+                      const currentIconIds = getDeviceIcons(device.id);
+
+                      return (
+                        <div key={device.id} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                          {/* Device name */}
+                          <div className="text-sm font-medium text-white/90 mb-2">
+                            {device.label}
+                          </div>
+                          
+                          {/* Icon checkboxes - multiple select */}
+                          <div className="flex flex-wrap gap-2">
+                            {device.compatibleIcons.map((icon) => {
+                              const isSelected = currentIconIds.includes(icon.id);
+                              
+                              return (
+                                <button
+                                  key={icon.id}
+                                  disabled={!connected || busy}
+                                  onClick={async () => {
+                                    setError(null);
+                                    try {
+                                      // Compute next state from current local state (use ref for fresh value)
+                                      const currentAssignmentsNow = localIconAssignmentsRef.current;
+                                      const prevVal = currentAssignmentsNow[device.id];
+                                      const prevIconIds = prevVal
+                                        ? (Array.isArray(prevVal) ? prevVal : [prevVal]).map((v) => String(v || '').trim()).filter(Boolean)
+                                        : [];
+                                      
+                                      const alreadySelected = prevIconIds.includes(icon.id);
+                                      let nextIcons;
+                                      if (alreadySelected) {
+                                        nextIcons = prevIconIds.filter((id) => id !== icon.id);
+                                      } else {
+                                        nextIcons = [...prevIconIds, icon.id];
+                                      }
+                                      
+                                      const nextVal = nextIcons.length > 0 ? nextIcons : null;
+                                      
+                                      // Update local state optimistically (also updates ref on next render)
+                                      setLocalIconAssignments((prev) => {
+                                        const updated = {
+                                          ...prev,
+                                          [device.id]: nextVal,
+                                        };
+                                        localIconAssignmentsRef.current = updated;
+                                        return updated;
+                                      });
+                                      
+                                      // Save to server
+                                      await deviceControlIconsSave.run({ [device.id]: nextVal });
+                                    } catch (err) {
+                                      setError(err?.message || String(err));
+                                    }
+                                  }}
+                                  className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border transition-all ${
+                                    isSelected 
+                                      ? 'border-neon-blue/60 bg-neon-blue/20 text-white' 
+                                      : 'border-white/10 bg-black/30 text-white/60 hover:border-white/20'
+                                  }`}
+                                  title={icon.description || icon.name}
+                                >
+                                  <div className="w-6 h-6 flex items-center justify-center">
+                                    <img
+                                      src={`${API_HOST}${controlIconsIndex.rootUrl}/${icon.file}`}
+                                      alt={icon.name || icon.id}
+                                      className="max-w-full max-h-full"
+                                    />
+                                  </div>
+                                  <span className="text-[11px]">{icon.name || icon.id}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                          
+                          {/* Preview of selected icons */}
+                          {currentIconIds.length > 0 ? (
+                            <div className="mt-2 flex gap-1 items-center">
+                              <span className="text-[10px] text-white/40 mr-1">Active:</span>
+                              {currentIconIds.map((iconId) => {
+                                const icon = icons.find((i) => i.id === iconId);
+                                if (!icon) return null;
+                                return (
+                                  <div key={iconId} className="w-8 h-8 rounded border border-white/10 bg-black/40 flex items-center justify-center p-0.5">
+                                    <img
+                                      src={`${API_HOST}${controlIconsIndex.rootUrl}/${icon.file}`}
+                                      alt={icon.name || icon.id}
+                                      className="max-w-full max-h-full"
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
 
               <div className="mt-3 flex items-center justify-end gap-3">
                 <div className="text-xs text-white/45">
-                  {statusText(deviceTypeIconsSave.status)}
+                  {statusText(deviceControlIconsSave.status)}
                 </div>
               </div>
             </div>
@@ -6953,6 +7870,7 @@ const ConfigPanel = ({
             </div>
           </div>
         ) : null}
+        </div>
       </div>
     </div>
   );

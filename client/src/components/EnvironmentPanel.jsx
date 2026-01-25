@@ -12,15 +12,19 @@ import {
   Wind,
   CloudRain,
   SlidersHorizontal,
+  Flame,
+  CircleAlert,
+  User,
 } from 'lucide-react';
 
 import { getUiScheme } from '../uiScheme';
 import { useAppState } from '../appState';
-import { buildRoomsWithStatuses, getHomeVisibleDeviceIdSet } from '../deviceSelectors';
+import { buildRoomsWithStatuses, getHomeVisibleDeviceIdSet, getDeviceInfoMetricAllowlist } from '../deviceSelectors';
 import { API_HOST } from '../apiHost';
 import { inferInternalDeviceType } from '../deviceMapping';
 import { getDeviceTypeIconSrc } from '../deviceIcons';
 import InlineSvg from './InlineSvg';
+import InteractiveControlIcon from './InteractiveControlIcon';
 import HlsPlayer from './HlsPlayer';
 import {
   normalizeToleranceColorId,
@@ -382,6 +386,20 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
   let doorOpen = false;
   let doorOpenCount = 0;
 
+  // Additional alert sensor types - track both existence and alarm state
+  let smokeCount = 0; // Total smoke detectors in room
+  let smokeAlarm = false;
+  let smokeAlarmCount = 0;
+  let coCount = 0; // Total CO detectors in room
+  let coAlarm = false;
+  let coAlarmCount = 0;
+  let waterCount = 0; // Total water/leak sensors in room
+  let waterAlarm = false;
+  let waterAlarmCount = 0;
+  let presenceCount = 0; // Total presence sensors in room
+  let presenceHome = false;
+  let presenceHomeCount = 0;
+
   const switches = [];
 
   let temperaturePossibleCount = 0;
@@ -454,6 +472,46 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
     if (allowContact) maybeCountDoorState(attrs.contact);
     if (allowDoor) maybeCountDoorState(attrs.door);
 
+    // Smoke detector: smoke attribute = 'detected' | 'clear'
+    if (typeof attrs.smoke === 'string') {
+      smokeCount += 1; // Track that this room HAS a smoke detector
+      const v = String(attrs.smoke).toLowerCase();
+      if (v === 'detected') {
+        smokeAlarm = true;
+        smokeAlarmCount += 1;
+      }
+    }
+
+    // Carbon monoxide detector: carbonMonoxide attribute = 'detected' | 'clear'
+    if (typeof attrs.carbonMonoxide === 'string') {
+      coCount += 1; // Track that this room HAS a CO detector
+      const v = String(attrs.carbonMonoxide).toLowerCase();
+      if (v === 'detected') {
+        coAlarm = true;
+        coAlarmCount += 1;
+      }
+    }
+
+    // Water/leak sensor: water attribute = 'wet' | 'dry'
+    if (typeof attrs.water === 'string') {
+      waterCount += 1; // Track that this room HAS a water sensor
+      const v = String(attrs.water).toLowerCase();
+      if (v === 'wet') {
+        waterAlarm = true;
+        waterAlarmCount += 1;
+      }
+    }
+
+    // Presence sensor: presence attribute = 'present' | 'not present'
+    if (typeof attrs.presence === 'string') {
+      presenceCount += 1; // Track that this room HAS a presence sensor
+      const v = String(attrs.presence).toLowerCase();
+      if (v === 'present') {
+        presenceHome = true;
+        presenceHomeCount += 1;
+      }
+    }
+
     if (typeof attrs.switch === 'string' && allowedControlIds?.has(String(dev.id))) {
       switches.push({
         id: dev.id,
@@ -480,6 +538,18 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
     doorCount,
     doorOpen,
     doorOpenCount,
+    smokeCount,
+    smokeAlarm,
+    smokeAlarmCount,
+    coCount,
+    coAlarm,
+    coAlarmCount,
+    waterCount,
+    waterAlarm,
+    waterAlarmCount,
+    presenceCount,
+    presenceHome,
+    presenceHomeCount,
     switches,
   };
 };
@@ -557,7 +627,89 @@ const getDeviceCommandAllowlistForId = (deviceCommandAllowlist, deviceId) => {
   return arr.map((v) => String(v || '').trim()).filter(Boolean);
 };
 
-const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, deviceCommandAllowlist, deviceHomeMetricAllowlist, deviceTypeIcons, switchControlStyle = 'auto', switchAnimationStyle = 'none', homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1, fillHeight = false }) => {
+// Info card helpers
+const INFO_METRIC_PRIORITY = [
+  'temperature', 'humidity', 'illuminance', 'battery', 'motion', 'contact',
+  'door', 'lock', 'presence', 'switch', 'level', 'volume', 'mute', 'position',
+  'power', 'energy', 'speed',
+];
+
+const isSafeInfoMetricKey = (key) => typeof key === 'string' && key.length <= 64 && /^[A-Za-z0-9_]+$/.test(key);
+
+const isDisplayableInfoValue = (value) => {
+  if (value === null || value === undefined) return false;
+  if (Array.isArray(value)) return value.some((v) => ['string', 'number', 'boolean'].includes(typeof v));
+  if (typeof value === 'object') return false;
+  return ['string', 'number', 'boolean'].includes(typeof value);
+};
+
+const formatInfoMetricLabel = (key) => {
+  const s = String(key || '').trim();
+  if (!s) return '';
+  const upper = s.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
+  return upper.replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+const formatInfoMetricValue = (value) => {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((v) => {
+        if (v === null || v === undefined) return null;
+        if (typeof v === 'boolean') return v ? 'On' : 'Off';
+        if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+        const s = String(v).trim();
+        return s.length ? s : null;
+      })
+      .filter(Boolean);
+    return parts.length ? parts.join(', ') : null;
+  }
+  if (typeof value === 'boolean') return value ? 'On' : 'Off';
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return null;
+    if (value % 1 !== 0) return value.toFixed(1);
+    return String(Math.round(value));
+  }
+  const s = String(value).trim();
+  return s.length ? s : null;
+};
+
+const sortInfoMetricKeys = (keys) => {
+  const priority = new Map(INFO_METRIC_PRIORITY.map((k, i) => [k, i]));
+  return [...keys].sort((a, b) => {
+    const ia = priority.has(a) ? priority.get(a) : 999;
+    const ib = priority.has(b) ? priority.get(b) : 999;
+    if (ia !== ib) return ia - ib;
+    return String(a).localeCompare(String(b));
+  });
+};
+
+const DeviceInfoGrid = ({ items, scale = 1, primaryTextColorClassName = '', secondaryTextColorClassName = '', tertiaryTextColorClassName = '' }) => {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return null;
+  return (
+    <div className="mt-2 grid grid-cols-2 gap-1">
+      {list.map((item) => (
+        <div key={item.key} className="rounded-lg border border-white/10 bg-black/20 px-2 py-1">
+          <div
+            className={`text-[9px] uppercase tracking-[0.12em] jvs-secondary-text ${secondaryTextColorClassName || 'text-white/60'}`.trim()}
+            style={{ fontSize: `calc(9px * ${scale} * var(--jvs-secondary-text-size-scale, 1))` }}
+          >
+            {item.label}
+          </div>
+          <div
+            className={`text-[11px] font-semibold jvs-tertiary-text ${tertiaryTextColorClassName || 'text-white/80'}`.trim()}
+            style={{ fontSize: `calc(11px * ${scale} * var(--jvs-tertiary-text-size-scale, 1))` }}
+          >
+            {item.value}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, sensorIndicatorColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, deviceCommandAllowlist, deviceHomeMetricAllowlist, deviceInfoMetricAllowlist, deviceTypeIcons, deviceControlIcons, switchControlStyle = 'auto', switchAnimationStyle = 'none', homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', tertiaryTextColorClassName = '', contentScale = 1, fillHeight = false }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
   const [svgHotspotsByDeviceId, setSvgHotspotsByDeviceId] = useState(() => ({}));
 
@@ -582,28 +734,91 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
         state: d?.status?.state,
       }))
       .filter((d) => Array.isArray(d.commands) && d.commands.length)
-      .map((d) => ({
-        ...d,
-        commands: (() => {
-          const perDevice = getDeviceCommandAllowlistForId(deviceCommandAllowlist, d.id);
-          let base = d.commands;
+      .map((d) => {
+        const perDevice = getDeviceCommandAllowlistForId(deviceCommandAllowlist, d.id);
+        let commands = d.commands;
+        if (perDevice !== null) {
+          if (perDevice.length === 0) commands = [];
+          else {
+            const set = new Set(perDevice);
+            commands = commands.filter((c) => set.has(String(c)));
+          }
+        }
 
-          // Missing allowlist => allow all commands. Empty array => allow none.
-          if (perDevice === null) return base;
-          if (perDevice.length === 0) return [];
-          const set = new Set(perDevice);
-          return base.filter((c) => set.has(String(c)));
-        })(),
-        internalType: inferInternalDeviceType({
-          hubitatType: d.hubitatType,
-          capabilities: d.caps,
-          attributes: d.attrs,
-          state: d.state,
-          commandSchemas: d.commands,
-        }),
-      }))
+        // Info cards
+        const availableInfoMetricKeys = sortInfoMetricKeys(
+          Object.entries(d.attrs)
+            .filter(([key, value]) => isSafeInfoMetricKey(key) && isDisplayableInfoValue(value))
+            .map(([key]) => key),
+        );
+        const infoAllowlist = getDeviceInfoMetricAllowlist({ ui: { deviceInfoMetricAllowlist } }, d.id);
+        const infoKeys = Array.isArray(infoAllowlist)
+          ? availableInfoMetricKeys.filter((k) => infoAllowlist.includes(k))
+          : [];
+        const infoItems = infoKeys
+          .map((key) => {
+            const value = formatInfoMetricValue(d.attrs?.[key]);
+            if (value === null) return null;
+            return { key, label: formatInfoMetricLabel(key), value };
+          })
+          .filter(Boolean);
+
+        return {
+          ...d,
+          commands,
+          internalType: inferInternalDeviceType({
+            hubitatType: d.hubitatType,
+            capabilities: d.caps,
+            attributes: d.attrs,
+            state: d.state,
+            commandSchemas: d.commands,
+          }),
+          infoItems,
+        };
+      })
       .filter((d) => d.commands.length);
-  }, [devices, deviceCommandAllowlist]);
+  }, [devices, deviceCommandAllowlist, deviceInfoMetricAllowlist]);
+
+  // Sensor devices: those with info cards configured but possibly no commands
+  const sensorDevices = useMemo(() => {
+    const actionIds = new Set(supportedActions.map((d) => d.id));
+    return devices
+      .filter((d) => !actionIds.has(d.id)) // Exclude devices already in supportedActions
+      .map((d) => {
+        const attrs = d.status?.attributes || {};
+        const availableInfoMetricKeys = sortInfoMetricKeys(
+          Object.entries(attrs)
+            .filter(([key, value]) => isSafeInfoMetricKey(key) && isDisplayableInfoValue(value))
+            .map(([key]) => key),
+        );
+        const infoAllowlist = getDeviceInfoMetricAllowlist({ ui: { deviceInfoMetricAllowlist } }, d.id);
+        const infoKeys = Array.isArray(infoAllowlist)
+          ? availableInfoMetricKeys.filter((k) => infoAllowlist.includes(k))
+          : [];
+        const infoItems = infoKeys
+          .map((key) => {
+            const value = formatInfoMetricValue(attrs?.[key]);
+            if (value === null) return null;
+            return { key, label: formatInfoMetricLabel(key), value };
+          })
+          .filter(Boolean);
+
+        return {
+          id: d.id,
+          label: d.label,
+          attrs,
+          internalType: inferInternalDeviceType({
+            hubitatType: d?.type,
+            capabilities: Array.isArray(d?.capabilities) ? d.capabilities : [],
+            attributes: attrs,
+            state: d?.status?.state,
+            commandSchemas: [],
+          }),
+          infoItems,
+        };
+      })
+      .filter((d) => d.infoItems.length > 0); // Only include if they have info cards
+  }, [devices, deviceInfoMetricAllowlist, supportedActions]);
 
   const formatCommandLabel = (cmd) => {
     const s = String(cmd || '').trim();
@@ -639,7 +854,9 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
 
   const hasEnv = Array.isArray(homeRoomMetricKeys) && homeRoomMetricKeys.length > 0;
 
-  const headerGlow = (metrics.motionActive || metrics.doorOpen)
+  // Any active sensor triggers the header glow
+  const hasActiveAlert = metrics.motionActive || metrics.doorOpen || metrics.smokeAlarm || metrics.coAlarm || metrics.waterAlarm || metrics.presenceHome;
+  const headerGlow = hasActiveAlert
     ? `${uiScheme?.selectedCard || 'border-primary/40'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
     : 'border-white/10';
 
@@ -659,7 +876,61 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
         height: `${Math.round(16 * scaleNum)}px`,
       };
 
-  const activeIconClass = `${uiScheme?.selectedText || 'text-neon-blue'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+  // Sensor indicator colors with fallback to uiScheme accent
+  const motionActiveIconClass = (() => {
+    const colorId = sensorIndicatorColors?.motion;
+    if (colorId && colorId !== 'none') {
+      const textClass = getToleranceTextClassForColorId(colorId);
+      if (textClass) return `${textClass} ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+    }
+    return `${uiScheme?.selectedText || 'text-neon-blue'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+  })();
+
+  const doorActiveIconClass = (() => {
+    const colorId = sensorIndicatorColors?.door;
+    if (colorId && colorId !== 'none') {
+      const textClass = getToleranceTextClassForColorId(colorId);
+      if (textClass) return `${textClass} ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+    }
+    return `${uiScheme?.selectedText || 'text-neon-blue'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+  })();
+
+  const smokeActiveIconClass = (() => {
+    const colorId = sensorIndicatorColors?.smoke;
+    if (colorId && colorId !== 'none') {
+      const textClass = getToleranceTextClassForColorId(colorId);
+      if (textClass) return `${textClass} ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+    }
+    return `text-neon-red ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+  })();
+
+  const coActiveIconClass = (() => {
+    const colorId = sensorIndicatorColors?.co;
+    if (colorId && colorId !== 'none') {
+      const textClass = getToleranceTextClassForColorId(colorId);
+      if (textClass) return `${textClass} ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+    }
+    return `text-neon-red ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+  })();
+
+  const waterActiveIconClass = (() => {
+    const colorId = sensorIndicatorColors?.water;
+    if (colorId && colorId !== 'none') {
+      const textClass = getToleranceTextClassForColorId(colorId);
+      if (textClass) return `${textClass} ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+    }
+    return `text-neon-blue ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+  })();
+
+  const presenceActiveIconClass = (() => {
+    const colorId = sensorIndicatorColors?.presence;
+    if (colorId && colorId !== 'none') {
+      const textClass = getToleranceTextClassForColorId(colorId);
+      if (textClass) return `${textClass} ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+    }
+    return `text-neon-green ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+  })();
+
   const inactiveIconClass = 'text-white/35';
 
   const metricCards = useMemo(() => {
@@ -795,7 +1066,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
             aria-label={metrics.motionActive ? 'Motion active' : 'Motion'}
           >
             <Activity
-              className={`${statusIconSizeClass} jvs-icon ${metrics.motionActive ? activeIconClass : inactiveIconClass}`.trim()}
+              className={`${statusIconSizeClass} jvs-icon ${metrics.motionActive ? motionActiveIconClass : inactiveIconClass}`.trim()}
               style={statusIconSizeStyle}
             />
           </span>
@@ -806,10 +1077,66 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
             aria-label={metrics.doorOpen ? 'Door open' : 'Door'}
           >
             <DoorOpen
-              className={`${statusIconSizeClass} jvs-icon ${metrics.doorOpen ? activeIconClass : inactiveIconClass}`.trim()}
+              className={`${statusIconSizeClass} jvs-icon ${metrics.doorOpen ? doorActiveIconClass : inactiveIconClass}`.trim()}
               style={statusIconSizeStyle}
             />
           </span>
+          {/* Smoke detector - always show when sensor exists in room */}
+          {metrics.smokeCount > 0 ? (
+            <span
+              className={statusIconBase}
+              style={statusIconStyle}
+              title={metrics.smokeAlarm ? 'Smoke detected!' : 'Smoke detector'}
+              aria-label={metrics.smokeAlarm ? 'Smoke detected' : 'Smoke detector'}
+            >
+              <Flame
+                className={`${statusIconSizeClass} jvs-icon ${metrics.smokeAlarm ? smokeActiveIconClass : inactiveIconClass}`.trim()}
+                style={statusIconSizeStyle}
+              />
+            </span>
+          ) : null}
+          {/* CO detector - always show when sensor exists in room */}
+          {metrics.coCount > 0 ? (
+            <span
+              className={statusIconBase}
+              style={statusIconStyle}
+              title={metrics.coAlarm ? 'Carbon monoxide detected!' : 'CO detector'}
+              aria-label={metrics.coAlarm ? 'Carbon monoxide detected' : 'CO detector'}
+            >
+              <CircleAlert
+                className={`${statusIconSizeClass} jvs-icon ${metrics.coAlarm ? coActiveIconClass : inactiveIconClass}`.trim()}
+                style={statusIconSizeStyle}
+              />
+            </span>
+          ) : null}
+          {/* Water/leak sensor - always show when sensor exists in room */}
+          {metrics.waterCount > 0 ? (
+            <span
+              className={statusIconBase}
+              style={statusIconStyle}
+              title={metrics.waterAlarm ? 'Water/leak detected!' : 'Water sensor'}
+              aria-label={metrics.waterAlarm ? 'Water leak detected' : 'Water sensor'}
+            >
+              <Droplets
+                className={`${statusIconSizeClass} jvs-icon ${metrics.waterAlarm ? waterActiveIconClass : inactiveIconClass}`.trim()}
+                style={statusIconSizeStyle}
+              />
+            </span>
+          ) : null}
+          {/* Presence sensor - always show when sensor exists in room */}
+          {metrics.presenceCount > 0 ? (
+            <span
+              className={statusIconBase}
+              style={statusIconStyle}
+              title={metrics.presenceHome ? 'Presence detected' : 'Presence sensor'}
+              aria-label={metrics.presenceHome ? 'Presence detected' : 'Presence sensor'}
+            >
+              <User
+                className={`${statusIconSizeClass} jvs-icon ${metrics.presenceHome ? presenceActiveIconClass : inactiveIconClass}`.trim()}
+                style={statusIconSizeStyle}
+              />
+            </span>
+          ) : null}
         </div>
       </div>
 
@@ -830,6 +1157,22 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
           <div className="flex flex-wrap justify-center gap-3">
             {supportedActions.map((d) => {
               const iconSrc = getDeviceTypeIconSrc({ ui: { deviceTypeIcons } }, d.internalType);
+              
+              // Check for per-device control icon assignment (supports array or string)
+              const controlIconVal = (deviceControlIcons && typeof deviceControlIcons === 'object')
+                ? deviceControlIcons[d.id]
+                : null;
+              const controlIconIds = controlIconVal
+                ? (Array.isArray(controlIconVal) ? controlIconVal : [controlIconVal]).map((v) => String(v || '').trim()).filter(Boolean)
+                : [];
+              
+              // Build device object for InteractiveControlIcon
+              const deviceObj = {
+                id: d.id,
+                switch: d.attrs?.switch || 'off',
+                level: d.attrs?.level ?? 0,
+                ...d.attrs,
+              };
 
               return (
                 <div
@@ -900,6 +1243,24 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
                       if (!resolved) return;
                       runAction(d.id, resolved, Array.isArray(args) ? args : []);
                     };
+
+                    // If control icons are assigned, render them instead of the default controls
+                    if (controlIconIds.length > 0) {
+                      return (
+                        <div className="flex flex-wrap gap-2 justify-center items-end">
+                          {controlIconIds.map((iconId) => (
+                            <InteractiveControlIcon
+                              key={iconId}
+                              iconId={iconId}
+                              device={deviceObj}
+                              disabled={!connected}
+                              onCommand={(deviceId, command, args) => runAction(deviceId, command, args)}
+                              className="w-16 h-16"
+                            />
+                          ))}
+                        </div>
+                      );
+                    }
 
                     return (
                       <>
@@ -1060,6 +1421,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
                     );
                     })()}
                   </div>
+                  <DeviceInfoGrid items={d.infoItems} scale={scaleNum} primaryTextColorClassName={primaryTextColorClassName} secondaryTextColorClassName={secondaryTextColorClassName} tertiaryTextColorClassName={tertiaryTextColorClassName} />
                 </div>
               );
             })}
@@ -1067,7 +1429,43 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
         </div>
       ) : null}
 
-      {!supportedActions.length && !hasEnv ? (
+      {sensorDevices.length ? (
+        <div className="mt-4">
+          <div
+            className={`text-[11px] md:text-xs uppercase tracking-[0.2em] jvs-secondary-text font-semibold mb-3 ${secondaryTextColorClassName}`.trim()}
+            style={{ fontSize: `calc(11px * var(--jvs-secondary-text-size-scale, 1))` }}
+          >
+            Sensors
+          </div>
+          <div className="flex flex-wrap justify-center gap-3">
+            {sensorDevices.map((d) => {
+              const iconSrc = getDeviceTypeIconSrc({ ui: { deviceTypeIcons } }, d.internalType);
+              return (
+                <div
+                  key={d.id}
+                  className={`glass-panel ${scaleNum === 1 ? 'p-3' : ''} border border-white/10 inline-flex flex-col items-center`}
+                  style={scaleNum === 1 ? undefined : { padding: `${Math.round(16 * scaleNum)}px` }}
+                >
+                  <div
+                    className={`${scaleNum === 1 ? 'text-[11px] md:text-xs' : ''} text-center uppercase tracking-[0.2em] jvs-secondary-text-strong font-semibold ${secondaryTextColorClassName}`.trim()}
+                    style={{ fontSize: `calc(${Math.round(11 * scaleNum)}px * var(--jvs-secondary-text-size-scale, 1))` }}
+                  >
+                    <span className="inline-flex items-center gap-2 min-w-0 max-w-full">
+                      {iconSrc ? (
+                        <img src={iconSrc} alt="" aria-hidden="true" className="w-4 h-4 shrink-0" />
+                      ) : null}
+                      <span className="truncate">{d.label}</span>
+                    </span>
+                  </div>
+                  <DeviceInfoGrid items={d.infoItems} scale={scaleNum} primaryTextColorClassName={primaryTextColorClassName} secondaryTextColorClassName={secondaryTextColorClassName} tertiaryTextColorClassName={tertiaryTextColorClassName} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {!supportedActions.length && !sensorDevices.length && !hasEnv ? (
         <div className="mt-4 text-sm text-white/40">No supported devices in this room.</div>
       ) : null}
     </section>
@@ -1167,6 +1565,21 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     };
   }, [config?.ui?.climateToleranceColors]);
 
+  const sensorIndicatorColors = useMemo(() => {
+    const raw = (config?.ui?.sensorIndicatorColors && typeof config.ui.sensorIndicatorColors === 'object')
+      ? config.ui.sensorIndicatorColors
+      : {};
+
+    return {
+      motion: normalizeToleranceColorId(raw.motion, 'warning'),
+      door: normalizeToleranceColorId(raw.door, 'neon-red'),
+      smoke: normalizeToleranceColorId(raw.smoke, 'neon-red'),
+      co: normalizeToleranceColorId(raw.co, 'neon-red'),
+      water: normalizeToleranceColorId(raw.water, 'neon-blue'),
+      presence: normalizeToleranceColorId(raw.presence, 'neon-green'),
+    };
+  }, [config?.ui?.sensorIndicatorColors]);
+
   const homeBackground = useMemo(() => {
     const raw = (config?.ui?.homeBackground && typeof config.ui.homeBackground === 'object')
       ? config.ui.homeBackground
@@ -1260,6 +1673,17 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     if (!primaryTextColorId) return '';
     return getToleranceTextClassForColorId(primaryTextColorId);
   }, [primaryTextColorId]);
+
+  const tertiaryTextColorId = useMemo(() => {
+    const raw = String(config?.ui?.tertiaryTextColorId ?? '').trim();
+    if (!raw) return '';
+    return normalizeToleranceColorId(raw, 'neon-green');
+  }, [config?.ui?.tertiaryTextColorId]);
+
+  const tertiaryTextColorClass = useMemo(() => {
+    if (!tertiaryTextColorId) return '';
+    return getToleranceTextClassForColorId(tertiaryTextColorId);
+  }, [tertiaryTextColorId]);
 
   const homeRoomColumnsXl = useMemo(() => {
     const raw = Number(config?.ui?.homeRoomColumnsXl);
@@ -1937,11 +2361,14 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                       uiScheme={resolvedUiScheme}
                       climateTolerances={climateTolerances}
                       climateToleranceColors={climateToleranceColors}
+                      sensorIndicatorColors={sensorIndicatorColors}
                       colorizeHomeValues={colorizeHomeValues}
                       colorizeHomeValuesOpacityPct={colorizeHomeValuesOpacityPct}
                       deviceCommandAllowlist={config?.ui?.deviceCommandAllowlist}
                       deviceHomeMetricAllowlist={config?.ui?.deviceHomeMetricAllowlist}
+                      deviceInfoMetricAllowlist={config?.ui?.deviceInfoMetricAllowlist}
                       deviceTypeIcons={config?.ui?.deviceTypeIcons}
+                      deviceControlIcons={config?.ui?.deviceControlIcons}
                       switchControlStyle={switchControlStyle}
                       switchAnimationStyle={switchAnimationStyle}
                       homeRoomMetricKeys={homeRoomMetricKeys}
@@ -1949,6 +2376,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                       homeRoomColumnsXl={homeRoomColumnsXl}
                       primaryTextColorClassName={primaryTextColorClass}
                       secondaryTextColorClassName={secondaryTextColorClass}
+                      tertiaryTextColorClassName={tertiaryTextColorClass}
                       contentScale={roomContentScale}
                       fillHeight={homeRoomLayoutMode !== 'masonry'}
                     />

@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 48 120" aria-labelledby="title desc" role="img">
+  <title id="title">Brightness Slider</title>
+  <desc id="desc">A vertical slider to adjust brightness level.</desc>
+
+  <defs>
+    <linearGradient id="trackGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0D1117"/>
+      <stop offset="1" stop-color="#1A1E28"/>
+    </linearGradient>
+    <linearGradient id="fillGrad" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#FBBF24"/>
+      <stop offset="1" stop-color="#FDE68A"/>
+    </linearGradient>
+    <linearGradient id="thumbGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#D1D5DB"/>
+    </linearGradient>
+    <filter id="thumbShadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <style>
+    .track {
+      fill: url(#trackGrad);
+      stroke: rgba(255,255,255,0.08);
+      stroke-width: 1;
+    }
+    .fill {
+      fill: url(#fillGrad);
+      transition: height 80ms ease-out, y 80ms ease-out;
+    }
+    .thumb {
+      fill: url(#thumbGrad);
+      filter: url(#thumbShadow);
+      cursor: ns-resize;
+      transition: cy 80ms ease-out;
+    }
+    .thumb:hover {
+      fill: #FFFFFF;
+    }
+    .thumb-grip {
+      stroke: rgba(0,0,0,0.15);
+      stroke-width: 1;
+      pointer-events: none;
+    }
+    .slider-region {
+      fill: rgba(0,0,0,0.001); pointer-events: all;
+      cursor: ns-resize;
+    }
+    .level-marks {
+      stroke: rgba(255,255,255,0.1);
+      stroke-width: 1;
+    }
+    .label {
+      fill: rgba(255,255,255,0.4);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 8px;
+      text-anchor: middle;
+    }
+    .icon-sun {
+      fill: none;
+      stroke: rgba(255,255,255,0.3);
+      stroke-width: 1.5;
+      stroke-linecap: round;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .fill, .thumb { transition: none !important; }
+    }
+  </style>
+
+  <!-- Sun icon at top (bright) -->
+  <g class="icon-sun" transform="translate(24, 12)">
+    <circle cx="0" cy="0" r="4"/>
+    <line x1="0" y1="-8" x2="0" y2="-6"/>
+    <line x1="0" y1="6" x2="0" y2="8"/>
+    <line x1="-8" y1="0" x2="-6" y2="0"/>
+    <line x1="6" y1="0" x2="8" y2="0"/>
+  </g>
+
+  <!-- Track background -->
+  <rect class="track" x="16" y="26" width="16" height="80" rx="8"/>
+
+  <!-- Level marks -->
+  <g class="level-marks">
+    <line x1="10" y1="30" x2="14" y2="30"/>
+    <line x1="10" y1="46" x2="14" y2="46"/>
+    <line x1="10" y1="66" x2="14" y2="66"/>
+    <line x1="10" y1="86" x2="14" y2="86"/>
+    <line x1="10" y1="102" x2="14" y2="102"/>
+  </g>
+
+  <!-- Fill (shows current level) - positioned via JS based on level -->
+  <rect class="fill" data-element="level-fill" x="16" y="66" width="16" height="40" rx="8"/>
+
+  <!-- Interactive region for dragging -->
+  <rect class="slider-region" data-region="level" x="8" y="24" width="32" height="84"/>
+
+  <!-- Thumb knob -->
+  <circle class="thumb" data-element="level-thumb" cx="24" cy="66" r="10"/>
+  
+  <!-- Thumb grip lines -->
+  <g class="thumb-grip" data-element="level-grip">
+    <line x1="20" y1="64" x2="28" y2="64"/>
+    <line x1="20" y1="66" x2="28" y2="66"/>
+    <line x1="20" y1="68" x2="28" y2="68"/>
+  </g>
+
+  <!-- Moon icon at bottom (dim) -->
+  <g transform="translate(24, 114)">
+    <path class="icon-sun" d="M 3,-3 A 4,4 0 1,1 -3,3 A 3,3 0 0,0 3,-3"/>
+  </g>
+</svg>

@@ -1,0 +1,58 @@
+{
+  "id": "brightness-slider",
+  "name": "Brightness Slider",
+  "description": "A vertical slider for adjusting light brightness (0-100%).",
+  "file": "brightness-slider.svg",
+  "version": "1.0.0",
+  
+  "requiredCommands": ["setLevel"],
+  "optionalCommands": [],
+  
+  "stateBindings": {
+    "level": {
+      "type": "number",
+      "attribute": "level",
+      "min": 0,
+      "max": 100,
+      "cssVariable": "--level",
+      "elements": {
+        "level-fill": {
+          "transform": "scaleY",
+          "origin": "bottom"
+        },
+        "level-thumb": {
+          "transform": "translateY",
+          "invert": true
+        },
+        "level-grip": {
+          "transform": "translateY",
+          "invert": true
+        }
+      }
+    }
+  },
+  
+  "regions": [
+    {
+      "id": "level",
+      "selector": "[data-region='level']",
+      "action": "slider",
+      "command": "setLevel",
+      "stateAttribute": "level",
+      "parameter": "level",
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "orientation": "vertical",
+      "invert": true,
+      "debounce": 100,
+      "tooltip": "Drag to adjust brightness"
+    }
+  ],
+  
+  "layout": {
+    "aspectRatio": "48:120",
+    "preferredWidth": 48,
+    "preferredHeight": 120
+  }
+}

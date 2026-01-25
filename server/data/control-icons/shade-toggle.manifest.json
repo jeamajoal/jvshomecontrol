@@ -1,0 +1,42 @@
+{
+  "id": "shade-toggle",
+  "name": "Shade Toggle",
+  "description": "A window shade button that toggles open/close.",
+  "file": "shade-toggle.svg",
+  "version": "1.0.0",
+  
+  "requiredCommands": ["open", "close"],
+  "optionalCommands": [],
+  
+  "stateBindings": {
+    "windowShade": {
+      "type": "boolean",
+      "attribute": "windowShade",
+      "onValue": "open",
+      "offValue": "closed",
+      "cssClass": {
+        "on": "is-open",
+        "off": "is-closed"
+      }
+    }
+  },
+  
+  "regions": [
+    {
+      "id": "toggle",
+      "selector": "[data-region='toggle']",
+      "action": "toggle",
+      "stateAttribute": "windowShade",
+      "onValue": "open",
+      "toggleCommands": ["open", "close"],
+      "eventType": "click",
+      "tooltip": "Toggle Shade"
+    }
+  ],
+  
+  "layout": {
+    "aspectRatio": "1:1",
+    "preferredWidth": 48,
+    "preferredHeight": 48
+  }
+}

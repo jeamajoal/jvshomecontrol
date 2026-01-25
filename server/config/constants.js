@@ -12,6 +12,7 @@ const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const SOUNDS_DIR = path.join(DATA_DIR, 'sounds');
 const BACKGROUNDS_DIR = path.join(DATA_DIR, 'backgrounds');
 const DEVICE_ICONS_DIR = path.join(DATA_DIR, 'device-icons');
+const CONTROL_ICONS_DIR = path.join(DATA_DIR, 'control-icons');
 const CLIENT_DIST_DIR = path.join(__dirname, '..', '..', 'client', 'dist');
 const CLIENT_INDEX_HTML = path.join(CLIENT_DIST_DIR, 'index.html');
 const CERT_DIR_DEFAULT = path.join(DATA_DIR, 'certs');
@@ -465,6 +466,7 @@ module.exports = {
     SOUNDS_DIR,
     BACKGROUNDS_DIR,
     DEVICE_ICONS_DIR,
+    CONTROL_ICONS_DIR,
     CLIENT_DIST_DIR,
     CLIENT_INDEX_HTML,
     CERT_DIR_DEFAULT,

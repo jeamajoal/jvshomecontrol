@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 80 80" aria-labelledby="title desc" role="img">
+  <title id="title">Light Toggle</title>
+  <desc id="desc">A lightbulb button. Tap to toggle on/off.</desc>
+
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1F2430"/>
+      <stop offset="1" stop-color="#121622"/>
+    </linearGradient>
+    <linearGradient id="ringGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A4358"/>
+      <stop offset="1" stop-color="#252B3A"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    .bg { fill: url(#bgGrad); }
+    .ring {
+      fill: none;
+      stroke: url(#ringGrad);
+      stroke-width: 4;
+      transition: stroke 200ms ease-out, filter 200ms ease-out;
+    }
+    .bulb {
+      fill: none;
+      stroke: #6B7280;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      transition: stroke 200ms ease-out, fill 200ms ease-out;
+    }
+    .bulb-fill {
+      fill: #6B7280;
+      opacity: 0.3;
+      transition: fill 200ms ease-out, opacity 200ms ease-out;
+    }
+    .rays {
+      stroke: #6B7280;
+      stroke-width: 2;
+      stroke-linecap: round;
+      opacity: 0;
+      transition: stroke 200ms ease-out, opacity 200ms ease-out;
+    }
+    .hit-area {
+      fill: rgba(0,0,0,0.001);
+      cursor: pointer;
+      pointer-events: all;
+    }
+    .hit-area:hover ~ .ring {
+      stroke: rgba(255,255,255,0.3);
+    }
+    .hit-area:active ~ .ring {
+      stroke: rgba(255,255,255,0.4);
+    }
+
+    /* ON state */
+    svg.is-on .ring {
+      stroke: #FBBF24;
+      filter: drop-shadow(0 0 8px rgba(251,191,36,0.5));
+    }
+    svg.is-on .bulb {
+      stroke: #FBBF24;
+    }
+    svg.is-on .bulb-fill {
+      fill: #FBBF24;
+      opacity: 0.6;
+    }
+    svg.is-on .rays {
+      stroke: #FBBF24;
+      opacity: 1;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .ring, .bulb, .bulb-fill, .rays { transition: none !important; }
+    }
+  </style>
+
+  <!-- Background -->
+  <circle class="bg" cx="40" cy="40" r="36"/>
+  
+  <!-- Interactive hit area -->
+  <circle class="hit-area" data-region="toggle" cx="40" cy="40" r="36"/>
+  
+  <!-- Ring -->
+  <circle class="ring" cx="40" cy="40" r="28"/>
+  
+  <!-- Light rays (visible when on) -->
+  <g class="rays">
+    <line x1="40" y1="16" x2="40" y2="20"/>
+    <line x1="56" y1="24" x2="53" y2="27"/>
+    <line x1="24" y1="24" x2="27" y2="27"/>
+  </g>
+  
+  <!-- Lightbulb -->
+  <g transform="translate(40, 40)">
+    <!-- Bulb shape -->
+    <path class="bulb-fill" d="M -10,0 A 10,10 0 1,1 10,0 Q 10,8 6,12 L -6,12 Q -10,8 -10,0 Z"/>
+    <path class="bulb" d="M -10,0 A 10,10 0 1,1 10,0 Q 10,8 6,12 L -6,12 Q -10,8 -10,0 Z"/>
+    <!-- Base -->
+    <line class="bulb" x1="-5" y1="14" x2="5" y2="14"/>
+    <line class="bulb" x1="-4" y1="17" x2="4" y2="17"/>
+  </g>
+</svg>

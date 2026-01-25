@@ -1,0 +1,39 @@
+{
+  "id": "volume-knob",
+  "name": "Volume Knob",
+  "description": "A rotary dial for volume control, like mixing console knobs.",
+  "file": null,
+  "version": "1.0.0",
+  "reactComponent": "VolumeKnob",
+  
+  "requiredCommands": ["setVolume"],
+  "optionalCommands": ["volumeUp", "volumeDown", "mute", "unmute"],
+  
+  "stateBindings": {
+    "volume": {
+      "type": "number",
+      "attribute": "volume",
+      "min": 0,
+      "max": 100
+    }
+  },
+  
+  "regions": [
+    {
+      "id": "volume",
+      "action": "knob",
+      "command": "setVolume",
+      "stateAttribute": "volume",
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "tooltip": "Rotate to adjust volume"
+    }
+  ],
+  
+  "layout": {
+    "aspectRatio": "80:100",
+    "preferredWidth": 80,
+    "preferredHeight": 100
+  }
+}

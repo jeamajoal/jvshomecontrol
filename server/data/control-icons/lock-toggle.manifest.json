@@ -1,0 +1,42 @@
+{
+  "id": "lock-toggle",
+  "name": "Lock Toggle",
+  "description": "A circular lock button that toggles lock/unlock.",
+  "file": "lock-toggle.svg",
+  "version": "1.0.0",
+  
+  "requiredCommands": ["lock", "unlock"],
+  "optionalCommands": [],
+  
+  "stateBindings": {
+    "lock": {
+      "type": "boolean",
+      "attribute": "lock",
+      "onValue": "locked",
+      "offValue": "unlocked",
+      "cssClass": {
+        "on": "is-locked",
+        "off": "is-unlocked"
+      }
+    }
+  },
+  
+  "regions": [
+    {
+      "id": "toggle",
+      "selector": "[data-region='toggle']",
+      "action": "toggle",
+      "stateAttribute": "lock",
+      "onValue": "locked",
+      "toggleCommands": ["lock", "unlock"],
+      "eventType": "click",
+      "tooltip": "Toggle Lock"
+    }
+  ],
+  
+  "layout": {
+    "aspectRatio": "1:1",
+    "preferredWidth": 48,
+    "preferredHeight": 48
+  }
+}

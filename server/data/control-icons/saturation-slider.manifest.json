@@ -1,0 +1,58 @@
+{
+  "id": "saturation-slider",
+  "name": "Saturation Slider",
+  "description": "A vertical slider for adjusting color saturation (0-100%).",
+  "file": "saturation-slider.svg",
+  "version": "1.0.0",
+  
+  "requiredCommands": ["setSaturation"],
+  "optionalCommands": [],
+  
+  "stateBindings": {
+    "saturation": {
+      "type": "number",
+      "attribute": "saturation",
+      "min": 0,
+      "max": 100,
+      "cssVariable": "--saturation",
+      "elements": {
+        "saturation-fill": {
+          "transform": "scaleY",
+          "origin": "bottom"
+        },
+        "saturation-thumb": {
+          "transform": "translateY",
+          "invert": true
+        },
+        "saturation-grip": {
+          "transform": "translateY",
+          "invert": true
+        }
+      }
+    }
+  },
+  
+  "regions": [
+    {
+      "id": "saturation",
+      "selector": "[data-region='saturation']",
+      "action": "slider",
+      "command": "setSaturation",
+      "stateAttribute": "saturation",
+      "parameter": "saturation",
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "orientation": "vertical",
+      "invert": true,
+      "debounce": 100,
+      "tooltip": "Drag to adjust saturation"
+    }
+  ],
+  
+  "layout": {
+    "aspectRatio": "48:120",
+    "preferredWidth": 48,
+    "preferredHeight": 120
+  }
+}

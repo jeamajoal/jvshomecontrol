@@ -1,0 +1,42 @@
+{
+  "id": "power-toggle",
+  "name": "Power Toggle Button",
+  "description": "A circular power button that toggles the device on/off.",
+  "file": "power-toggle.svg",
+  "version": "1.0.0",
+  
+  "requiredCommands": ["on", "off"],
+  "optionalCommands": [],
+  
+  "stateBindings": {
+    "switch": {
+      "type": "boolean",
+      "attribute": "switch",
+      "onValue": "on",
+      "offValue": "off",
+      "cssClass": {
+        "on": "is-on",
+        "off": "is-off"
+      }
+    }
+  },
+  
+  "regions": [
+    {
+      "id": "toggle",
+      "selector": "[data-region='toggle']",
+      "action": "toggle",
+      "stateAttribute": "switch",
+      "onValue": "on",
+      "toggleCommands": ["on", "off"],
+      "eventType": "click",
+      "tooltip": "Toggle On/Off"
+    }
+  ],
+  
+  "layout": {
+    "aspectRatio": "1:1",
+    "preferredWidth": 48,
+    "preferredHeight": 48
+  }
+}

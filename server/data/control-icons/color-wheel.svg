@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 100 100" aria-labelledby="title desc" role="img">
+  <title id="title">Color Wheel</title>
+  <desc id="desc">A color wheel for selecting light color via hue.</desc>
+
+  <defs>
+    <!-- Hue gradient using conic gradient approximation with segments -->
+    <linearGradient id="hue0" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FF0000"/>
+      <stop offset="1" stop-color="#FFFF00"/>
+    </linearGradient>
+    <linearGradient id="hue60" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFFF00"/>
+      <stop offset="1" stop-color="#00FF00"/>
+    </linearGradient>
+    <linearGradient id="hue120" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#00FF00"/>
+      <stop offset="1" stop-color="#00FFFF"/>
+    </linearGradient>
+    <linearGradient id="hue180" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#00FFFF"/>
+      <stop offset="1" stop-color="#0000FF"/>
+    </linearGradient>
+    <linearGradient id="hue240" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0000FF"/>
+      <stop offset="1" stop-color="#FF00FF"/>
+    </linearGradient>
+    <linearGradient id="hue300" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FF00FF"/>
+      <stop offset="1" stop-color="#FF0000"/>
+    </linearGradient>
+    <filter id="wheelGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="thumbShadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <style>
+    .wheel-bg {
+      fill: #121622;
+    }
+    .wheel-segment {
+      fill: none;
+      stroke-width: 14;
+      opacity: 0.9;
+    }
+    .wheel-inner {
+      fill: #1A1E28;
+      stroke: rgba(255,255,255,0.1);
+      stroke-width: 1;
+    }
+    .thumb {
+      fill: #FFFFFF;
+      stroke: rgba(0,0,0,0.3);
+      stroke-width: 2;
+      filter: url(#thumbShadow);
+      cursor: pointer;
+      transition: transform 80ms ease-out;
+    }
+    .thumb:hover {
+      transform: scale(1.1);
+    }
+    .color-preview {
+      stroke: rgba(255,255,255,0.2);
+      stroke-width: 1;
+      transition: fill 100ms ease-out;
+    }
+    .wheel-region {
+      fill: rgba(0,0,0,0.001); pointer-events: all;
+      cursor: crosshair;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .thumb, .color-preview { transition: none !important; }
+    }
+  </style>
+
+  <!-- Background -->
+  <circle class="wheel-bg" cx="50" cy="50" r="46"/>
+
+  <!-- Color wheel ring (6 segments) -->
+  <g filter="url(#wheelGlow)">
+    <circle class="wheel-segment" cx="50" cy="50" r="38" stroke="#FF0000" stroke-dasharray="39.8 199" stroke-dashoffset="10"/>
+    <circle class="wheel-segment" cx="50" cy="50" r="38" stroke="#FFFF00" stroke-dasharray="39.8 199" stroke-dashoffset="-29.8"/>
+    <circle class="wheel-segment" cx="50" cy="50" r="38" stroke="#00FF00" stroke-dasharray="39.8 199" stroke-dashoffset="-69.6"/>
+    <circle class="wheel-segment" cx="50" cy="50" r="38" stroke="#00FFFF" stroke-dasharray="39.8 199" stroke-dashoffset="-109.4"/>
+    <circle class="wheel-segment" cx="50" cy="50" r="38" stroke="#0000FF" stroke-dasharray="39.8 199" stroke-dashoffset="-149.2"/>
+    <circle class="wheel-segment" cx="50" cy="50" r="38" stroke="#FF00FF" stroke-dasharray="39.8 199" stroke-dashoffset="-189"/>
+  </g>
+
+  <!-- Inner circle (shows selected color) -->
+  <circle class="wheel-inner" cx="50" cy="50" r="24"/>
+  <circle class="color-preview" data-element="color-preview" cx="50" cy="50" r="18" fill="#FBBF24"/>
+
+  <!-- Interactive region -->
+  <circle class="wheel-region" data-region="hue" cx="50" cy="50" r="46"/>
+
+  <!-- Thumb indicator on the wheel (positioned via JS based on hue) -->
+  <circle class="thumb" data-element="hue-thumb" cx="50" cy="12" r="6"/>
+</svg>

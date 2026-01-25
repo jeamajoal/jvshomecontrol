@@ -1,13 +1,14 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Power, SlidersHorizontal } from 'lucide-react';
 
 import { getUiScheme } from '../uiScheme';
 import { API_HOST } from '../apiHost';
 import { useAppState } from '../appState';
-import { buildRoomsWithStatuses, getCtrlVisibleDeviceIdSet, getDeviceCommandAllowlist } from '../deviceSelectors';
+import { buildRoomsWithStatuses, getCtrlVisibleDeviceIdSet, getDeviceCommandAllowlist, getDeviceInfoMetricAllowlist } from '../deviceSelectors';
 import { filterCommandSchemasByAllowlist, inferInternalDeviceType, mapDeviceToControls, normalizeCommandSchemas } from '../deviceMapping';
 import { getDeviceTypeIconSrc } from '../deviceIcons';
 import InlineSvg from './InlineSvg';
+import InteractiveControlIcon from './InteractiveControlIcon';
 import HlsPlayer from './HlsPlayer';
 
 const CONTROLS_MASONRY_MIN_WIDTH_PX_DEFAULT = 360;
@@ -22,6 +23,103 @@ const asText = (value) => {
   if (value === null || value === undefined) return null;
   const s = String(value).trim();
   return s.length ? s : null;
+};
+
+const INFO_METRIC_PRIORITY = [
+  'temperature',
+  'humidity',
+  'illuminance',
+  'battery',
+  'motion',
+  'contact',
+  'door',
+  'lock',
+  'presence',
+  'switch',
+  'level',
+  'volume',
+  'mute',
+  'position',
+  'power',
+  'energy',
+  'speed',
+];
+
+const isSafeInfoMetricKey = (key) => typeof key === 'string' && key.length <= 64 && /^[A-Za-z0-9_]+$/.test(key);
+
+const isDisplayableInfoValue = (value) => {
+  if (value === null || value === undefined) return false;
+  if (Array.isArray(value)) {
+    return value.some((v) => ['string', 'number', 'boolean'].includes(typeof v));
+  }
+  if (typeof value === 'object') return false;
+  return ['string', 'number', 'boolean'].includes(typeof value);
+};
+
+const formatInfoMetricLabel = (key) => {
+  const s = String(key || '').trim();
+  if (!s) return '';
+  const upper = s.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
+  return upper.replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+const formatInfoMetricValue = (value) => {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((v) => {
+        if (v === null || v === undefined) return null;
+        if (typeof v === 'boolean') return v ? 'On' : 'Off';
+        if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+        const s = String(v).trim();
+        return s.length ? s : null;
+      })
+      .filter(Boolean);
+    return parts.length ? parts.join(', ') : null;
+  }
+  if (typeof value === 'boolean') return value ? 'On' : 'Off';
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return null;
+    if (value % 1 !== 0) return value.toFixed(1);
+    return String(Math.round(value));
+  }
+  const s = String(value).trim();
+  return s.length ? s : null;
+};
+
+const sortInfoMetricKeys = (keys) => {
+  const priority = new Map(INFO_METRIC_PRIORITY.map((k, i) => [k, i]));
+  return [...keys].sort((a, b) => {
+    const ia = priority.has(a) ? priority.get(a) : 999;
+    const ib = priority.has(b) ? priority.get(b) : 999;
+    if (ia !== ib) return ia - ib;
+    return String(a).localeCompare(String(b));
+  });
+};
+
+const DeviceInfoGrid = ({ items }) => {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return null;
+  return (
+    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+      {list.map((item) => (
+        <div key={item.key} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+          <div
+            className="text-[10px] uppercase tracking-[0.18em] jvs-secondary-text"
+            style={{ fontSize: 'calc(10px * var(--jvs-secondary-text-size-scale, 1))' }}
+          >
+            {item.label}
+          </div>
+          <div
+            className="mt-1 text-xs font-semibold jvs-tertiary-text"
+            style={{ fontSize: 'calc(12px * var(--jvs-tertiary-text-size-scale, 1))' }}
+          >
+            {item.value}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 };
 
 const useFitScale = () => {
@@ -91,7 +189,10 @@ async function sendDeviceCommand(deviceId, command, args = []) {
 const SwitchTile = ({
   label,
   iconSrc,
+  controlIconIds,
+  device,
   isOn,
+  infoItems,
   disabled,
   busyOn,
   busyOff,
@@ -102,6 +203,7 @@ const SwitchTile = ({
   onOn,
   onOff,
   onToggle,
+  onCommand,
   controlStyle,
   animationStyle,
   uiScheme,
@@ -120,7 +222,9 @@ const SwitchTile = ({
 
   const subtitle = (typeof isOn === 'boolean') ? (isOn ? 'On' : 'Off') : 'Command only';
 
-  const hasInteractiveSvg = Boolean(iconSrc);
+  // Interactive control icons take precedence over legacy SVG
+  const hasControlIcons = Array.isArray(controlIconIds) && controlIconIds.length > 0;
+  const hasInteractiveSvg = !hasControlIcons && Boolean(iconSrc);
 
   const handleSvgCommand = (rawCmd, args) => {
     const cmd = String(rawCmd || '').trim();
@@ -151,7 +255,7 @@ const SwitchTile = ({
             {subtitle}
           </div>
         </div>
-        {hasInteractiveSvg ? null : (
+        {hasControlIcons || hasInteractiveSvg ? null : (
           <div className="shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center">
             {anyBusy ? (
               <Loader2 className={`w-6 h-6 md:w-7 md:h-7 animate-spin jvs-icon ${uiScheme?.metricIcon || 'text-neon-blue'}`} />
@@ -162,7 +266,25 @@ const SwitchTile = ({
         )}
       </div>
 
+      <DeviceInfoGrid items={infoItems} />
+
       <div className="mt-3 flex flex-wrap gap-2">
+        {/* Interactive control icons - renders all assigned icons */}
+        {hasControlIcons && device ? (
+          <div className="w-full flex flex-wrap justify-center gap-2">
+            {controlIconIds.map((iconId) => (
+              <InteractiveControlIcon
+                key={iconId}
+                iconId={iconId}
+                device={device}
+                onCommand={onCommand}
+                className="w-16 h-16"
+                disabled={disabled || anyBusy}
+              />
+            ))}
+          </div>
+        ) : null}
+
         {hasInteractiveSvg ? (
           <button
             type="button"
@@ -183,7 +305,7 @@ const SwitchTile = ({
           </button>
         ) : null}
 
-        {!hasInteractiveSvg && mode === 'switch' ? (
+        {!hasControlIcons && !hasInteractiveSvg && mode === 'switch' ? (
           <button
             type="button"
             disabled={disabled || anyBusy}
@@ -215,7 +337,7 @@ const SwitchTile = ({
           </button>
         ) : null}
 
-        {!hasInteractiveSvg && mode !== 'switch' && canOn ? (
+        {!hasControlIcons && !hasInteractiveSvg && mode !== 'switch' && canOn ? (
           <button
             type="button"
             disabled={disabled || busyOn}
@@ -226,7 +348,7 @@ const SwitchTile = ({
           </button>
         ) : null}
 
-        {!hasInteractiveSvg && mode !== 'switch' && canOff ? (
+        {!hasControlIcons && !hasInteractiveSvg && mode !== 'switch' && canOff ? (
           <button
             type="button"
             disabled={disabled || busyOff}
@@ -237,7 +359,7 @@ const SwitchTile = ({
           </button>
         ) : null}
 
-        {!hasInteractiveSvg && mode !== 'switch' && !canOn && !canOff && canToggle ? (
+        {!hasControlIcons && !hasInteractiveSvg && mode !== 'switch' && !canOn && !canOff && canToggle ? (
           <button
             type="button"
             disabled={disabled || busyToggle}
@@ -252,7 +374,22 @@ const SwitchTile = ({
   );
 };
 
-const LevelTile = ({ label, iconSrc, isOn, level, disabled, busy, onToggle, onSetLevel, uiScheme }) => {
+const LevelTile = ({ 
+  label, 
+  iconSrc, 
+  controlIconIds,
+  deviceId,
+  device,
+  isOn, 
+  level, 
+  infoItems, 
+  disabled, 
+  busy, 
+  onToggle, 
+  onSetLevel,
+  onCommand,
+  uiScheme,
+}) => {
   const levelNum = asNumber(level);
   const displayLevel = levelNum === null ? 0 : Math.max(0, Math.min(100, Math.round(levelNum)));
   const [draft, setDraft] = useState(displayLevel);
@@ -260,6 +397,9 @@ const LevelTile = ({ label, iconSrc, isOn, level, disabled, busy, onToggle, onSe
   useEffect(() => {
     setDraft(displayLevel);
   }, [displayLevel]);
+
+  // Use interactive control icons if configured
+  const hasControlIcons = Array.isArray(controlIconIds) && controlIconIds.length > 0;
 
   return (
     <div className={`w-full glass-panel border-0 shadow-none p-2 md:p-3 ${disabled ? 'opacity-50' : ''}`}>
@@ -287,19 +427,40 @@ const LevelTile = ({ label, iconSrc, isOn, level, disabled, busy, onToggle, onSe
           </div>
         </div>
 
-        <button
-          type="button"
-          disabled={disabled || busy}
-          onClick={onToggle}
-          className={`shrink-0 rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] ${
-            isOn ? (uiScheme?.actionButton || 'text-neon-blue border-neon-blue/30 bg-neon-blue/10') : 'text-white/60 border-white/10 bg-white/5'
-          } ${(disabled || busy) ? 'opacity-50' : 'hover:bg-white/10'}`}
-        >
-          {busy ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Toggle'}
-        </button>
+        {!hasControlIcons && (
+          <button
+            type="button"
+            disabled={disabled || busy}
+            onClick={onToggle}
+            className={`shrink-0 rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] ${
+              isOn ? (uiScheme?.actionButton || 'text-neon-blue border-neon-blue/30 bg-neon-blue/10') : 'text-white/60 border-white/10 bg-white/5'
+            } ${(disabled || busy) ? 'opacity-50' : 'hover:bg-white/10'}`}
+          >
+            {busy ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Toggle'}
+          </button>
+        )}
       </div>
 
-      {iconSrc ? (
+      <DeviceInfoGrid items={infoItems} />
+
+      {/* Interactive control icons - replaces both icon and slider when configured */}
+      {hasControlIcons && device ? (
+        <div className="mt-3 flex flex-wrap justify-center gap-2 items-end">
+          {controlIconIds.map((iconId) => (
+            <InteractiveControlIcon
+              key={iconId}
+              iconId={iconId}
+              device={device}
+              onCommand={onCommand}
+              className="w-16 h-20"
+              disabled={disabled || busy}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {/* Legacy: static icon display */}
+      {!hasControlIcons && iconSrc ? (
         <button
           type="button"
           disabled={disabled || busy}
@@ -315,8 +476,6 @@ const LevelTile = ({ label, iconSrc, isOn, level, disabled, busy, onToggle, onSe
               if (!cmd) return;
               const lower = cmd.toLowerCase();
               if (lower === 'toggle') return onToggle();
-              // Dimmer SVG hotspots can optionally target toggle.
-              // Level-specific actions (setLevel) remain via slider/command UI.
             }}
             className="mx-auto w-[92px] h-[92px]"
             style={{ display: 'block' }}
@@ -326,26 +485,29 @@ const LevelTile = ({ label, iconSrc, isOn, level, disabled, busy, onToggle, onSe
         </button>
       ) : null}
 
-      <div className="mt-4">
-        <input
-          type="range"
-          min={0}
-          max={100}
-          step={1}
-          value={draft}
-          disabled={disabled || busy}
-          onChange={(e) => setDraft(Number(e.target.value))}
-          onMouseUp={() => onSetLevel(draft)}
-          onTouchEnd={() => onSetLevel(draft)}
-          className="w-full"
-        />
-        <div
-          className="mt-2 uppercase tracking-[0.2em] jvs-secondary-text text-white"
-          style={{ fontSize: 'calc(10px * var(--jvs-secondary-text-size-scale, 1))' }}
-        >
-          Slide and release to set level
+      {/* Slider - only show if not using interactive control icons */}
+      {!hasControlIcons && (
+        <div className="mt-4">
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={draft}
+            disabled={disabled || busy}
+            onChange={(e) => setDraft(Number(e.target.value))}
+            onMouseUp={() => onSetLevel(draft)}
+            onTouchEnd={() => onSetLevel(draft)}
+            className="w-full"
+          />
+          <div
+            className="mt-2 uppercase tracking-[0.2em] jvs-secondary-text text-white"
+            style={{ fontSize: 'calc(10px * var(--jvs-secondary-text-size-scale, 1))' }}
+          >
+            Slide and release to set level
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
@@ -374,6 +536,21 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
     if (raw === 'none' || raw === 'pulse') return raw;
     return 'none';
   }, [config?.ui?.deviceControlStyles?.switch?.animationStyle]);
+
+  // Per-device control icon assignments
+  const deviceControlIcons = useMemo(() => {
+    const map = config?.ui?.deviceControlIcons;
+    return (map && typeof map === 'object') ? map : {};
+  }, [config?.ui?.deviceControlIcons]);
+
+  // Helper to get control icon IDs for a device (returns array)
+  const getDeviceControlIconIds = useCallback((deviceId) => {
+    const id = String(deviceId || '').trim();
+    const val = deviceControlIcons[id];
+    if (!val) return [];
+    if (Array.isArray(val)) return val.map((v) => String(v || '').trim()).filter(Boolean);
+    return [String(val || '').trim()].filter(Boolean);
+  }, [deviceControlIcons]);
 
   const ctrlVisibleDeviceIds = useMemo(() => getCtrlVisibleDeviceIdSet(config), [config]);
 
@@ -828,6 +1005,27 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                       commandSchemas: schemas,
                     });
 
+                    const availableInfoMetricKeys = sortInfoMetricKeys(
+                      Object.entries(attrs)
+                        .filter(([key, value]) => isSafeInfoMetricKey(key) && isDisplayableInfoValue(value))
+                        .map(([key]) => key),
+                    );
+                    const infoAllowlist = getDeviceInfoMetricAllowlist(config, d.id);
+                    const infoKeys = Array.isArray(infoAllowlist)
+                      ? availableInfoMetricKeys.filter((k) => infoAllowlist.includes(k))
+                      : [];
+                    const infoItems = infoKeys
+                      .map((key) => {
+                        const value = formatInfoMetricValue(attrs?.[key]);
+                        if (value === null) return null;
+                        return {
+                          key,
+                          label: formatInfoMetricLabel(key),
+                          value,
+                        };
+                      })
+                      .filter(Boolean);
+
                     const internalType = inferInternalDeviceType({
                       hubitatType: d.type,
                       capabilities: d.status?.capabilities,
@@ -845,12 +1043,12 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                       controls,
                       state: d.status?.state,
                       internalType,
+                      infoItems,
                     };
                   })
-                  // IMPORTANT: include all devices that report any commands.
-                  // Some devices (thermostats, cameras, etc.) may only expose arg-based commands.
-                  // Those will still show up here, even if we can’t render full controls yet.
-                  .filter((d) => d.commands.length);
+                  // Include devices that have commands OR have info cards configured.
+                  // Sensors without commands can still show info cards.
+                  .filter((d) => d.commands.length || d.infoItems.length);
 
                 if (!controllables.length) return null;
 
@@ -897,14 +1095,29 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                         const canOff = switchControl ? switchControl.canOff : d.commands.includes('off');
                         const canToggle = switchControl ? switchControl.canToggle : d.commands.includes('toggle');
 
+                        // Check for per-device control icon assignment (supports array)
+                        const controlIconIds = getDeviceControlIconIds(d.id);
+
+                        // Build device object for InteractiveControlIcon
+                        const deviceObj = {
+                          id: d.id,
+                          switch: isOn ? 'on' : 'off',
+                          level: asNumber(level) ?? 0,
+                          ...d.attrs,
+                        };
+
                         if (switchControl && hasLevel && d.commands.includes('setLevel')) {
                           return (
                             <LevelTile
                               key={d.id}
                               label={d.label}
                               iconSrc={iconSrc}
+                              controlIconIds={controlIconIds}
+                              deviceId={d.id}
+                              device={deviceObj}
                               isOn={isOn}
                               level={level}
+                              infoItems={d.infoItems}
                               disabled={!connected}
                               busy={busy.has(`${d.id}:toggle`) || busy.has(`${d.id}:setLevel`) || busy.has(`${d.id}:on`) || busy.has(`${d.id}:off`)}
                               onToggle={() => {
@@ -917,6 +1130,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                                 const n = Math.max(0, Math.min(100, Math.round(Number(next))));
                                 return run(d.id, 'setLevel', [n]);
                               }}
+                              onCommand={(deviceId, command, args) => run(deviceId, command, args)}
                               uiScheme={resolvedUiScheme}
                             />
                           );
@@ -935,7 +1149,10 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                               key={d.id}
                               label={d.label}
                               iconSrc={iconSrc}
+                              controlIconIds={controlIconIds}
+                              device={deviceObj}
                               isOn={isOn}
+                              infoItems={d.infoItems}
                               disabled={!connected}
                               busyOn={busy.has(`${d.id}:on`)}
                               busyOff={busy.has(`${d.id}:off`)}
@@ -946,6 +1163,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                               onOn={() => run(d.id, 'on')}
                               onOff={() => run(d.id, 'off')}
                               onToggle={onToggle}
+                              onCommand={(deviceId, command, args) => run(deviceId, command, args)}
                               controlStyle={switchControlStyle}
                               animationStyle={switchAnimationStyle}
                               uiScheme={resolvedUiScheme}
@@ -959,8 +1177,24 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                         // Show all allowlisted commands; if a command needs parameters, render inline inputs.
                         const schemaList = Array.isArray(d.commandSchemas) ? d.commandSchemas : [];
                         if (!schemaList.length) {
+                          // Sensor-only device: show info cards if configured
+                          if (!d.infoItems.length) {
+                            return (
+                              <div key={d.id} className="opacity-80">
+                                <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+                                  <span className="inline-flex items-center gap-2 min-w-0 max-w-full">
+                                    {iconSrc ? (
+                                      <img src={iconSrc} alt="" aria-hidden="true" className="w-4 h-4 shrink-0" />
+                                    ) : null}
+                                    <span className="truncate">{d.label}</span>
+                                  </span>
+                                </div>
+                                <div className="mt-2 text-xs text-white/45">No commands available.</div>
+                              </div>
+                            );
+                          }
                           return (
-                            <div key={d.id} className="opacity-80">
+                            <div key={d.id} className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
                               <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
                                 <span className="inline-flex items-center gap-2 min-w-0 max-w-full">
                                   {iconSrc ? (
@@ -969,7 +1203,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                                   <span className="truncate">{d.label}</span>
                                 </span>
                               </div>
-                              <div className="mt-2 text-xs text-white/45">No commands available.</div>
+                              <DeviceInfoGrid items={d.infoItems} />
                             </div>
                           );
                         }
@@ -984,6 +1218,8 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                                 <span className="truncate">{d.label}</span>
                               </span>
                             </div>
+
+                            <DeviceInfoGrid items={d.infoItems} />
 
                             <div className="mt-2 flex flex-col gap-2">
                               {schemaList.map((schema) => {
