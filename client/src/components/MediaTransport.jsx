@@ -1,20 +1,19 @@
 import React, { useCallback, useState } from 'react';
 
 /**
- * MediaTransport - TV/Media transport controls (play, pause, stop, skip)
- * 
- * A set of media control buttons styled like a modern remote control.
- * Clean, high-contrast design with prominent play button.
- * 
- * Props:
- *   isPlaying    - Current playing state
- *   isPaused     - Current paused state  
- *   disabled     - Disable interactions
- *   onCommand    - Callback: (command) => void
- *   commands     - Available commands from device
- *   className    - Additional CSS classes
- *   style        - Additional inline styles
- */
+ * Render a set of TV/media transport controls (previous, stop, play/pause, next).
+ *
+ * Renders four interactive buttons styled as a compact remote control; clicking a control invokes the provided callback with its command string and a short visual press animation is shown. The component respects the `disabled` prop to prevent interaction.
+ *
+ * @param {Object} props - Component props.
+ * @param {boolean} [props.isPlaying=false] - Whether playback is currently active; determines the main button's icon and styling.
+ * @param {boolean} [props.isPaused=false] - Accepted for parity with upstream state but not used by this component.
+ * @param {boolean} [props.disabled=false] - When true, disables interaction and applies reduced opacity.
+ * @param {(command: string) => void} [props.onCommand] - Callback invoked with one of: `'previousTrack'`, `'stop'`, `'play'`, `'pause'`, `'nextTrack'` when a control is activated.
+ * @param {string[]} [props.commands=[]] - Available commands from the device (accepted but not used by the component's rendering logic).
+ * @param {string} [props.className=''] - Additional CSS class names applied to the container.
+ * @param {Object} [props.style] - Inline styles merged into the container element.
+ * @returns {JSX.Element} A React element containing the media transport controls.
 export default function MediaTransport({
   isPlaying = false,
   isPaused = false,

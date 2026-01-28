@@ -1,19 +1,20 @@
 import React, { useCallback, useRef, useState, useEffect } from 'react';
 
 /**
- * ColorWheel - A circular color picker for selecting hue values
- * 
- * Shows the full color spectrum in a ring, with a draggable thumb indicator.
- * Designed for RGB/HSB capable lights.
- * 
- * Props:
- *   hue         - Current hue value (0-100, maps to 0-360 degrees)
- *   saturation  - Current saturation for preview (0-100)
- *   disabled    - Disable interactions
- *   onChange    - Callback when hue changes during drag
- *   onChangeEnd - Callback when drag ends (for sending command)
- *   className   - Additional CSS classes
- *   style       - Additional inline styles
+ * Render a circular hue picker that allows selecting a hue (0–100) via pointer or touch.
+ *
+ * Renders a color spectrum ring with a draggable thumb and a preview of the selected hue.
+ * User interactions invoke `onChange` during movement and `onChangeEnd` when the drag finishes.
+ *
+ * @param {object} props - Component props.
+ * @param {number} [props.hue=0] - Current hue on a 0–100 scale (mapped to 0–360°).
+ * @param {number} [props.saturation=100] - Saturation percentage for the preview (0–100).
+ * @param {boolean} [props.disabled=false] - When true, disables user interaction.
+ * @param {(newHue: number) => void} [props.onChange] - Called when the hue changes during interaction.
+ * @param {(finalHue: number) => void} [props.onChangeEnd] - Called once when interaction ends with the final hue.
+ * @param {string} [props.className] - Additional CSS class names to apply to the root element.
+ * @param {object} [props.style] - Inline styles to apply to the root element.
+ * @returns {JSX.Element} The color wheel component.
  */
 export default function ColorWheel({
   hue = 0,

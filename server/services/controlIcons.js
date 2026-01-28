@@ -11,8 +11,9 @@ const path = require('path');
 let CONTROL_ICONS_DIR = null;
 
 /**
- * Initialize the service with the control icons directory path.
- * @param {string} dir - The path to the control-icons directory
+ * Set the control icons directory and ensure it exists on disk.
+ * Creates the directory recursively if it does not already exist.
+ * @param {string} dir - Filesystem path to the control-icons directory.
  */
 function init(dir) {
     CONTROL_ICONS_DIR = dir;
@@ -23,8 +24,11 @@ function init(dir) {
 }
 
 /**
- * Get all available control icons with their manifests.
- * @returns {Object[]} Array of control icon definitions
+ * Retrieve all available control icons along with their parsed manifests.
+ *
+ * If the service has not been initialized, returns an empty array.
+ *
+ * @returns {Object[]} Array of icon definition objects. Each object contains the manifest's fields, a `manifestFile` string, and `svgUrl` which is a URL string for the SVG asset or `null` for React-only components.
  */
 function getControlIcons() {
     if (!CONTROL_ICONS_DIR) {
@@ -129,9 +133,9 @@ function getControlIconSvg(id) {
 }
 
 /**
- * Validate a manifest structure against the schema requirements.
- * @param {Object} manifest - The manifest to validate
- * @returns {{ valid: boolean, errors: string[] }}
+ * Validate a control icon manifest against the expected schema.
+ * @param {Object} manifest - The manifest object to validate (expected fields: `id`, `name`, `file`, `requiredCommands`, `regions`).
+ * @returns {{ valid: boolean, errors: string[] }} `valid` is `true` if the manifest satisfies schema requirements; `errors` contains human-readable validation failure messages.
  */
 function validateManifest(manifest) {
     const errors = [];

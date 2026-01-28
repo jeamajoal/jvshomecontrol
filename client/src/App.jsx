@@ -17,6 +17,14 @@ import { getToleranceColorStyle, getToleranceTextClass } from './toleranceColors
 
 import { socket } from './socket';
 
+/**
+ * Root React component for the JVS Home Control application.
+ *
+ * Manages application state, socket connectivity, UI theming and layout, and
+ * renders the full app UI (header, navigation, and the active content panel).
+ *
+ * @returns {JSX.Element} The rendered application element tree.
+ */
 function App() {
   const [sensors, setSensors] = useState({});
   const [config, setConfig] = useState({ rooms: [], sensors: [] });

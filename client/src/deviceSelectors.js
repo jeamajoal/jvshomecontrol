@@ -54,6 +54,13 @@ export function getDeviceCommandAllowlist(config, deviceId) {
   return cleaned.length ? cleaned : [];
 }
 
+/**
+ * Retrieve the configured Home metrics allowlist for a device from the UI config.
+ *
+ * @param {Object} config - Application configuration object containing a `ui` section.
+ * @param {*} deviceId - Device identifier; will be converted to a trimmed string. Invalid or empty ids return `null`.
+ * @returns {string[]|null} Trimmed metric ids allowed for the device, or `null` if no allowlist is defined for that device. An empty array explicitly indicates that no Home metrics should be shown for this device.
+ */
 export function getDeviceHomeMetricAllowlist(config, deviceId) {
   const id = asText(deviceId);
   if (!id) return null;
@@ -66,6 +73,12 @@ export function getDeviceHomeMetricAllowlist(config, deviceId) {
   return arr.map((v) => String(v || '').trim()).filter(Boolean);
 }
 
+/**
+ * Retrieve the list of info-metric IDs allowed for a device from the UI configuration.
+ * @param {object} config - Configuration object; expected to contain `ui.deviceInfoMetricAllowlist` as an object mapping device IDs to arrays.
+ * @param {*} deviceId - Device identifier; will be converted to a trimmed string and validated.
+ * @returns {string[]|null} An array of non-empty trimmed metric IDs for the device (may be empty to indicate no info cards), or `null` if the deviceId is invalid or the configured entry is not an array.
+ */
 export function getDeviceInfoMetricAllowlist(config, deviceId) {
   const id = asText(deviceId);
   if (!id) return null;
@@ -78,6 +91,13 @@ export function getDeviceInfoMetricAllowlist(config, deviceId) {
   return arr.map((v) => String(v || '').trim()).filter(Boolean);
 }
 
+/**
+ * Retrieve the status object for a device by id.
+ *
+ * @param {Object<string, *>} statuses - Mapping of device ids to status objects.
+ * @param {*} deviceId - Device identifier; falsy or whitespace-only values are treated as invalid.
+ * @returns {*} The status object for the normalized device id, or `null` if the id is invalid or no status exists.
+ */
 export function getDeviceStatus(statuses, deviceId) {
   const id = asText(deviceId);
   if (!id) return null;

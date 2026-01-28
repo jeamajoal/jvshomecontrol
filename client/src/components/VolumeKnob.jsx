@@ -1,24 +1,24 @@
 import React, { useCallback, useRef, useState, useEffect } from 'react';
 
 /**
- * VolumeKnob - A rotary dial control like audio mixing consoles
- * 
- * Designed for volume, speed, or any 0-100 value. Drag around the knob to adjust.
- * Features a notched indicator and optional level marks.
- * 
- * Props:
- *   value       - Current value (0-100)
- *   min         - Minimum value (default 0)
- *   max         - Maximum value (default 100)
- *   step        - Step increment (default 1)
- *   label       - Optional label text
- *   color       - Accent color (default '#22D3EE' cyan)
- *   showMarks   - Show level marks around the dial (default true)
- *   disabled    - Disable interactions
- *   onChange    - Callback when value changes during drag
- *   onChangeEnd - Callback when drag ends (for sending command)
- *   className   - Additional CSS classes
- *   style       - Additional inline styles
+ * Interactive rotary knob for selecting a numeric value within a range.
+ *
+ * Renders a draggable circular control with an indicator, optional tick marks and label,
+ * and calls callbacks as the value changes or when dragging ends.
+ *
+ * @param {number} value - Current value.
+ * @param {number} [min] - Minimum allowed value.
+ * @param {number} [max] - Maximum allowed value.
+ * @param {number} [step] - Value increment granularity.
+ * @param {string} [label] - Optional label text shown beneath the knob.
+ * @param {string} [color] - Accent color for the active arc and indicator.
+ * @param {boolean} [showMarks] - Whether to render tick marks around the dial.
+ * @param {boolean} [disabled] - When true, disables user interaction.
+ * @param {(newValue:number) => void} [onChange] - Called during dragging when the value changes.
+ * @param {(finalValue:number) => void} [onChangeEnd] - Called once when dragging ends with the final value.
+ * @param {string} [className] - Additional CSS class names applied to the container.
+ * @param {object} [style] - Inline styles applied to the container.
+ * @returns {JSX.Element} The rendered volume knob component.
  */
 export default function VolumeKnob({
   value = 0,
@@ -331,7 +331,15 @@ export default function VolumeKnob({
   );
 }
 
-// Helper to describe an SVG arc path
+/**
+ * Build an SVG path string representing a circular arc between two angles.
+ * @param {number} cx - X coordinate of the circle center.
+ * @param {number} cy - Y coordinate of the circle center.
+ * @param {number} radius - Radius of the circle.
+ * @param {number} startAngle - Start angle in degrees.
+ * @param {number} endAngle - End angle in degrees.
+ * @returns {string} An SVG path `d` value that draws the arc from `startAngle` to `endAngle`.
+ */
 function describeArc(cx, cy, radius, startAngle, endAngle) {
   const start = polarToCartesian(cx, cy, radius, endAngle);
   const end = polarToCartesian(cx, cy, radius, startAngle);
@@ -343,6 +351,14 @@ function describeArc(cx, cy, radius, startAngle, endAngle) {
   ].join(' ');
 }
 
+/**
+ * Convert polar coordinates (angle and radius) to Cartesian coordinates relative to a center point.
+ * @param {number} cx - X coordinate of the center point.
+ * @param {number} cy - Y coordinate of the center point.
+ * @param {number} radius - Distance from the center.
+ * @param {number} angleInDegrees - Angle in degrees clockwise from the positive Y-axis.
+ * @returns {{x: number, y: number}} Cartesian coordinates `{ x, y }` corresponding to the given polar coordinates.
+ */
 function polarToCartesian(cx, cy, radius, angleInDegrees) {
   const angleInRadians = (angleInDegrees - 90) * Math.PI / 180;
   return {

@@ -1,22 +1,23 @@
 import React, { useCallback, useRef, useState, useEffect } from 'react';
 
 /**
- * ControlSlider - A vertical fader-style slider for controlling levels
- * 
- * Designed like a mixing board fader - smooth drag interaction, clear visual feedback
- * 
- * Props:
- *   value       - Current value (0-100)
- *   min         - Minimum value (default 0)
- *   max         - Maximum value (default 100)
- *   step        - Step increment (default 1)
- *   label       - Optional label text
- *   color       - Accent color for the fill (default '#FBBF24')
- *   disabled    - Disable interactions
- *   onChange    - Callback when value changes during drag
- *   onChangeEnd - Callback when drag ends (for sending command)
- *   className   - Additional CSS classes
- *   style       - Additional inline styles
+ * Vertical fader-style slider component for adjusting a numeric value between a minimum and maximum.
+ *
+ * Renders a compact control with a value display, vertical track with fill, draggable thumb, and optional label; invokes callbacks during interaction.
+ *
+ * @param {object} props - Component props.
+ * @param {number} [props.value=0] - Current value within the range.
+ * @param {number} [props.min=0] - Minimum allowed value.
+ * @param {number} [props.max=100] - Maximum allowed value.
+ * @param {number} [props.step=1] - Increment step used when snapping the value.
+ * @param {string} [props.label] - Optional text label shown beneath the track.
+ * @param {string} [props.color='#FBBF24'] - Accent color used for the fill and active outlines.
+ * @param {boolean} [props.disabled=false] - When true, disables pointer/touch interactions and applies disabled styling.
+ * @param {(newValue:number) => void} [props.onChange] - Called continuously with the new value while the user is dragging.
+ * @param {(finalValue:number) => void} [props.onChangeEnd] - Called once with the final value when the drag ends.
+ * @param {string} [props.className=''] - Additional CSS class names applied to the root element.
+ * @param {Object} [props.style] - Inline style overrides applied to the root element.
+ * @returns {JSX.Element} The rendered control slider element.
  */
 export default function ControlSlider({
   value = 0,

@@ -98,6 +98,11 @@ async function saveDeviceControlStyles(deviceControlStyles) {
   return res.json().catch(() => ({}));
 }
 
+/**
+ * Persist mappings of device types to icon identifiers on the server.
+ * @param {Object<string, string>} deviceTypeIcons - An object mapping device type keys to icon identifiers or URLs; pass an empty object to clear mappings.
+ * @returns {Object} The parsed JSON response from the server, or an empty object if the response body is empty.
+ * @throws {Error} If the server responds with a non-OK status.
 async function saveDeviceTypeIcons(deviceTypeIcons) {
   const res = await fetch(`${API_HOST}/api/ui/device-type-icons`, {
     method: 'PUT',
@@ -111,6 +116,12 @@ async function saveDeviceTypeIcons(deviceTypeIcons) {
   return res.json().catch(() => ({}));
 }
 
+/**
+ * Persist mappings of device IDs to control icon IDs on the server.
+ * @param {Object<string, Array<string>>} deviceControlIcons - Map of device ID to an array of control icon IDs to assign; pass an empty object to clear assignments.
+ * @returns {Object<string, Array<string>>} The server's saved device-control-icons mapping, or an empty object if the response body could not be parsed.
+ * @throws {Error} If the HTTP request returns a non-success status.
+ */
 async function saveDeviceControlIcons(deviceControlIcons) {
   const res = await fetch(`${API_HOST}/api/ui/device-control-icons`, {
     method: 'PUT',
@@ -124,6 +135,13 @@ async function saveDeviceControlIcons(deviceControlIcons) {
   return res.json().catch(() => ({}));
 }
 
+/**
+ * Set the accent color for the global UI or for a specific panel profile.
+ * @param {string} accentColorId - ID of the accent color to save.
+ * @param {string} [panelName] - Optional panel profile name; when provided, the accent color is saved for that panel only.
+ * @returns {Object} The server's parsed JSON response (returns an empty object if the response body cannot be parsed).
+ * @throws {Error} If the server responds with a non-OK status.
+ */
 async function saveAccentColorId(accentColorId, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/accent-color`, {
     method: 'PUT',
@@ -167,6 +185,14 @@ async function fetchSoundFiles() {
   return files.map((v) => String(v)).filter(Boolean);
 }
 
+/**
+ * Fetches the index of available device icon files grouped by device type.
+ *
+ * @returns {{ rootUrl: string, byType: Record<string, string[]> }} An object containing:
+ *  - `rootUrl`: base URL where icon files are hosted (defaults to "/device-icons" if not provided),
+ *  - `byType`: a mapping from device type keys to arrays of icon file paths (strings).
+ * @throws {Error} If the HTTP request fails; the error message contains the response body or status.
+ */
 async function fetchDeviceIconsIndex() {
   const res = await fetch(`${API_HOST}/api/device-icons`);
   if (!res.ok) {
@@ -183,6 +209,12 @@ async function fetchDeviceIconsIndex() {
   return { rootUrl: typeof data?.rootUrl === 'string' ? data.rootUrl : '/device-icons', byType: out };
 }
 
+/**
+ * Fetches the control icons index from the server.
+ *
+ * @returns {{rootUrl: string, icons: Array<Object>}} An object containing `rootUrl` (base URL for control icons, defaults to '/control-icons' if absent) and `icons` (array of icon metadata objects).
+ * @throws {Error} If the HTTP request fails; the error message contains the server response text or the status code.
+ */
 async function fetchControlIconsIndex() {
   const res = await fetch(`${API_HOST}/api/control-icons`);
   if (!res.ok) {
@@ -194,6 +226,12 @@ async function fetchControlIconsIndex() {
   return { rootUrl: data?.rootUrl || '/control-icons', icons };
 }
 
+/**
+ * Fetches the Open-Meteo configuration from the server.
+ *
+ * @returns {Object} The Open-Meteo configuration object, or an empty object if the response body cannot be parsed as JSON.
+ * @throws {Error} If the HTTP response has a non-OK status; the error message contains the server response text or the status code.
+ */
 async function fetchOpenMeteoConfig() {
   const res = await fetch(`${API_HOST}/api/weather/open-meteo-config`);
   if (!res.ok) {
@@ -386,6 +424,13 @@ async function savePrimaryTextSizePct(primaryTextSizePct, panelName) {
   return res.json().catch(() => ({}));
 }
 
+/**
+ * Persist the primary text color selection for a specific panel or globally.
+ * @param {string|null} primaryTextColorId - The color identifier to save; pass `null` to clear the setting.
+ * @param {string} [panelName] - Optional panel profile name. When provided, the color is saved for that panel; otherwise it is saved globally.
+ * @returns {Object} The server's parsed JSON response, or an empty object if the response has no JSON body.
+ * @throws {Error} If the request fails (non-OK HTTP response), an Error with the server message or status is thrown.
+ */
 async function savePrimaryTextColorId(primaryTextColorId, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/primary-text-color`, {
     method: 'PUT',
@@ -402,6 +447,13 @@ async function savePrimaryTextColorId(primaryTextColorId, panelName) {
   return res.json().catch(() => ({}));
 }
 
+/**
+ * Persist tertiary (info-card) text opacity percentage for the global UI or a specific panel profile.
+ * @param {number} tertiaryTextOpacityPct - Opacity percentage (0–100) to save.
+ * @param {string} [panelName] - Optional panel profile name; omit to save the global default.
+ * @returns {Object} The saved configuration object (empty object if the response had no JSON body).
+ * @throws {Error} If the server responds with a non-OK status; the error message contains the server response text or status.
+ */
 async function saveTertiaryTextOpacityPct(tertiaryTextOpacityPct, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/tertiary-text-opacity`, {
     method: 'PUT',
@@ -418,6 +470,13 @@ async function saveTertiaryTextOpacityPct(tertiaryTextOpacityPct, panelName) {
   return res.json().catch(() => ({}));
 }
 
+/**
+ * Persist the tertiary (info card) text size percentage to the server, optionally scoped to a panel.
+ * @param {number} tertiaryTextSizePct - Text size as a percentage (e.g., 100 for default size).
+ * @param {string} [panelName] - Optional panel profile name to scope the setting; omit to save globally.
+ * @returns {Object} The parsed JSON response from the server (empty object on parse failure).
+ * @throws {Error} If the server responds with a non-OK status; error message contains server response text or status.
+ */
 async function saveTertiaryTextSizePct(tertiaryTextSizePct, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/tertiary-text-size`, {
     method: 'PUT',
@@ -434,6 +493,13 @@ async function saveTertiaryTextSizePct(tertiaryTextSizePct, panelName) {
   return res.json().catch(() => ({}));
 }
 
+/**
+ * Persist the tertiary text color selection to the server for either global scope or a specific panel.
+ * @param {string|null} tertiaryTextColorId - The color ID to save, or `null` to clear the value.
+ * @param {string} [panelName] - Optional panel profile name to scope the setting to that panel; omit to save globally.
+ * @returns {Object} The parsed JSON response from the server.
+ * @throws {Error} If the HTTP request fails or the server responds with a non-OK status.
+ */
 async function saveTertiaryTextColorId(tertiaryTextColorId, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/tertiary-text-color`, {
     method: 'PUT',
@@ -450,6 +516,14 @@ async function saveTertiaryTextColorId(tertiaryTextColorId, panelName) {
   return res.json().catch(() => ({}));
 }
 
+/**
+ * Persist the UI glow color, optionally scoped to a panel.
+ *
+ * @param {string|null} glowColorId - ID of the glow color to save, or `null` to clear the setting.
+ * @param {string} [panelName] - Optional panel profile name to scope the setting; omit to save globally.
+ * @returns {Object} The parsed JSON response from the server (falls back to an empty object if parsing fails).
+ * @throws {Error} If the server responds with a non-OK status.
+ */
 async function saveGlowColorId(glowColorId, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/glow-color`, {
     method: 'PUT',

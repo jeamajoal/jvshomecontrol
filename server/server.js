@@ -585,6 +585,22 @@ function backupFileSync(filePath, label) {
     }
 }
 
+/**
+ * Normalize and migrate a raw persisted configuration object into the canonical, validated
+ * server-side shape used at runtime and for on-disk persistence.
+ *
+ * This function:
+ * - Accepts any raw value and returns a normalized object with well-typed fields.
+ * - Applies backwards-compatibility fixes and migrations for older config shapes.
+ * - Sanitizes and limits arrays/maps (IDs, labels, device lists, cameras, icons, commands, metrics).
+ * - Validates and clamps numeric UI ranges, normalizes color/enum tokens, and constructs per-panel
+ *   profiles merged with built-in presets.
+ * - Produces a complete `ui` subtree (including camera registry, panelProfiles, allowlists,
+ *   device override maps, styling options, and climate tolerances) ready for use by the server.
+ *
+ * @param {*} raw - Raw persisted config value (may be null/undefined or any JS value).
+ * @returns {Object} A normalized persisted config object safe for runtime use and persistence.
+ */
 function normalizePersistedConfig(raw) {
     const out = (raw && typeof raw === 'object') ? { ...raw } : {};
 
@@ -1927,6 +1943,14 @@ app.put('/api/ui/device-control-icons', (req, res) => {
     return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
 });
 
+/**
+ * Ensure a panel profile with the given name exists, creating and seeding it from current UI defaults when absent.
+ *
+ * If a profile is created or updated this function persists the configuration and rebuilds the runtime config.
+ *
+ * @param {string} panelName - Candidate panel name; will be normalized before use. If normalization yields an empty name, no profile is created.
+ * @returns {string|null} The normalized panel name when a profile exists or was created, `null` if no valid name was provided.
+ */
 function ensurePanelProfileExists(panelName) {
     const name = normalizePanelName(panelName);
     if (!name) return null;
@@ -2176,7 +2200,12 @@ function rebuildRuntimeConfigFromPersisted() {
 
 rebuildRuntimeConfigFromPersisted();
 
-// --- HUBITAT MAPPER ---
+/**
+ * Map Hubitat device capabilities and optional type name to an internal device type token.
+ * @param {string[]} capabilities - Array of Hubitat capability names for the device.
+ * @param {string} [typeName] - Optional Hubitat device type name used for additional matching.
+ * @returns {string} One of: 'chromecast_video', 'smoke', 'co', 'motion', 'entry', 'switch', 'illuminance', 'humidity', 'temperature', or 'unknown'.
+ */
 
 function mapDeviceType(capabilities, typeName) {
     const typeLabel = String(typeName || '').toLowerCase();
@@ -2202,6 +2231,11 @@ function mapState(device, appType) {
     return attrs.contact === 'open' ? 'open' : 'closed';
 }
 
+/**
+ * Selects and returns a compact subset of device attributes required by the tablet UI.
+ * @param {Object} attrs - Source attributes from a device (may contain many keys).
+ * @returns {Object} An object containing only the attributes the UI needs — examples include sensor values (battery, temperature, humidity, illuminance, pressure), weather/forecast fields, binary states (motion, contact, smoke, carbonMonoxide, switch), control values (level, hue, saturation, colorTemperature, colorMode, colorName), and media attributes (volume, mute, playbackStatus, transportStatus, mediaSource, trackDescription).
+ */
 function pickAttributes(attrs = {}) {
     // Keep payload small but include what the tablet UI needs.
     return {
@@ -2840,7 +2874,21 @@ function applyPostedEventToStatuses(payload) {
     }
 }
 
-// --- API ---
+/**
+ * Build a client-safe list of configured cameras for public APIs and UI.
+ *
+ * Each entry contains camera metadata stripped of sensitive details and only exposes:
+ * - `id`: camera identifier
+ * - `label`: display label (falls back to `id`)
+ * - `enabled`: whether the camera is enabled (defaults to true)
+ * - `defaultRoomId` (optional): default room id for the camera
+ * - `hasSnapshot`: `true` if a snapshot URL is configured, `false` otherwise
+ * - `hasEmbed`: `true` if an embed URL is configured, `false` otherwise
+ * - `embedUrl` (optional): embed URL when present
+ * - `hasRtsp`: `true` if an RTSP URL is configured, `false` otherwise
+ *
+ * @returns {Array<Object>} An array of public camera descriptor objects (one per valid configured camera).
+ */
 
 function getPublicCamerasList() {
     const ui = (config?.ui && typeof config.ui === 'object') ? config.ui : {};
@@ -2871,6 +2919,16 @@ function getPublicCamerasList() {
         .filter(Boolean);
 }
 
+/**
+ * Build a client-safe configuration object derived from persisted config and runtime state.
+ *
+ * The returned object is safe to send to browser clients: sensitive camera fields and credentials
+ * are redacted, sensors are filtered to only those globally allowed, and runtime-derived UI
+ * fields (public cameras, discovered devices, observed device types, allowlist metadata, and
+ * server-validated panel command lists) are included.
+ *
+ * @returns {object} A sanitized configuration object ready for client consumption.
+ */
 function getClientSafeConfig() {
     const getObservedDeviceTypes = () => {
         const types = new Set();
@@ -3428,6 +3486,11 @@ app.post('/api/control-icons/compatible', (req, res) => {
     }
 });
 
+/**
+ * Create a normalized, URL-/identifier-safe lowercase slug from an input.
+ * @param {*} input - Value to convert into an identifier; will be coerced to string.
+ * @returns {string} A lowercase slug containing only `a-z`, `0-9`, and `_`, trimmed of leading/trailing underscores and limited to 64 characters.
+ */
 function slugifyId(input) {
     return String(input || '')
         .trim()

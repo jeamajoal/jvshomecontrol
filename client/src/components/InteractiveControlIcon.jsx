@@ -6,20 +6,18 @@ import VolumeKnob from './VolumeKnob';
 import MediaTransport from './MediaTransport';
 
 /**
- * InteractiveControlIcon
- * 
- * Renders an interactive control using either React components or SVG.
- * The manifest can specify `reactComponent` to use a React component,
- * or `useSvg: true` to force SVG rendering even for slider/knob types.
- * Users can create custom SVG controls that will be used as fallback.
- * 
- * Props:
- *   iconId         - The control icon ID (e.g., 'dimmer-paddle')
- *   device         - The device object with attributes and commands
- *   onCommand      - Callback: (deviceId, command, args) => void
- *   className      - Optional CSS class for the wrapper
- *   style          - Optional inline styles
- *   disabled       - Disable all interactions
+ * Render an interactive control based on a fetched manifest.
+ *
+ * Renders the control as an inline SVG or as a specialized React subcomponent (slider, color wheel, knob, or media transport)
+ * depending on the manifest and its regions. Handles user interactions and maps them to `onCommand` calls for the provided device.
+ *
+ * @param {string} iconId - Identifier of the control icon to load (e.g., "dimmer-paddle"); when falsy the component returns null.
+ * @param {Object} device - Device object containing attributes and available commands used to drive state and determine command targets.
+ * @param {(deviceId: string, command: string, args: any[]) => void} onCommand - Callback invoked to send commands to the device.
+ * @param {string} [className] - Optional wrapper CSS class name(s).
+ * @param {Object} [style] - Optional inline style object applied to the wrapper.
+ * @param {boolean} [disabled=false] - When true, disables user interaction with the rendered control.
+ * @returns {import('react').ReactElement|null} A React element representing the interactive control, or `null` if `iconId` is not provided.
  */
 export default function InteractiveControlIcon({
   iconId,
