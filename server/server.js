@@ -19,6 +19,7 @@ const {
     SOUNDS_DIR,
     BACKGROUNDS_DIR,
     DEVICE_ICONS_DIR,
+    CONTROL_ICONS_DIR,
     CLIENT_DIST_DIR,
     CLIENT_INDEX_HTML,
     CERT_DIR_DEFAULT,
@@ -36,11 +37,13 @@ const {
     UI_BLUR_SCALE_PCT_RANGE,
     UI_PRIMARY_TEXT_SIZE_PCT_RANGE,
     UI_SECONDARY_TEXT_SIZE_PCT_RANGE,
+    UI_TERTIARY_TEXT_SIZE_PCT_RANGE,
     UI_ICON_SIZE_PCT_RANGE,
     UI_CARD_SCALE_PCT_RANGE,
     UI_HOME_ROOM_COLUMNS_XL_RANGE,
     UI_PRIMARY_TEXT_OPACITY_PCT_DEFAULT,
     UI_SECONDARY_TEXT_OPACITY_PCT_DEFAULT,
+    UI_TERTIARY_TEXT_OPACITY_PCT_DEFAULT,
     UI_ICON_OPACITY_PCT_DEFAULT,
     
     // Home Dashboard
@@ -110,6 +113,9 @@ const hlsService = require('./services/hls');
 
 // --- Import state management ---
 const stateModule = require('./services/state');
+
+// --- Import control icons service ---
+const controlIconsService = require('./services/controlIcons');
 
 let UndiciAgent = null;
 try {
@@ -297,6 +303,19 @@ app.use('/device-icons', express.static(DEVICE_ICONS_DIR, {
     setHeaders(res) {
         res.setHeader('X-Content-Type-Options', 'nosniff');
         // These are user-edited drop-in assets; avoid stale client caches.
+        res.setHeader('Cache-Control', 'no-store');
+    },
+}));
+
+// Serve interactive control icons from the server-managed control icons directory.
+// Files placed in server/data/control-icons/ will be reachable at:
+//   /control-icons/<file>
+app.use('/control-icons', express.static(CONTROL_ICONS_DIR, {
+    dotfiles: 'ignore',
+    fallthrough: false,
+    setHeaders(res) {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        // SVG icons with manifests; avoid stale caches during development.
         res.setHeader('Cache-Control', 'no-store');
     },
 }));
@@ -615,6 +634,7 @@ function normalizePersistedConfig(raw) {
     })();
 
     const isSafeCommandToken = (s) => typeof s === 'string' && s.length <= 64 && /^[A-Za-z0-9_]+$/.test(s);
+    const isSafeInfoMetricKey = (s) => typeof s === 'string' && s.length <= 64 && /^[A-Za-z0-9_]+$/.test(s);
     const legacyAllowed = Array.isArray(uiRaw.allowedDeviceIds)
         ? uiRaw.allowedDeviceIds
         : [];
@@ -707,6 +727,24 @@ function normalizePersistedConfig(raw) {
         return outMap;
     })();
 
+    const deviceInfoMetricAllowlist = (() => {
+        const rawMap = (uiRaw.deviceInfoMetricAllowlist && typeof uiRaw.deviceInfoMetricAllowlist === 'object')
+            ? uiRaw.deviceInfoMetricAllowlist
+            : {};
+        const outMap = {};
+        for (const [k, v] of Object.entries(rawMap)) {
+            const id = String(k || '').trim();
+            if (!id) continue;
+            if (!Array.isArray(v)) continue;
+            const keys = v
+                .map((c) => String(c || '').trim())
+                .filter((c) => c && isSafeInfoMetricKey(c));
+            // Empty array is allowed (meaning: show no info cards for this device).
+            outMap[id] = Array.from(new Set(keys)).slice(0, 32);
+        }
+        return outMap;
+    })();
+
     const deviceControlStyles = (() => {
         const rawStyles = (uiRaw.deviceControlStyles && typeof uiRaw.deviceControlStyles === 'object')
             ? uiRaw.deviceControlStyles
@@ -729,6 +767,42 @@ function normalizePersistedConfig(raw) {
                 animationStyle,
             },
         };
+    })();
+
+    // Per-device control icon overrides
+    // Format: { "<deviceId>": "<controlIconId>" | ["<id1>", "<id2>", ...], ... }
+    const deviceControlIcons = (() => {
+        const rawMap = (uiRaw.deviceControlIcons && typeof uiRaw.deviceControlIcons === 'object')
+            ? uiRaw.deviceControlIcons
+            : {};
+        const outMap = {};
+        const isValidIconId = (s) => {
+            if (typeof s !== 'string') return false;
+            const trimmed = s.trim();
+            if (!trimmed || trimmed.length > 64) return false;
+            return /^[a-z0-9][a-z0-9-]*$/i.test(trimmed);
+        };
+        for (const [deviceId, iconValue] of Object.entries(rawMap)) {
+            const id = String(deviceId || '').trim();
+            if (!id) continue;
+            
+            // Handle array of icon IDs
+            if (Array.isArray(iconValue)) {
+                const validIcons = iconValue
+                    .map((v) => String(v || '').trim())
+                    .filter(isValidIconId);
+                if (validIcons.length > 0) {
+                    outMap[id] = validIcons;
+                }
+                continue;
+            }
+            
+            // Handle single string icon ID
+            const icon = String(iconValue || '').trim();
+            if (!icon || !isValidIconId(icon)) continue;
+            outMap[id] = icon;
+        }
+        return outMap;
     })();
 
     const normalizeDeviceTypeToken = (value) => {
@@ -836,13 +910,17 @@ function normalizePersistedConfig(raw) {
     const DEFAULT_SENSOR_INDICATOR_COLORS = {
         motion: 'warning',
         door: 'neon-red',
+        smoke: 'neon-red',
+        co: 'neon-red',
+        water: 'neon-blue',
+        presence: 'neon-green',
     };
 
     const sensorRaw = (uiRaw.sensorIndicatorColors && typeof uiRaw.sensorIndicatorColors === 'object')
         ? uiRaw.sensorIndicatorColors
         : {};
 
-    const sensorIndicatorColors = pickColorGroup(sensorRaw, ['motion', 'door'], DEFAULT_SENSOR_INDICATOR_COLORS);
+    const sensorIndicatorColors = pickColorGroup(sensorRaw, ['motion', 'door', 'smoke', 'co', 'water', 'presence'], DEFAULT_SENSOR_INDICATOR_COLORS);
 
     const homeBgRaw = (uiRaw.homeBackground && typeof uiRaw.homeBackground === 'object')
         ? uiRaw.homeBackground
@@ -905,6 +983,20 @@ function normalizePersistedConfig(raw) {
     const primaryTextColorIdRaw = String(uiRaw.primaryTextColorId ?? '').trim();
     const primaryTextColorId = primaryTextColorIdRaw
         ? (ALLOWED_TOLERANCE_COLOR_IDS.has(primaryTextColorIdRaw) ? primaryTextColorIdRaw : null)
+        : null;
+
+    // Tertiary text styling (Info card values).
+    // Stored as a percent for easier UI controls; the client maps these to CSS.
+    const tertiaryTextOpacityPct = clampInt(uiRaw.tertiaryTextOpacityPct, 0, 100, UI_TERTIARY_TEXT_OPACITY_PCT_DEFAULT);
+    const tertiaryTextSizePct = clampInt(
+        uiRaw.tertiaryTextSizePct,
+        UI_TERTIARY_TEXT_SIZE_PCT_RANGE.min,
+        UI_TERTIARY_TEXT_SIZE_PCT_RANGE.max,
+        UI_TERTIARY_TEXT_SIZE_PCT_RANGE.def,
+    );
+    const tertiaryTextColorIdRaw = String(uiRaw.tertiaryTextColorId ?? '').trim();
+    const tertiaryTextColorId = tertiaryTextColorIdRaw
+        ? (ALLOWED_TOLERANCE_COLOR_IDS.has(tertiaryTextColorIdRaw) ? tertiaryTextColorIdRaw : null)
         : null;
 
     // Card scale percent.
@@ -1205,6 +1297,25 @@ function normalizePersistedConfig(raw) {
         const pPrimaryTextColorId = pPrimaryTextColorIdRaw
             ? (ALLOWED_TOLERANCE_COLOR_IDS.has(pPrimaryTextColorIdRaw) ? pPrimaryTextColorIdRaw : null)
             : null;
+
+        const pTertiaryTextOpacityPct = Object.prototype.hasOwnProperty.call(p, 'tertiaryTextOpacityPct')
+            ? clampInt(p.tertiaryTextOpacityPct, 0, 100, tertiaryTextOpacityPct)
+            : null;
+        const pTertiaryTextSizePct = Object.prototype.hasOwnProperty.call(p, 'tertiaryTextSizePct')
+            ? clampInt(
+                p.tertiaryTextSizePct,
+                UI_TERTIARY_TEXT_SIZE_PCT_RANGE.min,
+                UI_TERTIARY_TEXT_SIZE_PCT_RANGE.max,
+                tertiaryTextSizePct,
+            )
+            : null;
+        const pTertiaryTextColorIdRaw = Object.prototype.hasOwnProperty.call(p, 'tertiaryTextColorId')
+            ? String(p.tertiaryTextColorId ?? '').trim()
+            : null;
+        const pTertiaryTextColorId = pTertiaryTextColorIdRaw
+            ? (ALLOWED_TOLERANCE_COLOR_IDS.has(pTertiaryTextColorIdRaw) ? pTertiaryTextColorIdRaw : null)
+            : null;
+
         const pCardScalePct = Object.prototype.hasOwnProperty.call(p, 'cardScalePct')
             ? clampInt(p.cardScalePct, UI_CARD_SCALE_PCT_RANGE.min, UI_CARD_SCALE_PCT_RANGE.max, cardScalePct)
             : null;
@@ -1454,6 +1565,24 @@ function normalizePersistedConfig(raw) {
             return outMap;
         })();
 
+        const pDeviceInfoMetricAllowlist = (() => {
+            if (!Object.prototype.hasOwnProperty.call(p, 'deviceInfoMetricAllowlist')) return null;
+            const rawMap = (p.deviceInfoMetricAllowlist && typeof p.deviceInfoMetricAllowlist === 'object')
+                ? p.deviceInfoMetricAllowlist
+                : {};
+            const outMap = {};
+            for (const [k, v] of Object.entries(rawMap)) {
+                const id = String(k || '').trim();
+                if (!id) continue;
+                if (!Array.isArray(v)) continue;
+                const keys = v
+                    .map((c) => String(c || '').trim())
+                    .filter((c) => c && isSafeInfoMetricKey(c));
+                outMap[id] = Array.from(new Set(keys)).slice(0, 32);
+            }
+            return outMap;
+        })();
+
         const pHomeBgRaw = (p.homeBackground && typeof p.homeBackground === 'object') ? p.homeBackground : null;
         const pHomeBackground = pHomeBgRaw
             ? {
@@ -1477,6 +1606,9 @@ function normalizePersistedConfig(raw) {
             ...(pPrimaryTextOpacityPct !== null ? { primaryTextOpacityPct: pPrimaryTextOpacityPct } : {}),
             ...(pPrimaryTextSizePct !== null ? { primaryTextSizePct: pPrimaryTextSizePct } : {}),
             ...(pPrimaryTextColorId !== null ? { primaryTextColorId: pPrimaryTextColorId } : {}),
+            ...(pTertiaryTextOpacityPct !== null ? { tertiaryTextOpacityPct: pTertiaryTextOpacityPct } : {}),
+            ...(pTertiaryTextSizePct !== null ? { tertiaryTextSizePct: pTertiaryTextSizePct } : {}),
+            ...(pTertiaryTextColorId !== null ? { tertiaryTextColorId: pTertiaryTextColorId } : {}),
             ...(pCardScalePct !== null ? { cardScalePct: pCardScalePct } : {}),
             ...(pHomeTopRowEnabled !== null ? { homeTopRowEnabled: pHomeTopRowEnabled } : {}),
             ...(pHomeTopRowScalePct !== null ? { homeTopRowScalePct: pHomeTopRowScalePct } : {}),
@@ -1507,6 +1639,7 @@ function normalizePersistedConfig(raw) {
             ...(pDeviceLabelOverrides !== null ? { deviceLabelOverrides: pDeviceLabelOverrides } : {}),
             ...(pDeviceCommandAllowlist !== null ? { deviceCommandAllowlist: pDeviceCommandAllowlist } : {}),
             ...(pDeviceHomeMetricAllowlist !== null ? { deviceHomeMetricAllowlist: pDeviceHomeMetricAllowlist } : {}),
+            ...(pDeviceInfoMetricAllowlist !== null ? { deviceInfoMetricAllowlist: pDeviceInfoMetricAllowlist } : {}),
             ...(PRESET_PANEL_PROFILE_NAMES.has(name) ? { _preset: true } : {}),
         };
 
@@ -1542,8 +1675,10 @@ function normalizePersistedConfig(raw) {
         deviceLabelOverrides,
         deviceCommandAllowlist,
         deviceHomeMetricAllowlist,
+        deviceInfoMetricAllowlist,
         deviceControlStyles,
         deviceTypeIcons,
+        deviceControlIcons,
         extraAllowedPanelDeviceCommands,
         availabilityInitialized,
         visibilityInitialized,
@@ -1576,6 +1711,10 @@ function normalizePersistedConfig(raw) {
         primaryTextOpacityPct,
         primaryTextSizePct,
         primaryTextColorId,
+        // Tertiary (info card values) text styling.
+        tertiaryTextOpacityPct,
+        tertiaryTextSizePct,
+        tertiaryTextColorId,
         // Scale percent for UI cards/controls (used by Home fit-scale).
         cardScalePct,
         // Home top row visibility/scale/cards.
@@ -1702,6 +1841,84 @@ app.put('/api/ui/device-type-icons', (req, res) => {
         ui: {
             ...(config?.ui || {}),
             deviceTypeIcons: persistedConfig?.ui?.deviceTypeIcons,
+            deviceControlIcons: persistedConfig?.ui?.deviceControlIcons,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update per-device control icon assignments.
+// Expected payload: { deviceControlIcons: { [deviceId: string]: string|string[]|null } }
+app.put('/api/ui/device-control-icons', (req, res) => {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+    const incoming = (body.deviceControlIcons && typeof body.deviceControlIcons === 'object') ? body.deviceControlIcons : null;
+    if (!incoming) {
+        return res.status(400).json({ error: 'Missing deviceControlIcons' });
+    }
+
+    const prevUi = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+    const prevMap = (prevUi.deviceControlIcons && typeof prevUi.deviceControlIcons === 'object') ? prevUi.deviceControlIcons : {};
+
+    const nextMap = { ...prevMap };
+    
+    // Validate icon ID format
+    const isValidIconId = (id) => {
+        if (typeof id !== 'string') return false;
+        const trimmed = id.trim();
+        return trimmed && /^[a-z0-9][a-z0-9-]*$/i.test(trimmed) && trimmed.length <= 64;
+    };
+    
+    for (const [deviceId, iconValue] of Object.entries(incoming)) {
+        const id = String(deviceId || '').trim();
+        if (!id) continue;
+        
+        // Handle null/undefined - remove assignment
+        if (iconValue === null || iconValue === undefined) {
+            nextMap[id] = null;
+            continue;
+        }
+        
+        // Handle array of icon IDs
+        if (Array.isArray(iconValue)) {
+            const validIcons = iconValue
+                .map((v) => String(v || '').trim())
+                .filter(isValidIconId);
+            nextMap[id] = validIcons.length > 0 ? validIcons : null;
+            continue;
+        }
+        
+        // Handle single string icon ID (backward compat)
+        const icon = String(iconValue).trim();
+        if (isValidIconId(icon)) {
+            nextMap[id] = icon;
+        }
+    }
+
+    // Remove null entries to keep config clean
+    for (const k of Object.keys(nextMap)) {
+        if (nextMap[k] === null || nextMap[k] === '' || (Array.isArray(nextMap[k]) && nextMap[k].length === 0)) {
+            delete nextMap[k];
+        }
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...prevUi,
+            deviceControlIcons: nextMap,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-device-control-icons');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            deviceControlIcons: persistedConfig?.ui?.deviceControlIcons,
             panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };
@@ -1746,6 +1963,9 @@ function ensurePanelProfileExists(panelName) {
             primaryTextOpacityPct: ui.primaryTextOpacityPct,
             primaryTextSizePct: ui.primaryTextSizePct,
             primaryTextColorId: ui.primaryTextColorId,
+            tertiaryTextOpacityPct: ui.tertiaryTextOpacityPct,
+            tertiaryTextSizePct: ui.tertiaryTextSizePct,
+            tertiaryTextColorId: ui.tertiaryTextColorId,
             cardScalePct: ui.cardScalePct,
             homeTopRowEnabled: ui.homeTopRowEnabled,
             homeTopRowScalePct: ui.homeTopRowScalePct,
@@ -1959,6 +2179,8 @@ rebuildRuntimeConfigFromPersisted();
 // --- HUBITAT MAPPER ---
 
 function mapDeviceType(capabilities, typeName) {
+    const typeLabel = String(typeName || '').toLowerCase();
+    if (typeLabel.includes('chromecast video')) return 'chromecast_video';
     if (capabilities.includes("SmokeDetector")) return "smoke";
     if (capabilities.includes("CarbonMonoxideDetector")) return "co";
     if (capabilities.includes("MotionSensor")) return "motion";
@@ -2011,6 +2233,18 @@ function pickAttributes(attrs = {}) {
         carbonMonoxide: attrs.carbonMonoxide,
         switch: attrs.switch,
         level: attrs.level,
+        hue: attrs.hue,
+        saturation: attrs.saturation,
+        colorTemperature: attrs.colorTemperature,
+        colorMode: attrs.colorMode,
+        colorName: attrs.colorName,
+        // Media/Audio controls
+        volume: attrs.volume,
+        mute: attrs.mute,
+        playbackStatus: attrs.playbackStatus,
+        transportStatus: attrs.transportStatus,
+        mediaSource: attrs.mediaSource,
+        trackDescription: attrs.trackDescription,
     };
 }
 
@@ -2638,6 +2872,15 @@ function getPublicCamerasList() {
 }
 
 function getClientSafeConfig() {
+    const getObservedDeviceTypes = () => {
+        const types = new Set();
+        const sensors = Array.isArray(config?.sensors) ? config.sensors : [];
+        for (const s of sensors) {
+            const t = normalizeDeviceIconTypeToken(s?.type);
+            if (t) types.add(t);
+        }
+        return Array.from(types).sort((a, b) => a.localeCompare(b));
+    };
     const allowlists = getUiAllowlistsInfo();
     const publicCameras = getPublicCamerasList();
 
@@ -2658,6 +2901,8 @@ function getClientSafeConfig() {
             cameras: publicCameras,
             // Full discovered catalog for Settings (includes devices not currently available).
             discoveredDevices: Array.isArray(discoveredDevicesCatalog) ? discoveredDevicesCatalog : [],
+            // Observed internal device types (for dynamic icon dropdowns).
+            deviceTypesObserved: getObservedDeviceTypes(),
             ctrlAllowedDeviceIds: allowlists.ctrl.ids,
             mainAllowedDeviceIds: allowlists.main.ids,
             // Back-compat for older clients
@@ -3110,6 +3355,74 @@ app.get('/api/device-icons/:deviceType', (req, res) => {
         if (!t) return res.status(400).json({ ok: false, error: 'invalid_device_type' });
         const files = listDeviceIconFilesForType(t);
         res.json({ ok: true, deviceType: t, rootUrl: '/device-icons', files });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err?.message || String(err) });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONTROL ICONS API
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/control-icons
+ * Returns all available control icons with their manifests.
+ */
+app.get('/api/control-icons', (req, res) => {
+    try {
+        const icons = controlIconsService.getControlIcons();
+        res.json({ ok: true, rootUrl: '/control-icons', icons });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err?.message || String(err) });
+    }
+});
+
+/**
+ * GET /api/control-icons/:id
+ * Returns a specific control icon by ID with its manifest.
+ */
+app.get('/api/control-icons/:id', (req, res) => {
+    try {
+        const icon = controlIconsService.getControlIconById(req.params.id);
+        if (!icon) {
+            return res.status(404).json({ ok: false, error: 'control_icon_not_found' });
+        }
+        res.json({ ok: true, icon });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err?.message || String(err) });
+    }
+});
+
+/**
+ * GET /api/control-icons/:id/svg
+ * Returns the raw SVG content for a control icon.
+ */
+app.get('/api/control-icons/:id/svg', (req, res) => {
+    try {
+        const svg = controlIconsService.getControlIconSvg(req.params.id);
+        if (!svg) {
+            return res.status(404).json({ ok: false, error: 'control_icon_not_found' });
+        }
+        res.setHeader('Content-Type', 'image/svg+xml');
+        res.send(svg);
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err?.message || String(err) });
+    }
+});
+
+/**
+ * POST /api/control-icons/compatible
+ * Body: { commands: ["on", "off", "setLevel", ...] }
+ * Returns control icons that are compatible with the given device commands.
+ */
+app.post('/api/control-icons/compatible', (req, res) => {
+    try {
+        const commands = req.body?.commands;
+        if (!Array.isArray(commands)) {
+            return res.status(400).json({ ok: false, error: 'commands_array_required' });
+        }
+        const icons = controlIconsService.getCompatibleControlIcons(commands);
+        res.json({ ok: true, icons });
     } catch (err) {
         res.status(500).json({ ok: false, error: err?.message || String(err) });
     }
@@ -4243,14 +4556,16 @@ app.put('/api/ui/top-cameras', (req, res) => {
     return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
 });
 
-// Update per-device UI overrides (label + command allowlist + Home metric allowlist).
-// Expected payload: { deviceId: string, label?: string|null, commands?: string[]|null, homeMetrics?: string[]|null, panelName?: string }
+// Update per-device UI overrides (label + command allowlist + Home metric allowlist + info cards).
+// Expected payload: { deviceId: string, label?: string|null, commands?: string[]|null, homeMetrics?: string[]|null, infoMetrics?: string[]|null, panelName?: string }
 app.put('/api/ui/device-overrides', (req, res) => {
     const body = (req.body && typeof req.body === 'object') ? req.body : {};
     const deviceId = String(body.deviceId || '').trim();
     if (!deviceId) {
         return res.status(400).json({ error: 'Missing deviceId' });
     }
+
+    const isSafeInfoMetricKey = (s) => typeof s === 'string' && s.length <= 64 && /^[A-Za-z0-9_]+$/.test(s);
 
     const labelRaw = Object.prototype.hasOwnProperty.call(body, 'label') ? body.label : undefined;
     const label = (labelRaw === null || labelRaw === undefined)
@@ -4284,6 +4599,18 @@ app.put('/api/ui/device-overrides', (req, res) => {
         return res.status(400).json({ error: 'homeMetrics must be an array of strings (or null)' });
     }
 
+    const infoMetricsRaw = Object.prototype.hasOwnProperty.call(body, 'infoMetrics') ? body.infoMetrics : undefined;
+    const infoMetrics = (infoMetricsRaw === null || infoMetricsRaw === undefined)
+        ? null
+        : (Array.isArray(infoMetricsRaw)
+            ? infoMetricsRaw
+                .map((c) => String(c || '').trim())
+                .filter((c) => c && isSafeInfoMetricKey(c))
+            : null);
+    if (infoMetricsRaw !== undefined && infoMetricsRaw !== null && !Array.isArray(infoMetricsRaw)) {
+        return res.status(400).json({ error: 'infoMetrics must be an array of strings (or null)' });
+    }
+
     const panelName = normalizePanelName(body.panelName);
     if (panelName) {
         if (rejectIfPresetPanelProfile(panelName, res)) return;
@@ -4298,23 +4625,39 @@ app.put('/api/ui/device-overrides', (req, res) => {
         const prevLabels = (prev.deviceLabelOverrides && typeof prev.deviceLabelOverrides === 'object') ? prev.deviceLabelOverrides : {};
         const prevCmds = (prev.deviceCommandAllowlist && typeof prev.deviceCommandAllowlist === 'object') ? prev.deviceCommandAllowlist : {};
         const prevHome = (prev.deviceHomeMetricAllowlist && typeof prev.deviceHomeMetricAllowlist === 'object') ? prev.deviceHomeMetricAllowlist : {};
+        const prevInfo = (prev.deviceInfoMetricAllowlist && typeof prev.deviceInfoMetricAllowlist === 'object') ? prev.deviceInfoMetricAllowlist : {};
 
         const nextLabels = { ...prevLabels };
-        if (label === null || label === '') delete nextLabels[deviceId];
-        else nextLabels[deviceId] = label;
+        if (labelRaw !== undefined) {
+            if (label === null || label === '') delete nextLabels[deviceId];
+            else nextLabels[deviceId] = label;
+        }
 
         const nextCmds = { ...prevCmds };
-        if (commands === null) {
-            delete nextCmds[deviceId];
-        } else {
-            nextCmds[deviceId] = Array.from(new Set(commands)).slice(0, 32);
+        if (commandsRaw !== undefined) {
+            if (commands === null) {
+                delete nextCmds[deviceId];
+            } else {
+                nextCmds[deviceId] = Array.from(new Set(commands)).slice(0, 32);
+            }
         }
 
         const nextHome = { ...prevHome };
-        if (homeMetrics === null) {
-            delete nextHome[deviceId];
-        } else {
-            nextHome[deviceId] = Array.from(new Set(homeMetrics)).slice(0, 16);
+        if (homeMetricsRaw !== undefined) {
+            if (homeMetrics === null) {
+                delete nextHome[deviceId];
+            } else {
+                nextHome[deviceId] = Array.from(new Set(homeMetrics)).slice(0, 16);
+            }
+        }
+
+        const nextInfo = { ...prevInfo };
+        if (infoMetricsRaw !== undefined) {
+            if (infoMetrics === null) {
+                delete nextInfo[deviceId];
+            } else {
+                nextInfo[deviceId] = Array.from(new Set(infoMetrics)).slice(0, 32);
+            }
         }
 
         persistedConfig = normalizePersistedConfig({
@@ -4328,6 +4671,7 @@ app.put('/api/ui/device-overrides', (req, res) => {
                         deviceLabelOverrides: nextLabels,
                         deviceCommandAllowlist: nextCmds,
                         deviceHomeMetricAllowlist: nextHome,
+                        deviceInfoMetricAllowlist: nextInfo,
                     },
                 },
             },
@@ -4337,23 +4681,39 @@ app.put('/api/ui/device-overrides', (req, res) => {
         const prevLabels = (ui.deviceLabelOverrides && typeof ui.deviceLabelOverrides === 'object') ? ui.deviceLabelOverrides : {};
         const prevCmds = (ui.deviceCommandAllowlist && typeof ui.deviceCommandAllowlist === 'object') ? ui.deviceCommandAllowlist : {};
         const prevHome = (ui.deviceHomeMetricAllowlist && typeof ui.deviceHomeMetricAllowlist === 'object') ? ui.deviceHomeMetricAllowlist : {};
+        const prevInfo = (ui.deviceInfoMetricAllowlist && typeof ui.deviceInfoMetricAllowlist === 'object') ? ui.deviceInfoMetricAllowlist : {};
 
         const nextLabels = { ...prevLabels };
-        if (label === null || label === '') delete nextLabels[deviceId];
-        else nextLabels[deviceId] = label;
+        if (labelRaw !== undefined) {
+            if (label === null || label === '') delete nextLabels[deviceId];
+            else nextLabels[deviceId] = label;
+        }
 
         const nextCmds = { ...prevCmds };
-        if (commands === null) {
-            delete nextCmds[deviceId];
-        } else {
-            nextCmds[deviceId] = Array.from(new Set(commands)).slice(0, 32);
+        if (commandsRaw !== undefined) {
+            if (commands === null) {
+                delete nextCmds[deviceId];
+            } else {
+                nextCmds[deviceId] = Array.from(new Set(commands)).slice(0, 32);
+            }
         }
 
         const nextHome = { ...prevHome };
-        if (homeMetrics === null) {
-            delete nextHome[deviceId];
-        } else {
-            nextHome[deviceId] = Array.from(new Set(homeMetrics)).slice(0, 16);
+        if (homeMetricsRaw !== undefined) {
+            if (homeMetrics === null) {
+                delete nextHome[deviceId];
+            } else {
+                nextHome[deviceId] = Array.from(new Set(homeMetrics)).slice(0, 16);
+            }
+        }
+
+        const nextInfo = { ...prevInfo };
+        if (infoMetricsRaw !== undefined) {
+            if (infoMetrics === null) {
+                delete nextInfo[deviceId];
+            } else {
+                nextInfo[deviceId] = Array.from(new Set(infoMetrics)).slice(0, 32);
+            }
         }
 
         persistedConfig = normalizePersistedConfig({
@@ -4363,6 +4723,7 @@ app.put('/api/ui/device-overrides', (req, res) => {
                 deviceLabelOverrides: nextLabels,
                 deviceCommandAllowlist: nextCmds,
                 deviceHomeMetricAllowlist: nextHome,
+                deviceInfoMetricAllowlist: nextInfo,
             },
         });
     }
@@ -4385,6 +4746,7 @@ app.put('/api/ui/device-overrides', (req, res) => {
             deviceLabelOverrides: (persistedConfig?.ui?.deviceLabelOverrides && typeof persistedConfig.ui.deviceLabelOverrides === 'object') ? persistedConfig.ui.deviceLabelOverrides : {},
             deviceCommandAllowlist: (persistedConfig?.ui?.deviceCommandAllowlist && typeof persistedConfig.ui.deviceCommandAllowlist === 'object') ? persistedConfig.ui.deviceCommandAllowlist : {},
             deviceHomeMetricAllowlist: (persistedConfig?.ui?.deviceHomeMetricAllowlist && typeof persistedConfig.ui.deviceHomeMetricAllowlist === 'object') ? persistedConfig.ui.deviceHomeMetricAllowlist : {},
+            deviceInfoMetricAllowlist: (persistedConfig?.ui?.deviceInfoMetricAllowlist && typeof persistedConfig.ui.deviceInfoMetricAllowlist === 'object') ? persistedConfig.ui.deviceInfoMetricAllowlist : {},
             panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };
@@ -4457,6 +4819,8 @@ app.post('/api/ui/panels', (req, res) => {
             primaryTextOpacityPct: presetProfile.primaryTextOpacityPct ?? ui.primaryTextOpacityPct,
             secondaryTextColorId: presetProfile.secondaryTextColorId ?? ui.secondaryTextColorId,
             secondaryTextOpacityPct: presetProfile.secondaryTextOpacityPct ?? ui.secondaryTextOpacityPct,
+            tertiaryTextColorId: presetProfile.tertiaryTextColorId ?? ui.tertiaryTextColorId,
+            tertiaryTextOpacityPct: presetProfile.tertiaryTextOpacityPct ?? ui.tertiaryTextOpacityPct,
             homeBackground: presetProfile.homeBackground ?? ui.homeBackground,
         }
         : {
@@ -4483,6 +4847,9 @@ app.post('/api/ui/panels', (req, res) => {
         primaryTextOpacityPct: effectiveUi.primaryTextOpacityPct,
         primaryTextSizePct: effectiveUi.primaryTextSizePct,
         primaryTextColorId: effectiveUi.primaryTextColorId,
+        tertiaryTextOpacityPct: effectiveUi.tertiaryTextOpacityPct,
+        tertiaryTextSizePct: effectiveUi.tertiaryTextSizePct,
+        tertiaryTextColorId: effectiveUi.tertiaryTextColorId,
         cardScalePct: effectiveUi.cardScalePct,
         homeRoomColumnsXl: effectiveUi.homeRoomColumnsXl,
         homeRoomLayoutMode: String(effectiveUi.homeRoomLayoutMode ?? 'grid').trim() || 'grid',
@@ -5464,6 +5831,221 @@ app.put('/api/ui/primary-text-color', (req, res) => {
         ui: {
             ...(config?.ui || {}),
             primaryTextColorId: persistedConfig?.ui?.primaryTextColorId,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tertiary (info card values) text styling APIs.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Update tertiary text opacity percent.
+// Expected payload: { tertiaryTextOpacityPct: number(0-100) }
+app.put('/api/ui/tertiary-text-opacity', (req, res) => {
+    const raw = req.body?.tertiaryTextOpacityPct;
+    const num = (typeof raw === 'number') ? raw : Number(raw);
+    if (!Number.isFinite(num)) {
+        return res.status(400).json({ error: 'Missing tertiaryTextOpacityPct (0-100)' });
+    }
+    const tertiaryTextOpacityPct = Math.max(0, Math.min(100, Math.round(num)));
+
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        tertiaryTextOpacityPct,
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-tertiary-text-opacity-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            tertiaryTextOpacityPct,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-tertiary-text-opacity');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            tertiaryTextOpacityPct: persistedConfig?.ui?.tertiaryTextOpacityPct,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update tertiary text size percent.
+// Expected payload: { tertiaryTextSizePct: number(50-200) }
+app.put('/api/ui/tertiary-text-size', (req, res) => {
+    const raw = req.body?.tertiaryTextSizePct;
+    const num = (typeof raw === 'number') ? raw : Number(raw);
+    if (!Number.isFinite(num)) {
+        return res.status(400).json({ error: 'Missing tertiaryTextSizePct (50-200)' });
+    }
+
+    const tertiaryTextSizePct = Math.max(
+        UI_TERTIARY_TEXT_SIZE_PCT_RANGE.min,
+        Math.min(UI_TERTIARY_TEXT_SIZE_PCT_RANGE.max, Math.round(num)),
+    );
+
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        tertiaryTextSizePct,
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-tertiary-text-size-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            tertiaryTextSizePct,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-tertiary-text-size');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            tertiaryTextSizePct: persistedConfig?.ui?.tertiaryTextSizePct,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update tertiary text color id.
+// Expected payload: { tertiaryTextColorId: string | null } (null/empty = default)
+app.put('/api/ui/tertiary-text-color', (req, res) => {
+    const raw = req.body?.tertiaryTextColorId;
+    const s = String(raw ?? '').trim();
+    const tertiaryTextColorId = s
+        ? (ALLOWED_TOLERANCE_COLOR_IDS.has(s) ? s : null)
+        : null;
+
+    if (s && !tertiaryTextColorId) {
+        return res.status(400).json({ error: 'Invalid tertiaryTextColorId' });
+    }
+
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        tertiaryTextColorId,
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-tertiary-text-color-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            tertiaryTextColorId,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-tertiary-text-color');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            tertiaryTextColorId: persistedConfig?.ui?.tertiaryTextColorId,
             panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };
@@ -7158,6 +7740,9 @@ server.listen(PORT, '0.0.0.0', () => {
         console.log(`HTTPS certificate: ${HTTPS_CERT_PATH}`);
         console.log('NOTE: If browsers warn, trust the cert on the client device.');
     }
+    
+    // Initialize control icons service
+    controlIconsService.init(CONTROL_ICONS_DIR);
     
     // Start HLS health monitoring
     hlsService.startHlsHealthMonitoring();

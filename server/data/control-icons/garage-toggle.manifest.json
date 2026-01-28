@@ -1,0 +1,42 @@
+{
+  "id": "garage-toggle",
+  "name": "Garage Toggle",
+  "description": "A garage door button that toggles open/close.",
+  "file": "garage-toggle.svg",
+  "version": "1.0.0",
+  
+  "requiredCommands": ["open", "close"],
+  "optionalCommands": [],
+  
+  "stateBindings": {
+    "door": {
+      "type": "boolean",
+      "attribute": "door",
+      "onValue": "open",
+      "offValue": "closed",
+      "cssClass": {
+        "on": "is-open",
+        "off": "is-closed"
+      }
+    }
+  },
+  
+  "regions": [
+    {
+      "id": "toggle",
+      "selector": "[data-region='toggle']",
+      "action": "toggle",
+      "stateAttribute": "door",
+      "onValue": "open",
+      "toggleCommands": ["open", "close"],
+      "eventType": "click",
+      "tooltip": "Toggle Garage Door"
+    }
+  ],
+  
+  "layout": {
+    "aspectRatio": "1:1",
+    "preferredWidth": 48,
+    "preferredHeight": 48
+  }
+}

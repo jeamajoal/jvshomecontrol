@@ -60,9 +60,11 @@ function App() {
     const baseDeviceLabelOverrides = (ui.deviceLabelOverrides && typeof ui.deviceLabelOverrides === 'object') ? ui.deviceLabelOverrides : {};
     const baseDeviceCommandAllowlist = (ui.deviceCommandAllowlist && typeof ui.deviceCommandAllowlist === 'object') ? ui.deviceCommandAllowlist : {};
     const baseDeviceHomeMetricAllowlist = (ui.deviceHomeMetricAllowlist && typeof ui.deviceHomeMetricAllowlist === 'object') ? ui.deviceHomeMetricAllowlist : {};
+    const baseDeviceInfoMetricAllowlist = (ui.deviceInfoMetricAllowlist && typeof ui.deviceInfoMetricAllowlist === 'object') ? ui.deviceInfoMetricAllowlist : {};
     const profileDeviceLabelOverrides = (profile && profile.deviceLabelOverrides && typeof profile.deviceLabelOverrides === 'object') ? profile.deviceLabelOverrides : {};
     const profileDeviceCommandAllowlist = (profile && profile.deviceCommandAllowlist && typeof profile.deviceCommandAllowlist === 'object') ? profile.deviceCommandAllowlist : {};
     const profileDeviceHomeMetricAllowlist = (profile && profile.deviceHomeMetricAllowlist && typeof profile.deviceHomeMetricAllowlist === 'object') ? profile.deviceHomeMetricAllowlist : {};
+    const profileDeviceInfoMetricAllowlist = (profile && profile.deviceInfoMetricAllowlist && typeof profile.deviceInfoMetricAllowlist === 'object') ? profile.deviceInfoMetricAllowlist : {};
 
     const nextUi = {
       ...ui,
@@ -79,6 +81,10 @@ function App() {
       deviceHomeMetricAllowlist: {
         ...baseDeviceHomeMetricAllowlist,
         ...profileDeviceHomeMetricAllowlist,
+      },
+      deviceInfoMetricAllowlist: {
+        ...baseDeviceInfoMetricAllowlist,
+        ...profileDeviceInfoMetricAllowlist,
       },
     };
 
@@ -272,6 +278,30 @@ function App() {
       // ignore
     }
   }, [effectiveConfig?.ui?.primaryTextSizePct]);
+
+  useEffect(() => {
+    try {
+      const raw = Number(effectiveConfig?.ui?.tertiaryTextOpacityPct);
+      const pct = Number.isFinite(raw) ? Math.max(0, Math.min(100, Math.round(raw))) : 70;
+      const base = pct / 100;
+      const strong = Math.max(0, Math.min(1, base + 0.10));
+      document.documentElement.style.setProperty('--jvs-tertiary-text-opacity', String(base));
+      document.documentElement.style.setProperty('--jvs-tertiary-text-strong-opacity', String(strong));
+    } catch {
+      // ignore
+    }
+  }, [effectiveConfig?.ui?.tertiaryTextOpacityPct]);
+
+  useEffect(() => {
+    try {
+      const raw = Number(effectiveConfig?.ui?.tertiaryTextSizePct);
+      const pct = Number.isFinite(raw) ? Math.max(50, Math.min(200, Math.round(raw))) : 100;
+      const scale = pct / 100;
+      document.documentElement.style.setProperty('--jvs-tertiary-text-size-scale', String(scale));
+    } catch {
+      // ignore
+    }
+  }, [effectiveConfig?.ui?.tertiaryTextSizePct]);
 
   const pageLabel = page === 0
     ? 'Home'

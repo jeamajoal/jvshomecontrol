@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 80 80" aria-labelledby="title desc" role="img">
+  <title id="title">Valve Toggle</title>
+  <desc id="desc">A water valve button. Tap to toggle open/close.</desc>
+
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1F2430"/>
+      <stop offset="1" stop-color="#121622"/>
+    </linearGradient>
+    <linearGradient id="ringGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A4358"/>
+      <stop offset="1" stop-color="#252B3A"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    .bg { fill: url(#bgGrad); }
+    .ring {
+      fill: none;
+      stroke: url(#ringGrad);
+      stroke-width: 4;
+      transition: stroke 200ms ease-out, filter 200ms ease-out;
+    }
+    .valve {
+      fill: none;
+      stroke: #6B7280;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      transition: stroke 200ms ease-out;
+    }
+    .valve-fill {
+      fill: #6B7280;
+      transition: fill 200ms ease-out;
+    }
+    .hit-area {
+      fill: rgba(0,0,0,0.001); cursor: pointer; pointer-events: all;
+    }
+    .hit-area:hover ~ .ring {
+      stroke: rgba(255,255,255,0.3);
+    }
+    .hit-area:active ~ .ring {
+      stroke: rgba(255,255,255,0.4);
+    }
+
+    /* Open state (water flowing) */
+    svg.is-open .ring {
+      stroke: #3B82F6;
+      filter: drop-shadow(0 0 8px rgba(59,130,246,0.5));
+    }
+    svg.is-open .valve {
+      stroke: #3B82F6;
+    }
+    svg.is-open .valve-fill {
+      fill: #3B82F6;
+    }
+
+    /* Closed state */
+    svg.is-closed .ring {
+      stroke: #EF4444;
+      filter: drop-shadow(0 0 8px rgba(239,68,68,0.5));
+    }
+    svg.is-closed .valve {
+      stroke: #EF4444;
+    }
+    svg.is-closed .valve-fill {
+      fill: #EF4444;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .ring, .valve, .valve-fill { transition: none !important; }
+    }
+  </style>
+
+  <!-- Background -->
+  <circle class="bg" cx="40" cy="40" r="36"/>
+  
+  <!-- Interactive hit area -->
+  <circle class="hit-area" data-region="toggle" cx="40" cy="40" r="36"/>
+  
+  <!-- Ring -->
+  <circle class="ring" cx="40" cy="40" r="28"/>
+  
+  <!-- Valve icon -->
+  <g transform="translate(40, 40)">
+    <!-- Pipe -->
+    <rect class="valve" x="-16" y="-3" width="32" height="10" rx="2"/>
+    <!-- Valve body -->
+    <rect class="valve-fill" x="-5" y="-8" width="10" height="5" rx="1"/>
+    <!-- Valve handle (wheel) -->
+    <circle class="valve" cx="0" cy="-12" r="5"/>
+    <line class="valve" x1="-4" y1="-12" x2="4" y2="-12"/>
+    <line class="valve" x1="0" y1="-16" x2="0" y2="-8"/>
+    <!-- Stem -->
+    <line class="valve" x1="0" y1="-7" x2="0" y2="-3"/>
+  </g>
+</svg>

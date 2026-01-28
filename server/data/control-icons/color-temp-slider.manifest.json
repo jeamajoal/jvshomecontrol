@@ -1,0 +1,54 @@
+{
+  "id": "color-temp-slider",
+  "name": "Color Temperature",
+  "description": "A vertical slider for adjusting color temperature (warm to cool white).",
+  "file": "color-temp-slider.svg",
+  "version": "1.0.0",
+  
+  "requiredCommands": ["setColorTemperature"],
+  "optionalCommands": [],
+  
+  "stateBindings": {
+    "colorTemperature": {
+      "type": "number",
+      "attribute": "colorTemperature",
+      "min": 2700,
+      "max": 6500,
+      "cssVariable": "--colorTemperature",
+      "elements": {
+        "colorTemperature-thumb": {
+          "transform": "translateY",
+          "invert": false
+        },
+        "colorTemperature-grip": {
+          "transform": "translateY",
+          "invert": false
+        }
+      }
+    }
+  },
+  
+  "regions": [
+    {
+      "id": "colorTemperature",
+      "selector": "[data-region='colorTemperature']",
+      "action": "slider",
+      "command": "setColorTemperature",
+      "stateAttribute": "colorTemperature",
+      "parameter": "colorTemperature",
+      "min": 2700,
+      "max": 6500,
+      "step": 100,
+      "orientation": "vertical",
+      "invert": false,
+      "debounce": 100,
+      "tooltip": "Drag to adjust color temperature"
+    }
+  ],
+  
+  "layout": {
+    "aspectRatio": "48:120",
+    "preferredWidth": 48,
+    "preferredHeight": 120
+  }
+}

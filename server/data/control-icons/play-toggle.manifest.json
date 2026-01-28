@@ -1,0 +1,42 @@
+{
+  "id": "play-toggle",
+  "name": "Play/Pause Toggle",
+  "description": "A circular play/pause button for media devices.",
+  "file": "play-toggle.svg",
+  "version": "1.0.0",
+  
+  "requiredCommands": ["play", "pause"],
+  "optionalCommands": [],
+  
+  "stateBindings": {
+    "playbackStatus": {
+      "type": "boolean",
+      "attribute": "playbackStatus",
+      "onValue": "playing",
+      "offValue": "paused",
+      "cssClass": {
+        "on": "is-playing",
+        "off": "is-paused"
+      }
+    }
+  },
+  
+  "regions": [
+    {
+      "id": "toggle",
+      "selector": "[data-region='toggle']",
+      "action": "toggle",
+      "stateAttribute": "playbackStatus",
+      "onValue": "playing",
+      "toggleCommands": ["play", "pause"],
+      "eventType": "click",
+      "tooltip": "Play/Pause"
+    }
+  ],
+  
+  "layout": {
+    "aspectRatio": "1:1",
+    "preferredWidth": 48,
+    "preferredHeight": 48
+  }
+}

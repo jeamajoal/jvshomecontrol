@@ -14,7 +14,7 @@ export function getUiScheme() {
     actionButton: `${ACCENT_TEXT} ${ACCENT_BORDER_30} ${ACCENT_BG_10}`,
     checkboxAccent: 'accent-[rgb(var(--accent-rgb))]',
     focusRing: `focus:outline-none focus:ring-2 focus:ring-[rgb(var(--accent-rgb)_/_0.35)] focus:border-[rgb(var(--accent-rgb)_/_0.40)]`,
-    selectedCard: `${ACCENT_BORDER_40} jvs-accent-card-bg`,
+    selectedCard: ACCENT_BORDER_40,
     selectedText: ACCENT_TEXT,
     metricIcon: ACCENT_TEXT,
     editBorder: ACCENT_BORDER_25,

@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 80 80" aria-labelledby="title desc" role="img">
+  <title id="title">Power Toggle</title>
+  <desc id="desc">A circular power button. Tap to toggle on/off.</desc>
+
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1F2430"/>
+      <stop offset="1" stop-color="#121622"/>
+    </linearGradient>
+    <linearGradient id="ringGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A4358"/>
+      <stop offset="1" stop-color="#252B3A"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    .bg { fill: url(#bgGrad); }
+    .ring {
+      fill: none;
+      stroke: url(#ringGrad);
+      stroke-width: 4;
+      transition: stroke 200ms ease-out, filter 200ms ease-out;
+    }
+    .icon {
+      fill: none;
+      stroke: #6B7280;
+      stroke-width: 4;
+      stroke-linecap: round;
+      transition: stroke 200ms ease-out;
+    }
+    .hit-area {
+      fill: rgba(0,0,0,0.001); cursor: pointer; pointer-events: all;
+    }
+    .hit-area:hover ~ .ring {
+      stroke: rgba(255,255,255,0.3);
+    }
+    .hit-area:active ~ .ring {
+      stroke: rgba(255,255,255,0.4);
+    }
+
+    /* ON state */
+    svg.is-on .ring {
+      stroke: #FBBF24;
+      filter: drop-shadow(0 0 8px rgba(251,191,36,0.5));
+    }
+    svg.is-on .icon {
+      stroke: #FBBF24;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .ring, .icon { transition: none !important; }
+    }
+  </style>
+
+  <!-- Background -->
+  <circle class="bg" cx="40" cy="40" r="36"/>
+  
+  <!-- Interactive hit area -->
+  <circle class="hit-area" data-region="toggle" cx="40" cy="40" r="36"/>
+  
+  <!-- Ring -->
+  <circle class="ring" cx="40" cy="40" r="28"/>
+  
+  <!-- Power icon -->
+  <g class="icon">
+    <!-- Vertical line -->
+    <line x1="40" y1="28" x2="40" y2="40"/>
+    <!-- Arc (partial circle) -->
+    <path d="M 28,40 A 12,12 0 1,0 52,40" transform="rotate(-30, 40, 40)"/>
+  </g>
+</svg>

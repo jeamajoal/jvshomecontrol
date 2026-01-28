@@ -26,25 +26,25 @@ export default {
             },
             keyframes: {
                 'glow-blue': {
-                    '0%, 100%': { boxShadow: '0 0 15px rgba(59, 130, 246, 0.3)', borderColor: 'rgba(59, 130, 246, 0.4)' },
-                    '50%': { boxShadow: '0 0 30px rgba(59, 130, 246, 0.6)', borderColor: 'rgba(59, 130, 246, 0.8)' },
+                    '0%, 100%': { boxShadow: '0 0 6px rgba(59, 130, 246, 0.3)', borderColor: 'rgba(59, 130, 246, 0.4)' },
+                    '50%': { boxShadow: '0 0 12px rgba(59, 130, 246, 0.5)', borderColor: 'rgba(59, 130, 246, 0.6)' },
                 },
                 'glow-red': {
-                    '0%, 100%': { boxShadow: '0 0 15px rgba(239, 68, 68, 0.4)', borderColor: 'rgba(239, 68, 68, 0.5)' },
-                    '50%': { boxShadow: '0 0 40px rgba(239, 68, 68, 0.8)', borderColor: 'rgba(239, 68, 68, 1)' },
+                    '0%, 100%': { boxShadow: '0 0 8px rgba(239, 68, 68, 0.4)', borderColor: 'rgba(239, 68, 68, 0.5)' },
+                    '50%': { boxShadow: '0 0 16px rgba(239, 68, 68, 0.6)', borderColor: 'rgba(239, 68, 68, 0.8)' },
                 },
                 'glow-orange': {
-                    '0%, 100%': { boxShadow: '0 0 15px rgba(245, 158, 11, 0.3)', borderColor: 'rgba(245, 158, 11, 0.4)' },
-                    '50%': { boxShadow: '0 0 30px rgba(245, 158, 11, 0.6)', borderColor: 'rgba(245, 158, 11, 0.8)' },
+                    '0%, 100%': { boxShadow: '0 0 6px rgba(245, 158, 11, 0.3)', borderColor: 'rgba(245, 158, 11, 0.4)' },
+                    '50%': { boxShadow: '0 0 12px rgba(245, 158, 11, 0.5)', borderColor: 'rgba(245, 158, 11, 0.6)' },
                 },
                 'glow-accent': {
                     '0%, 100%': {
-                        boxShadow: 'inset 0 0 15px rgb(var(--jvs-glow-rgb, var(--accent-rgb)) / 0.30)',
+                        boxShadow: '0 0 6px rgb(var(--jvs-glow-rgb, var(--accent-rgb)) / 0.30)',
                         borderColor: 'rgb(var(--jvs-glow-rgb, var(--accent-rgb)) / 0.40)'
                     },
                     '50%': {
-                        boxShadow: 'inset 0 0 30px rgb(var(--jvs-glow-rgb, var(--accent-rgb)) / 0.60)',
-                        borderColor: 'rgb(var(--jvs-glow-rgb, var(--accent-rgb)) / 0.80)'
+                        boxShadow: '0 0 12px rgb(var(--jvs-glow-rgb, var(--accent-rgb)) / 0.50)',
+                        borderColor: 'rgb(var(--jvs-glow-rgb, var(--accent-rgb)) / 0.60)'
                     },
                 },
             }

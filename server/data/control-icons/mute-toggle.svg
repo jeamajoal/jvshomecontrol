@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 80 80" aria-labelledby="title desc" role="img">
+  <title id="title">Mute Toggle</title>
+  <desc id="desc">A mute button. Tap to toggle mute/unmute.</desc>
+
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1F2430"/>
+      <stop offset="1" stop-color="#121622"/>
+    </linearGradient>
+    <linearGradient id="ringGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A4358"/>
+      <stop offset="1" stop-color="#252B3A"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    .bg { fill: url(#bgGrad); }
+    .ring {
+      fill: none;
+      stroke: url(#ringGrad);
+      stroke-width: 4;
+      transition: stroke 200ms ease-out, filter 200ms ease-out;
+    }
+    .icon {
+      fill: #6B7280;
+      stroke: none;
+      transition: fill 200ms ease-out;
+    }
+    .icon-stroke {
+      fill: none;
+      stroke: #6B7280;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      transition: stroke 200ms ease-out;
+    }
+    .mute-x {
+      display: none;
+      fill: none;
+      stroke: #EF4444;
+      stroke-width: 3;
+      stroke-linecap: round;
+    }
+    .hit-area {
+      fill: rgba(0,0,0,0.001); cursor: pointer; pointer-events: all;
+    }
+    .hit-area:hover ~ .ring {
+      stroke: rgba(255,255,255,0.3);
+    }
+    .hit-area:active ~ .ring {
+      stroke: rgba(255,255,255,0.4);
+    }
+
+    /* Muted state */
+    svg.is-muted .mute-x { display: block; }
+    svg.is-muted .ring {
+      stroke: #EF4444;
+      filter: drop-shadow(0 0 8px rgba(239,68,68,0.5));
+    }
+    svg.is-muted .icon {
+      fill: #EF4444;
+    }
+    svg.is-muted .icon-stroke {
+      stroke: #EF4444;
+    }
+    svg.is-muted .sound-waves { display: none; }
+
+    /* Unmuted state */
+    svg.is-unmuted .ring {
+      stroke: url(#ringGrad);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .ring, .icon, .icon-stroke { transition: none !important; }
+    }
+  </style>
+
+  <!-- Background -->
+  <circle class="bg" cx="40" cy="40" r="36"/>
+  
+  <!-- Interactive hit area -->
+  <circle class="hit-area" data-region="toggle" cx="40" cy="40" r="36"/>
+  
+  <!-- Ring -->
+  <circle class="ring" cx="40" cy="40" r="28"/>
+  
+  <!-- Speaker icon -->
+  <g transform="translate(24, 28)">
+    <!-- Speaker body -->
+    <polygon class="icon" points="0,9 0,15 6,15 14,22 14,2 6,9"/>
+    <!-- Sound waves -->
+    <g class="icon-stroke sound-waves">
+      <path d="M 18,8 Q 22,12 18,16"/>
+      <path d="M 22,4 Q 28,12 22,20"/>
+    </g>
+  </g>
+  
+  <!-- Mute X -->
+  <g class="mute-x">
+    <line x1="50" y1="30" x2="58" y2="50"/>
+    <line x1="58" y1="30" x2="50" y2="50"/>
+  </g>
+</svg>

@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 80 80" aria-labelledby="title desc" role="img">
+  <title id="title">Lock Toggle</title>
+  <desc id="desc">A lock button. Tap to toggle lock/unlock.</desc>
+
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1F2430"/>
+      <stop offset="1" stop-color="#121622"/>
+    </linearGradient>
+    <linearGradient id="ringGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A4358"/>
+      <stop offset="1" stop-color="#252B3A"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    .bg { fill: url(#bgGrad); }
+    .ring {
+      fill: none;
+      stroke: url(#ringGrad);
+      stroke-width: 4;
+      transition: stroke 200ms ease-out, filter 200ms ease-out;
+    }
+    .icon {
+      fill: none;
+      stroke: #6B7280;
+      stroke-width: 3;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      transition: stroke 200ms ease-out, fill 200ms ease-out;
+    }
+    .icon-body {
+      fill: #6B7280;
+      stroke: none;
+      transition: fill 200ms ease-out;
+    }
+    .hit-area {
+      fill: rgba(0,0,0,0.001); cursor: pointer; pointer-events: all;
+    }
+    .hit-area:hover ~ .ring {
+      stroke: rgba(255,255,255,0.3);
+    }
+    .hit-area:active ~ .ring {
+      stroke: rgba(255,255,255,0.4);
+    }
+
+    /* Locked state */
+    svg.is-locked .ring {
+      stroke: #10B981;
+      filter: drop-shadow(0 0 8px rgba(16,185,129,0.5));
+    }
+    svg.is-locked .icon {
+      stroke: #10B981;
+    }
+    svg.is-locked .icon-body {
+      fill: #10B981;
+    }
+
+    /* Unlocked state */
+    svg.is-unlocked .ring {
+      stroke: #EF4444;
+      filter: drop-shadow(0 0 8px rgba(239,68,68,0.5));
+    }
+    svg.is-unlocked .icon {
+      stroke: #EF4444;
+    }
+    svg.is-unlocked .icon-body {
+      fill: #EF4444;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .ring, .icon, .icon-body { transition: none !important; }
+    }
+  </style>
+
+  <!-- Background -->
+  <circle class="bg" cx="40" cy="40" r="36"/>
+  
+  <!-- Interactive hit area -->
+  <circle class="hit-area" data-region="toggle" cx="40" cy="40" r="36"/>
+  
+  <!-- Ring -->
+  <circle class="ring" cx="40" cy="40" r="28"/>
+  
+  <!-- Lock icon -->
+  <g class="icon">
+    <!-- Shackle (the curved part) -->
+    <path d="M 32,38 L 32,32 A 8,8 0 0,1 48,32 L 48,38"/>
+  </g>
+  <!-- Lock body -->
+  <rect class="icon-body" x="29" y="38" width="22" height="16" rx="3"/>
+</svg>

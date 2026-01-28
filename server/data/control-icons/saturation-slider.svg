@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 48 120" aria-labelledby="title desc" role="img">
+  <title id="title">Saturation Slider</title>
+  <desc id="desc">A vertical slider to adjust color saturation.</desc>
+
+  <defs>
+    <linearGradient id="satTrackGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0D1117"/>
+      <stop offset="1" stop-color="#1A1E28"/>
+    </linearGradient>
+    <linearGradient id="satFillGrad" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#EC4899"/>
+      <stop offset="1" stop-color="#F9A8D4"/>
+    </linearGradient>
+    <linearGradient id="satThumbGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#D1D5DB"/>
+    </linearGradient>
+    <filter id="satThumbShadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <style>
+    .track {
+      fill: url(#satTrackGrad);
+      stroke: rgba(255,255,255,0.08);
+      stroke-width: 1;
+    }
+    .fill {
+      fill: url(#satFillGrad);
+      transition: height 80ms ease-out, y 80ms ease-out;
+    }
+    .thumb {
+      fill: url(#satThumbGrad);
+      filter: url(#satThumbShadow);
+      cursor: ns-resize;
+      transition: cy 80ms ease-out;
+    }
+    .thumb:hover {
+      fill: #FFFFFF;
+    }
+    .thumb-grip {
+      stroke: rgba(0,0,0,0.15);
+      stroke-width: 1;
+      pointer-events: none;
+    }
+    .slider-region {
+      fill: rgba(0,0,0,0.001); pointer-events: all;
+      cursor: ns-resize;
+    }
+    .level-marks {
+      stroke: rgba(255,255,255,0.1);
+      stroke-width: 1;
+    }
+    .label {
+      fill: rgba(255,255,255,0.35);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 7px;
+      text-anchor: middle;
+    }
+    .icon-indicator {
+      fill: none;
+      stroke: rgba(255,255,255,0.3);
+      stroke-width: 1.5;
+      stroke-linecap: round;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .fill, .thumb { transition: none !important; }
+    }
+  </style>
+
+  <!-- "Vivid" indicator at top -->
+  <circle class="icon-indicator" cx="24" cy="10" r="5" fill="rgba(236,72,153,0.3)"/>
+
+  <!-- Track background -->
+  <rect class="track" x="16" y="22" width="16" height="80" rx="8"/>
+
+  <!-- Level marks -->
+  <g class="level-marks">
+    <line x1="10" y1="26" x2="14" y2="26"/>
+    <line x1="10" y1="42" x2="14" y2="42"/>
+    <line x1="10" y1="62" x2="14" y2="62"/>
+    <line x1="10" y1="82" x2="14" y2="82"/>
+    <line x1="10" y1="98" x2="14" y2="98"/>
+  </g>
+
+  <!-- Fill (shows current level) -->
+  <rect class="fill" data-element="saturation-fill" x="16" y="62" width="16" height="40" rx="8"/>
+
+  <!-- Interactive region for dragging -->
+  <rect class="slider-region" data-region="saturation" x="8" y="20" width="32" height="84"/>
+
+  <!-- Thumb knob -->
+  <circle class="thumb" data-element="saturation-thumb" cx="24" cy="62" r="10"/>
+  
+  <!-- Thumb grip lines -->
+  <g class="thumb-grip" data-element="saturation-grip">
+    <line x1="20" y1="60" x2="28" y2="60"/>
+    <line x1="20" y1="62" x2="28" y2="62"/>
+    <line x1="20" y1="64" x2="28" y2="64"/>
+  </g>
+
+  <!-- "Pale" indicator at bottom -->
+  <circle class="icon-indicator" cx="24" cy="110" r="5" fill="rgba(255,255,255,0.1)"/>
+</svg>

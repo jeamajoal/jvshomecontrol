@@ -1,0 +1,36 @@
+{
+  "id": "media-transport",
+  "name": "Media Transport",
+  "description": "Play, pause, stop, and skip controls for media devices.",
+  "file": null,
+  "version": "1.0.0",
+  "reactComponent": "MediaTransport",
+  
+  "requiredCommands": ["play"],
+  "optionalCommands": ["pause", "stop", "previousTrack", "nextTrack"],
+  
+  "stateBindings": {
+    "playbackStatus": {
+      "type": "string",
+      "attribute": "playbackStatus"
+    },
+    "transportStatus": {
+      "type": "string",
+      "attribute": "transportStatus"
+    }
+  },
+  
+  "regions": [
+    {
+      "id": "transport",
+      "action": "transport",
+      "tooltip": "Media controls"
+    }
+  ],
+  
+  "layout": {
+    "aspectRatio": "180:56",
+    "preferredWidth": 180,
+    "preferredHeight": 56
+  }
+}

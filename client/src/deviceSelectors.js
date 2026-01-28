@@ -66,6 +66,18 @@ export function getDeviceHomeMetricAllowlist(config, deviceId) {
   return arr.map((v) => String(v || '').trim()).filter(Boolean);
 }
 
+export function getDeviceInfoMetricAllowlist(config, deviceId) {
+  const id = asText(deviceId);
+  if (!id) return null;
+  const raw = (config?.ui?.deviceInfoMetricAllowlist && typeof config.ui.deviceInfoMetricAllowlist === 'object')
+    ? config.ui.deviceInfoMetricAllowlist
+    : {};
+  const arr = raw[id];
+  if (!Array.isArray(arr)) return null;
+  // Empty array is allowed (meaning: show no info cards for this device).
+  return arr.map((v) => String(v || '').trim()).filter(Boolean);
+}
+
 export function getDeviceStatus(statuses, deviceId) {
   const id = asText(deviceId);
   if (!id) return null;

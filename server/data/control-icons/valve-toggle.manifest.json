@@ -1,0 +1,42 @@
+{
+  "id": "valve-toggle",
+  "name": "Valve Toggle",
+  "description": "A water valve button that toggles open/close.",
+  "file": "valve-toggle.svg",
+  "version": "1.0.0",
+  
+  "requiredCommands": ["open", "close"],
+  "optionalCommands": [],
+  
+  "stateBindings": {
+    "valve": {
+      "type": "boolean",
+      "attribute": "valve",
+      "onValue": "open",
+      "offValue": "closed",
+      "cssClass": {
+        "on": "is-open",
+        "off": "is-closed"
+      }
+    }
+  },
+  
+  "regions": [
+    {
+      "id": "toggle",
+      "selector": "[data-region='toggle']",
+      "action": "toggle",
+      "stateAttribute": "valve",
+      "onValue": "open",
+      "toggleCommands": ["open", "close"],
+      "eventType": "click",
+      "tooltip": "Toggle Valve"
+    }
+  ],
+  
+  "layout": {
+    "aspectRatio": "1:1",
+    "preferredWidth": 48,
+    "preferredHeight": 48
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "id": "color-wheel",
+  "name": "Color Wheel",
+  "description": "A circular color picker for RGB/HSB capable lights.",
+  "file": "color-wheel.svg",
+  "version": "1.0.0",
+  
+  "requiredCommands": ["setHue"],
+  "optionalCommands": ["setSaturation"],
+  
+  "stateBindings": {
+    "hue": {
+      "type": "number",
+      "attribute": "hue",
+      "min": 0,
+      "max": 100,
+      "cssVariable": "--hue",
+      "elements": {
+        "hue-thumb": {
+          "transform": "rotateAround",
+          "centerX": 50,
+          "centerY": 50,
+          "radius": 38
+        },
+        "color-preview": {
+          "transform": "hueToFill"
+        }
+      }
+    }
+  },
+  
+  "regions": [
+    {
+      "id": "hue",
+      "selector": "[data-region='hue']",
+      "action": "radial",
+      "command": "setHue",
+      "stateAttribute": "hue",
+      "parameter": "hue",
+      "min": 0,
+      "max": 100,
+      "centerX": 50,
+      "centerY": 50,
+      "debounce": 100,
+      "tooltip": "Tap or drag to select color"
+    }
+  ],
+  
+  "layout": {
+    "aspectRatio": "1:1",
+    "preferredWidth": 80,
+    "preferredHeight": 80
+  }
+}

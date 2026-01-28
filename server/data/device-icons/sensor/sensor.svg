@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 128 128" aria-labelledby="title desc" role="img">
+  <title id="title">Sensor</title>
+  <desc id="desc">A generic sensor icon with pulsing detection indicator when active.</desc>
+
+  <defs>
+    <linearGradient id="sensorBodyGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1F2430"/>
+      <stop offset="1" stop-color="#121622"/>
+    </linearGradient>
+    <linearGradient id="sensorLensGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2A3545"/>
+      <stop offset="1" stop-color="#1A202C"/>
+    </linearGradient>
+    <radialGradient id="sensorGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#60A5FA" stop-opacity="0.6"/>
+      <stop offset="100" stop-color="#60A5FA" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <style>
+    .sensor-body { fill: url(#sensorBodyGrad); stroke: rgba(255,255,255,0.10); stroke-width: 2; }
+    .sensor-lens { fill: url(#sensorLensGrad); stroke: rgba(255,255,255,0.08); stroke-width: 1.5; }
+    .sensor-ring { fill: none; stroke: rgba(255,255,255,0.12); stroke-width: 1.5; }
+    
+    .sensor-core {
+      fill: #2A3545;
+      transition: fill 300ms ease-out;
+    }
+    .sensor-indicator {
+      fill: #3B4559;
+      transition: fill 300ms ease-out, filter 300ms ease-out;
+    }
+
+    .sensor-pulse {
+      fill: none;
+      stroke: rgba(96,165,250,0.4);
+      stroke-width: 2;
+      opacity: 0;
+      transform-origin: center center;
+    }
+
+    /* Active/Detecting state */
+    svg.is-on .sensor-core {
+      fill: #1E3A5F;
+    }
+    svg.is-on .sensor-indicator {
+      fill: #60A5FA;
+      filter: drop-shadow(0 0 6px rgba(96,165,250,0.7));
+    }
+    svg.is-on .sensor-pulse {
+      animation: pulse-ring 2s ease-out infinite;
+    }
+    svg.is-on .sensor-pulse:nth-child(2) { animation-delay: 0.5s; }
+    svg.is-on .sensor-pulse:nth-child(3) { animation-delay: 1s; }
+
+    @keyframes pulse-ring {
+      0% { 
+        opacity: 0.8; 
+        transform: scale(1);
+      }
+      100% { 
+        opacity: 0; 
+        transform: scale(2);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .sensor-pulse { animation: none !important; }
+    }
+  </style>
+
+  <!-- Sensor body (rounded rectangle) -->
+  <rect class="sensor-body" x="24" y="28" width="80" height="72" rx="16" ry="16"/>
+  
+  <!-- Decorative lines -->
+  <line x1="32" y1="38" x2="40" y2="38" stroke="rgba(255,255,255,0.15)" stroke-width="2" stroke-linecap="round"/>
+  <line x1="32" y1="46" x2="36" y2="46" stroke="rgba(255,255,255,0.1)" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Main sensor lens -->
+  <circle class="sensor-lens" cx="64" cy="64" r="28"/>
+  <circle class="sensor-ring" cx="64" cy="64" r="22"/>
+  <circle class="sensor-ring" cx="64" cy="64" r="16"/>
+  <circle class="sensor-core" cx="64" cy="64" r="12"/>
+  
+  <!-- Center indicator dot -->
+  <circle class="sensor-indicator" cx="64" cy="64" r="6"/>
+
+  <!-- Pulse rings (for active state) -->
+  <g class="sensor-pulses">
+    <circle class="sensor-pulse" cx="64" cy="64" r="18"/>
+    <circle class="sensor-pulse" cx="64" cy="64" r="18"/>
+    <circle class="sensor-pulse" cx="64" cy="64" r="18"/>
+  </g>
+
+  <!-- Small status LED -->
+  <circle cx="92" cy="38" r="4" fill="#2A3545" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+</svg>

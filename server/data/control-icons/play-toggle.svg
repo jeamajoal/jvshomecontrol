@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 80 80" aria-labelledby="title desc" role="img">
+  <title id="title">Play Toggle</title>
+  <desc id="desc">A play/pause button. Tap to toggle.</desc>
+
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1F2430"/>
+      <stop offset="1" stop-color="#121622"/>
+    </linearGradient>
+    <linearGradient id="ringGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A4358"/>
+      <stop offset="1" stop-color="#252B3A"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    .bg { fill: url(#bgGrad); }
+    .ring {
+      fill: none;
+      stroke: url(#ringGrad);
+      stroke-width: 4;
+      transition: stroke 200ms ease-out, filter 200ms ease-out;
+    }
+    .icon {
+      fill: #6B7280;
+      stroke: none;
+      transition: fill 200ms ease-out;
+    }
+    .hit-area {
+      fill: rgba(0,0,0,0.001); cursor: pointer; pointer-events: all;
+    }
+    .hit-area:hover ~ .ring {
+      stroke: rgba(255,255,255,0.3);
+    }
+    .hit-area:active ~ .ring {
+      stroke: rgba(255,255,255,0.4);
+    }
+
+    /* Playing state - show pause icon */
+    .pause-icon { display: none; }
+    svg.is-playing .play-icon { display: none; }
+    svg.is-playing .pause-icon { display: block; }
+    svg.is-playing .ring {
+      stroke: #3B82F6;
+      filter: drop-shadow(0 0 8px rgba(59,130,246,0.5));
+    }
+    svg.is-playing .icon {
+      fill: #3B82F6;
+    }
+
+    /* Paused state */
+    svg.is-paused .ring {
+      stroke: url(#ringGrad);
+    }
+    svg.is-paused .icon {
+      fill: #6B7280;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .ring, .icon { transition: none !important; }
+    }
+  </style>
+
+  <!-- Background -->
+  <circle class="bg" cx="40" cy="40" r="36"/>
+  
+  <!-- Interactive hit area -->
+  <circle class="hit-area" data-region="toggle" cx="40" cy="40" r="36"/>
+  
+  <!-- Ring -->
+  <circle class="ring" cx="40" cy="40" r="28"/>
+  
+  <!-- Play icon (triangle) -->
+  <polygon class="icon play-icon" points="34,28 34,52 54,40"/>
+  
+  <!-- Pause icon (two bars) -->
+  <g class="icon pause-icon">
+    <rect x="31" y="28" width="7" height="24" rx="2"/>
+    <rect x="42" y="28" width="7" height="24" rx="2"/>
+  </g>
+</svg>

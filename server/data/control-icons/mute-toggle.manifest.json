@@ -1,0 +1,42 @@
+{
+  "id": "mute-toggle",
+  "name": "Mute Toggle",
+  "description": "A circular mute button for audio devices.",
+  "file": "mute-toggle.svg",
+  "version": "1.0.0",
+  
+  "requiredCommands": ["mute", "unmute"],
+  "optionalCommands": [],
+  
+  "stateBindings": {
+    "mute": {
+      "type": "boolean",
+      "attribute": "mute",
+      "onValue": "muted",
+      "offValue": "unmuted",
+      "cssClass": {
+        "on": "is-muted",
+        "off": "is-unmuted"
+      }
+    }
+  },
+  
+  "regions": [
+    {
+      "id": "toggle",
+      "selector": "[data-region='toggle']",
+      "action": "toggle",
+      "stateAttribute": "mute",
+      "onValue": "muted",
+      "toggleCommands": ["mute", "unmute"],
+      "eventType": "click",
+      "tooltip": "Mute/Unmute"
+    }
+  ],
+  
+  "layout": {
+    "aspectRatio": "1:1",
+    "preferredWidth": 48,
+    "preferredHeight": 48
+  }
+}

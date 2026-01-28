@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Control Icon Manifest",
+  "description": "Defines an interactive control icon with command mappings and state bindings",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for this control icon"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name"
+    },
+    "description": {
+      "type": "string",
+      "description": "What this control does"
+    },
+    "file": {
+      "type": "string",
+      "description": "SVG filename relative to this manifest"
+    },
+    "requiredCommands": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Commands the device must support to use this icon"
+    },
+    "optionalCommands": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Commands that enhance functionality if available"
+    },
+    "stateBindings": {
+      "type": "object",
+      "description": "Maps device attributes to SVG state classes",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "attribute": { "type": "string", "description": "Device attribute to read" },
+          "type": { "type": "string", "enum": ["boolean", "range", "enum"], "description": "How to interpret the value" },
+          "trueValues": { "type": "array", "items": { "type": "string" }, "description": "Values that mean 'true' for boolean type" },
+          "cssClass": { "type": "string", "description": "CSS class to add when true" },
+          "cssVariable": { "type": "string", "description": "CSS variable to set for range values" },
+          "min": { "type": "number" },
+          "max": { "type": "number" }
+        }
+      }
+    },
+    "regions": {
+      "type": "array",
+      "description": "Interactive regions in the SVG",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "Element ID or data-region value in SVG" },
+          "action": {
+            "type": "string",
+            "enum": ["command", "toggle", "increment", "decrement", "slider"],
+            "description": "What happens on interaction"
+          },
+          "command": { "type": "string", "description": "Command to send" },
+          "toggleCommands": {
+            "type": "object",
+            "properties": {
+              "on": { "type": "string" },
+              "off": { "type": "string" }
+            },
+            "description": "Commands for toggle action based on current state"
+          },
+          "stateAttribute": { "type": "string", "description": "Attribute to check for toggle state" },
+          "parameter": { "type": "string", "description": "Parameter name for commands that take arguments" },
+          "step": { "type": "number", "description": "Step size for increment/decrement" },
+          "min": { "type": "number" },
+          "max": { "type": "number" },
+          "eventType": {
+            "type": "string",
+            "enum": ["click", "pointerdown", "pointerup", "drag"],
+            "default": "click"
+          },
+          "holdRepeat": { "type": "boolean", "description": "Repeat command while held" },
+          "holdRepeatMs": { "type": "number", "default": 200 }
+        },
+        "required": ["id", "action"]
+      }
+    }
+  },
+  "required": ["id", "name", "file", "regions"]
+}

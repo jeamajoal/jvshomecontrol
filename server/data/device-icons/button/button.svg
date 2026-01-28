@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 128 128" aria-labelledby="title desc" role="img">
+  <title id="title">Button</title>
+  <desc id="desc">A modern push button icon with a press animation and subtle glow when activated.</desc>
+
+  <defs>
+    <linearGradient id="buttonBaseGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1F2430"/>
+      <stop offset="1" stop-color="#121622"/>
+    </linearGradient>
+    <linearGradient id="buttonTopGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A4255"/>
+      <stop offset="1" stop-color="#252B3A"/>
+    </linearGradient>
+    <linearGradient id="buttonHighlight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="buttonGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <style>
+    .button-base { fill: url(#buttonBaseGrad); stroke: rgba(255,255,255,0.08); stroke-width: 2; }
+    .button-top {
+      fill: url(#buttonTopGrad);
+      stroke: rgba(255,255,255,0.12);
+      stroke-width: 1.5;
+      transform-origin: center center;
+      transition: transform 120ms ease-out;
+    }
+    .button-highlight { fill: url(#buttonHighlight); pointer-events: none; }
+    .button-ring {
+      fill: none;
+      stroke: rgba(255,255,255,0.15);
+      stroke-width: 2;
+      opacity: 0.6;
+    }
+    .button-indicator {
+      fill: #2A3040;
+      transition: fill 150ms ease-out, filter 150ms ease-out;
+    }
+
+    /* Pressed state */
+    svg.is-on .button-top { transform: translateY(3px) scale(0.97); }
+    svg.is-on .button-indicator {
+      fill: #60A5FA;
+      filter: drop-shadow(0 0 6px rgba(96,165,250,0.6)) drop-shadow(0 0 12px rgba(96,165,250,0.3));
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .button-top, .button-indicator { transition: none !important; }
+    }
+  </style>
+
+  <!-- Base ring -->
+  <circle class="button-base" cx="64" cy="64" r="48"/>
+  
+  <!-- Inner ring decoration -->
+  <circle class="button-ring" cx="64" cy="64" r="40"/>
+  
+  <!-- Button top (pressable) -->
+  <circle class="button-top" cx="64" cy="62" r="32"/>
+  
+  <!-- Highlight arc -->
+  <path class="button-highlight" d="M40 50 A28 28 0 0 1 88 50 A32 32 0 0 0 40 50" opacity="0.4"/>
+  
+  <!-- Center indicator -->
+  <circle class="button-indicator" cx="64" cy="62" r="10"/>
+</svg>
