@@ -6910,69 +6910,6 @@ const ConfigPanel = ({
               </div>
             ) : null}
 
-            <div className="mt-4 utility-group p-4">
-              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
-                Switch controls
-              </div>
-              <div className="mt-1 text-xs text-white/45">
-                How switch-type devices render on the Controls screen.
-              </div>
-
-              <div className="mt-4 grid grid-cols-1 gap-3">
-                <label className="block">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Control style</div>
-                  <select
-                    value={globalSwitchControlStyleDraft}
-                    disabled={!connected || busy}
-                    onChange={(e) => {
-                      const next = String(e.target.value || '').trim().toLowerCase();
-                      setGlobalSwitchControlStyleError(null);
-                      setGlobalSwitchControlStyleDirty(true);
-                      setGlobalSwitchControlStyleDraft(next);
-                    }}
-                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
-                  >
-                    <option value="auto">Auto</option>
-                    <option value="buttons">Buttons (On/Off)</option>
-                    <option value="switch">Switch (toggle)</option>
-                  </select>
-                </label>
-
-                <label className="block">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Animation</div>
-                  <select
-                    value={globalSwitchAnimationStyleDraft}
-                    disabled={!connected || busy}
-                    onChange={(e) => {
-                      const next = String(e.target.value || '').trim().toLowerCase();
-                      setGlobalSwitchAnimationStyleError(null);
-                      setGlobalSwitchAnimationStyleDirty(true);
-                      setGlobalSwitchAnimationStyleDraft(next);
-                    }}
-                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
-                  >
-                    <option value="none">None</option>
-                    <option value="pulse">Pulse when on</option>
-                  </select>
-                </label>
-              </div>
-
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <div className="text-xs text-white/45">
-                  {(globalSwitchControlStyleDirty || globalSwitchAnimationStyleDirty) ? 'Pending changes…' : 'Saved'}
-                </div>
-                <div className="text-xs text-white/45">
-                  {statusText(deviceControlStylesSave.status)}
-                </div>
-              </div>
-
-              {(globalSwitchControlStyleError || globalSwitchAnimationStyleError) ? (
-                <div className="mt-2 text-[11px] text-neon-red break-words">
-                  Save failed: {globalSwitchControlStyleError || globalSwitchAnimationStyleError}
-                </div>
-              ) : null}
-            </div>
-
             {/* Per-Device Settings — expandable cards */}
             <div className={`mt-4 utility-group p-4 ${isPresetSelected ? 'opacity-50 pointer-events-none' : ''}`} aria-disabled={isPresetSelected ? 'true' : 'false'}>
               <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">

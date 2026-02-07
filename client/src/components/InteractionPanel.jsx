@@ -411,20 +411,29 @@ const LevelTile = ({
           >
             {label}
           </div>
-          <div className="mt-1 flex items-baseline gap-3">
+          {hasControlIcons ? (
             <div
-              className={`font-extrabold tracking-tight jvs-primary-text-strong ${isOn ? (uiScheme?.selectedText || 'text-neon-blue') : 'text-white'}`}
-              style={{ fontSize: 'calc(24px * var(--jvs-primary-text-size-scale, 1))' }}
+              className="mt-1 jvs-secondary-text text-white"
+              style={{ fontSize: 'calc(12px * var(--jvs-secondary-text-size-scale, 1))' }}
             >
-              {isOn ? 'ON' : 'OFF'}
+              {isOn ? 'On' : 'Off'} · {displayLevel}%
             </div>
-            <div
-              className="jvs-secondary-text-strong text-white font-bold"
-              style={{ fontSize: 'calc(14px * var(--jvs-secondary-text-size-scale, 1))' }}
-            >
-              {displayLevel}%
+          ) : (
+            <div className="mt-1 flex items-baseline gap-3">
+              <div
+                className={`font-extrabold tracking-tight jvs-primary-text-strong ${isOn ? (uiScheme?.selectedText || 'text-neon-blue') : 'text-white'}`}
+                style={{ fontSize: 'calc(24px * var(--jvs-primary-text-size-scale, 1))' }}
+              >
+                {isOn ? 'ON' : 'OFF'}
+              </div>
+              <div
+                className="jvs-secondary-text-strong text-white font-bold"
+                style={{ fontSize: 'calc(14px * var(--jvs-secondary-text-size-scale, 1))' }}
+              >
+                {displayLevel}%
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {!hasControlIcons && (
@@ -853,6 +862,40 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
     if (!Number.isFinite(s) || !Number.isFinite(c)) return 1;
     return s * c;
   }, [scale, contentScale]);
+
+  // ── Auto-initialize media/TV devices on Controls page mount ─────────────
+  // Some media players (e.g. Samsung, LG, Chromecast) require an `initialize`
+  // command before they accept transport/volume commands.  We fire it once per
+  // device when the panel first renders with a valid device list.
+  const initializedRef = useRef(new Set());
+  useEffect(() => {
+    if (!connected) return;
+    if (!rooms || !rooms.length) return;
+
+    for (const { devices } of rooms) {
+      for (const d of (devices || [])) {
+        const id = String(d?.id || '').trim();
+        if (!id || initializedRef.current.has(id)) continue;
+
+        const cmds = Array.isArray(d.status?.commands) ? d.status.commands : [];
+        if (!cmds.includes('initialize')) continue;
+
+        // Only target media-like devices (AudioVolume, MediaTransport, MusicPlayer, etc.)
+        const caps = Array.isArray(d.status?.capabilities) ? d.status.capabilities : [];
+        const typeStr = String(d.type || '').toLowerCase();
+        const isMedia = caps.some((c) =>
+          /audiovol|mediatransport|musicplayer|speechsynth/i.test(String(c || '')),
+        ) || /media|player|tv|chromecast|speaker|receiver|sonos|roku/i.test(typeStr);
+
+        if (!isMedia) continue;
+
+        initializedRef.current.add(id);
+        sendDeviceCommand(id, 'initialize', []).catch(() => {
+          // best-effort — don't block the UI
+        });
+      }
+    }
+  }, [connected, rooms]);
 
   return (
     <div ref={viewportRef} className="relative w-full h-full overflow-auto md:overflow-hidden p-4 md:p-6">

@@ -248,7 +248,7 @@ function App() {
     <AppStateProvider value={{ config: effectiveConfig, statuses: sensors, connected, uiScheme, refreshNow, panelName, setPanelName }}>
     <div className="h-[100dvh] w-screen flex flex-col overflow-hidden bg-background">
       {/* Header */}
-      <header className="relative flex-none flex items-center justify-between p-3 border-b border-white/5 z-20 jvs-header-bar">
+      <header className="relative flex-none flex items-center justify-between p-3 border-b border-white/5 z-30 jvs-header-bar">
         <div className="flex items-center gap-3">
           <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${uiScheme.headerGlow} ${uiScheme.headerIcon}`}>
             <Activity size={20} />
