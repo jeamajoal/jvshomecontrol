@@ -891,7 +891,7 @@ const ConfigPanel = ({
   useEffect(() => {
     // Panel profile selection is only relevant on non-Global tabs.
     // If no profile is selected, pick the first available profile.
-    if (activeTab === 'display' || activeTab === 'deviceOptions') return;
+    if (activeTab === 'display') return;
     if (selectedPanelName) return;
     if (!panelNames.length) return;
     if (ctx?.setPanelName) ctx.setPanelName(panelNames[0]);
@@ -3459,7 +3459,7 @@ const ConfigPanel = ({
   return (
     <div className="w-full h-full flex flex-col utility-page">
       {/* Sticky header with tabs */}
-      <div className="shrink-0 sticky top-0 z-20 bg-black/80 backdrop-blur-xl -mx-3 md:-mx-4 px-3 md:px-4 pt-0 pb-3 md:pb-4 border-b border-white/10">
+      <div className="shrink-0 sticky top-0 z-20 -mx-3 md:-mx-4 px-3 md:px-4 pt-0 pb-3 md:pb-4 border-b border-white/10" style={{ backgroundColor: 'rgb(12 12 18 / 1)', backdropFilter: 'none' }}>
         <div className="utility-panel p-3 md:p-4">
           <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
             Settings
@@ -3560,10 +3560,11 @@ const ConfigPanel = ({
               Panel Options
             </div>
             <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-              Device Visibility
+              Panel Options
             </div>
             <div className="mt-1 text-xs text-white/45">
-              Choose which devices appear on the Home and Controls screens for this panel profile. If you uncheck all devices for a screen, none will show.
+              Use the <strong>Panel Profile</strong> selector above to switch profiles.
+              Per-device visibility, overrides, and control icons are configured on the <strong>Device Options</strong> tab.
             </div>
 
             {isPresetSelected ? (
@@ -3571,437 +3572,8 @@ const ConfigPanel = ({
                 className="mt-2 jvs-secondary-text text-white/60"
                 style={{ fontSize: 'calc(12px * var(--jvs-secondary-text-size-scale, 1))' }}
               >
-                Presets are read-only. Create a new panel profile (above) to customize device visibility and overrides.
+                Presets are read-only. Create a new panel profile (above) to customize settings.
               </div>
-            ) : null}
-
-            {error ? (
-              <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {error}</div>
-            ) : null}
-
-            <div className="mt-2 text-xs text-white/45">
-              {[statusText(homeVisibleSave.status), statusText(ctrlVisibleSave.status)].filter(Boolean).join(' · ')}
-              {allDevices.length ? (
-                <>
-                  {' · '}Home: {homeVisibleDeviceIds === null ? `All (${allDevices.length})` : `${homeVisibleDeviceIds.size} selected`}
-                  {' · '}Controls: {ctrlVisibleDeviceIds === null ? `All (${allDevices.length})` : `${ctrlVisibleDeviceIds.size} selected`}
-                </>
-              ) : null}
-            </div>
-
-            {!allDevices.length ? (
-              <div className="mt-3 text-sm text-white/45">No devices discovered.</div>
-            ) : (
-              <div className={`mt-4 grid grid-cols-1 md:grid-cols-2 gap-2 ${isPresetSelected ? 'opacity-50 pointer-events-none' : ''}`} aria-disabled={isPresetSelected ? 'true' : 'false'}>
-                {allDevices.map((d) => {
-                  const isHome = homeVisibleDeviceIds ? homeVisibleDeviceIds.has(String(d.id)) : true;
-                  const isCtrl = ctrlVisibleDeviceIds ? ctrlVisibleDeviceIds.has(String(d.id)) : true;
-                  const src = String(d?.source || '').trim();
-                  const display = src ? `${d.label} (${src})` : d.label;
-
-                  return (
-                    <div key={d.id} className={`flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 ${!connected ? 'opacity-50' : ''}`}>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold text-white/85 truncate">{display}</div>
-                        <div className="mt-1 text-[11px] text-white/45 truncate">ID: {d.id}</div>
-                      </div>
-
-                      <div className="shrink-0 flex items-center gap-3">
-                        <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
-                          <input
-                            type="checkbox"
-                            className={`h-5 w-5 ${scheme.checkboxAccent}`}
-                            disabled={!connected || homeVisibleSave.status === 'saving' || isPresetSelected}
-                            checked={isHome}
-                            onChange={(e) => setHomeVisible(d.id, e.target.checked, allDeviceIds)}
-                          />
-                          Home
-                        </label>
-
-                        <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
-                          <input
-                            type="checkbox"
-                            className={`h-5 w-5 ${scheme.checkboxAccent}`}
-                            disabled={!connected || ctrlVisibleSave.status === 'saving' || isPresetSelected}
-                            checked={isCtrl}
-                            onChange={(e) => setCtrlVisible(d.id, e.target.checked, allDeviceIds)}
-                          />
-                          Controls
-                        </label>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className={`mt-4 ${isPresetSelected ? 'opacity-50 pointer-events-none' : ''}`} aria-disabled={isPresetSelected ? 'true' : 'false'}>
-              <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
-                <label
-                  htmlFor="device-override-select"
-                  className="block text-[10px] font-bold uppercase tracking-widest text-white/40"
-                >
-                  Device
-                </label>
-                <select
-                  id="device-override-select"
-                  value={selectedDeviceIdForEdit}
-                  onChange={(e) => setSelectedDeviceIdForEdit(String(e.target.value || '').trim())}
-                  className="mt-1 menu-select w-full rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 jvs-menu-select"
-                >
-                  <option value="">Select a device…</option>
-                  {allDevices.map((d) => (
-                    <option key={d.id} value={d.id}>{d.label}</option>
-                  ))}
-                </select>
-                <div className="mt-1 text-xs text-white/45">
-                  Pick the device you want to edit overrides for.
-                </div>
-              </div>
-
-              {!allDevices.length ? null : !selectedDeviceIdForEdit ? (
-                <div className="mt-3 text-sm text-white/45">Choose a device to edit its overrides.</div>
-              ) : (() => {
-                const d = allDevices.find((x) => String(x.id) === String(selectedDeviceIdForEdit));
-                if (!d) return null;
-
-                const draft = (deviceOverrideDrafts && deviceOverrideDrafts[d.id] && typeof deviceOverrideDrafts[d.id] === 'object')
-                  ? deviceOverrideDrafts[d.id]
-                  : {};
-                const displayNameDraft = String(draft.label ?? '');
-                const hasCommandsOverride = Object.prototype.hasOwnProperty.call(draft, 'commands');
-                const explicitCommands = hasCommandsOverride
-                  ? (draft.commands === null
-                    ? null
-                    : (Array.isArray(draft.commands) ? draft.commands.map((c) => String(c)) : []))
-                  : null;
-                const explicitHomeMetrics = Array.isArray(draft.homeMetrics) ? draft.homeMetrics.map((c) => String(c)) : null;
-                const explicitInfoMetrics = Array.isArray(draft.infoMetrics) ? draft.infoMetrics.map((c) => String(c)) : null;
-                const availableAllowedCommands = Array.isArray(d.commands)
-                  ? Array.from(new Set(d.commands.map((c) => String(c || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b))
-                  : [];
-
-                const attrs = statuses?.[String(d.id)]?.attributes || {};
-                const availableHomeMetrics = (() => {
-                  const out = new Set();
-                  const caps = Array.isArray(d?.capabilities) ? d.capabilities : [];
-                  if (caps.includes('TemperatureMeasurement') || asNumber(attrs.temperature) !== null) out.add('temperature');
-                  if (caps.includes('RelativeHumidityMeasurement') || asNumber(attrs.humidity) !== null) out.add('humidity');
-                  if (caps.includes('IlluminanceMeasurement') || asNumber(attrs.illuminance) !== null) out.add('illuminance');
-                  if (caps.includes('MotionSensor') || typeof attrs.motion === 'string') out.add('motion');
-                  if (caps.includes('ContactSensor') || typeof attrs.contact === 'string') out.add('contact');
-                  if (caps.includes('GarageDoorControl') || typeof attrs.door === 'string') out.add('door');
-                  return Array.from(out);
-                })();
-
-                const availableInfoMetrics = getAvailableInfoMetrics(d);
-
-                const labelSave = deviceOverrideSaveState?.[d.id]?.label || null;
-                const cmdSave = deviceOverrideSaveState?.[d.id]?.commands || null;
-                const homeMetricsSave = deviceOverrideSaveState?.[d.id]?.homeMetrics || null;
-                const infoMetricsSave = deviceOverrideSaveState?.[d.id]?.infoMetrics || null;
-                const isInheritHomeMetrics = explicitHomeMetrics === null;
-                const isInheritInfoMetrics = explicitInfoMetrics === null;
-                const isInheritCommands = explicitCommands === null;
-
-                return (
-                  <div className={`mt-3 rounded-2xl border p-4 bg-white/5 border-white/10 ${!connected ? 'opacity-50' : ''}`}>
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="min-w-0">
-                          <div className="text-[11px] uppercase tracking-[0.2em] font-semibold text-white/80 truncate">
-                            {d.label}
-                          </div>
-                          <div className="mt-1 text-xs text-white/45 truncate">ID: {d.id}</div>
-                        </div>
-
-                        <div className="shrink-0" />
-                      </div>
-
-                      <div className="mt-4 border-t border-white/10 pt-4">
-                        <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
-                          Overrides
-                        </div>
-                        <div className="mt-1 text-xs text-white/45">
-                          Display name, Home metrics, info cards, and which commands show on this panel.
-                        </div>
-
-                        <div className="mt-4">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-                              Home Metrics
-                            </div>
-                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">
-                              {homeMetricsSave?.status === 'saving'
-                                ? 'Saving…'
-                                : (homeMetricsSave?.status === 'saved'
-                                  ? 'Saved'
-                                  : (homeMetricsSave?.status === 'error'
-                                    ? 'Error'
-                                    : (isInheritHomeMetrics ? 'Inherit' : 'Custom')))}
-                            </div>
-                          </div>
-
-                          {availableHomeMetrics.length ? (
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {UI_HOME_METRICS.filter((k) => availableHomeMetrics.includes(k)).map((k) => {
-                                const checked = isInheritHomeMetrics ? true : explicitHomeMetrics.includes(k);
-                                const label = k === 'temperature' ? 'Temp'
-                                  : k === 'humidity' ? 'Humidity'
-                                  : k === 'illuminance' ? 'Lux'
-                                  : k === 'motion' ? 'Motion'
-                                  : k === 'contact' ? 'Contact'
-                                  : 'Door';
-                                return (
-                                  <label key={k} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      disabled={!connected || busy}
-                                      onChange={(e) => toggleHomeMetric(d, k, Boolean(e.target.checked))}
-                                    />
-                                    <span className="text-xs font-semibold text-white/80">{label}</span>
-                                  </label>
-                                );
-                              })}
-
-                              <button
-                                type="button"
-                                disabled={!connected || busy || isInheritHomeMetrics}
-                                onClick={async () => {
-                                  setDeviceOverrideDrafts((prev) => ({
-                                    ...prev,
-                                    [d.id]: { ...(prev[d.id] || {}), homeMetrics: null },
-                                  }));
-                                  if (!connected) return;
-                                  setDeviceOverrideSaveState((prev) => ({
-                                    ...prev,
-                                    [d.id]: { ...(prev[d.id] || {}), homeMetrics: { status: 'saving', error: null } },
-                                  }));
-                                  try {
-                                    await saveDeviceOverrides({
-                                      deviceId: String(d.id),
-                                      homeMetrics: null,
-                                      ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
-                                    });
-                                    setDeviceOverrideSaveState((prev) => ({
-                                      ...prev,
-                                      [d.id]: { ...(prev[d.id] || {}), homeMetrics: { status: 'saved', error: null } },
-                                    }));
-                                  } catch (e) {
-                                    setDeviceOverrideSaveState((prev) => ({
-                                      ...prev,
-                                      [d.id]: { ...(prev[d.id] || {}), homeMetrics: { status: 'error', error: e?.message || String(e) } },
-                                    }));
-                                  }
-                                }}
-                                className={`rounded-xl border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || isInheritHomeMetrics) ? 'opacity-50' : 'hover:bg-white/5'}`}
-                              >
-                                Reset
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="mt-2 text-xs text-white/45">No supported Home metrics found for this device.</div>
-                          )}
-
-                          {homeMetricsSave?.status === 'error' ? (
-                            <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {homeMetricsSave.error}</div>
-                          ) : null}
-                        </div>
-
-                        <div className="mt-4">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-                              Info Cards
-                            </div>
-                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">
-                              {infoMetricsSave?.status === 'saving'
-                                ? 'Saving…'
-                                : (infoMetricsSave?.status === 'saved'
-                                  ? 'Saved'
-                                  : (infoMetricsSave?.status === 'error'
-                                    ? 'Error'
-                                    : (isInheritInfoMetrics
-                                      ? 'Default'
-                                      : (explicitInfoMetrics.length ? 'Selected' : 'None'))))}
-                            </div>
-                          </div>
-
-                          {availableInfoMetrics.length ? (
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {availableInfoMetrics.map((k) => {
-                                const checked = isInheritInfoMetrics ? false : explicitInfoMetrics.includes(k);
-                                return (
-                                  <label key={k} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      disabled={!connected || busy}
-                                      onChange={(e) => toggleInfoMetric(d, k, Boolean(e.target.checked))}
-                                    />
-                                    <span className="text-xs font-semibold text-white/80">{formatInfoMetricLabel(k)}</span>
-                                  </label>
-                                );
-                              })}
-
-                              <button
-                                type="button"
-                                disabled={!connected || busy || isInheritInfoMetrics}
-                                onClick={async () => {
-                                  setDeviceOverrideDrafts((prev) => ({
-                                    ...prev,
-                                    [d.id]: { ...(prev[d.id] || {}), infoMetrics: null },
-                                  }));
-                                  if (!connected) return;
-                                  setDeviceOverrideSaveState((prev) => ({
-                                    ...prev,
-                                    [d.id]: { ...(prev[d.id] || {}), infoMetrics: { status: 'saving', error: null } },
-                                  }));
-                                  try {
-                                    await saveDeviceOverrides({
-                                      deviceId: String(d.id),
-                                      infoMetrics: null,
-                                      ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
-                                    });
-                                    setDeviceOverrideSaveState((prev) => ({
-                                      ...prev,
-                                      [d.id]: { ...(prev[d.id] || {}), infoMetrics: { status: 'saved', error: null } },
-                                    }));
-                                  } catch (e) {
-                                    setDeviceOverrideSaveState((prev) => ({
-                                      ...prev,
-                                      [d.id]: { ...(prev[d.id] || {}), infoMetrics: { status: 'error', error: e?.message || String(e) } },
-                                    }));
-                                  }
-                                }}
-                                className={`rounded-xl border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || isInheritInfoMetrics) ? 'opacity-50' : 'hover:bg-white/5'}`}
-                              >
-                                Reset
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="mt-2 text-xs text-white/45">No attributes available for info cards.</div>
-                          )}
-
-                          {infoMetricsSave?.status === 'error' ? (
-                            <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {infoMetricsSave.error}</div>
-                          ) : null}
-                        </div>
-
-                        <label className="mt-3 block">
-                          <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-                            <span>Display Name</span>
-                            <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">
-                              {labelSave?.status === 'saving'
-                                ? 'Saving…'
-                                : (labelSave?.status === 'saved'
-                                  ? 'Saved'
-                                  : (labelSave?.status === 'error' ? 'Error' : ''))}
-                            </span>
-                          </div>
-                          <input
-                            value={displayNameDraft}
-                            onChange={(e) => {
-                              const next = String(e.target.value);
-                              setDeviceOverrideDrafts((prev) => ({
-                                ...prev,
-                                [d.id]: { ...(prev[d.id] || {}), label: next },
-                              }));
-                              queueDeviceLabelAutosave(d.id, next);
-                            }}
-                            placeholder="(inherit)"
-                            className={`mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 placeholder:text-white/35 ${scheme.focusRing}`}
-                            disabled={!connected || busy}
-                          />
-                          {labelSave?.status === 'error' ? (
-                            <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {labelSave.error}</div>
-                          ) : null}
-                        </label>
-
-                        <div className="mt-4">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-                              Commands
-                            </div>
-                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">
-                              {cmdSave?.status === 'saving'
-                                ? 'Saving…'
-                                : (cmdSave?.status === 'saved'
-                                  ? 'Saved'
-                                  : (cmdSave?.status === 'error'
-                                    ? 'Error'
-                                    : (isInheritCommands ? 'All' : (explicitCommands.length ? 'Selected' : 'None'))))}
-                            </div>
-                          </div>
-
-                          {availableAllowedCommands.length ? (
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {availableAllowedCommands.map((cmd) => {
-                                const checked = isInheritCommands ? true : explicitCommands.includes(cmd);
-                                const label = cmd === 'setLevel' ? 'Level' : cmd;
-                                return (
-                                  <label key={cmd} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      disabled={!connected || busy}
-                                      onChange={(e) => toggleDeviceCommand(d, cmd, Boolean(e.target.checked))}
-                                    />
-                                    <span className="text-xs font-semibold text-white/80">{label}</span>
-                                  </label>
-                                );
-                              })}
-
-                              <button
-                                type="button"
-                                disabled={!connected || busy || isInheritCommands}
-                                onClick={async () => {
-                                  setDeviceOverrideDrafts((prev) => ({
-                                    ...prev,
-                                    [d.id]: { ...(prev[d.id] || {}), commands: null },
-                                  }));
-                                  if (!connected) return;
-                                  setDeviceOverrideSaveState((prev) => ({
-                                    ...prev,
-                                    [d.id]: { ...(prev[d.id] || {}), commands: { status: 'saving', error: null } },
-                                  }));
-                                  try {
-                                    await saveDeviceOverrides({
-                                      deviceId: String(d.id),
-                                      commands: null,
-                                      ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
-                                    });
-                                    setDeviceOverrideSaveState((prev) => ({
-                                      ...prev,
-                                      [d.id]: { ...(prev[d.id] || {}), commands: { status: 'saved', error: null } },
-                                    }));
-                                  } catch (e) {
-                                    setDeviceOverrideSaveState((prev) => ({
-                                      ...prev,
-                                      [d.id]: { ...(prev[d.id] || {}), commands: { status: 'error', error: e?.message || String(e) } },
-                                    }));
-                                  }
-                                }}
-                                className={`rounded-xl border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || isInheritCommands) ? 'opacity-50' : 'hover:bg-white/5'}`}
-                              >
-                                Reset
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="mt-2 text-xs text-white/45">No supported commands found for this device.</div>
-                          )}
-
-                          {cmdSave?.status === 'error' ? (
-                            <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {cmdSave.error}</div>
-                          ) : null}
-                        </div>
-                      </div>
-                  </div>
-                );
-              })()}
-            </div>
-
-            {!connected ? (
-              <div className="mt-3 text-xs text-white/45">Server offline: editing disabled.</div>
             ) : null}
           </div>
         ) : null}
@@ -7326,8 +6898,17 @@ const ConfigPanel = ({
               Device Options
             </div>
             <div className="mt-1 text-xs text-white/45">
-              Preferences for how device types render controls.
+              Preferences for how device types render controls, plus per-device overrides.
             </div>
+
+            {isPresetSelected ? (
+              <div
+                className="mt-2 jvs-secondary-text text-white/60"
+                style={{ fontSize: 'calc(12px * var(--jvs-secondary-text-size-scale, 1))' }}
+              >
+                Presets are read-only. Create a new panel profile to customize per-device settings.
+              </div>
+            ) : null}
 
             <div className="mt-4 utility-group p-4">
               <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
@@ -7392,12 +6973,13 @@ const ConfigPanel = ({
               ) : null}
             </div>
 
-            <div className="mt-4 utility-group p-4">
+            {/* Per-Device Settings — expandable cards */}
+            <div className={`mt-4 utility-group p-4 ${isPresetSelected ? 'opacity-50 pointer-events-none' : ''}`} aria-disabled={isPresetSelected ? 'true' : 'false'}>
               <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
-                Control Icons
+                Per-Device Settings
               </div>
               <div className="mt-1 text-xs text-white/45">
-                Assign interactive toggle icons to devices. Only compatible icons are shown for each device.
+                Expand a device to configure visibility, overrides, and control icons.
               </div>
 
               {controlIconsError ? (
@@ -7406,145 +6988,396 @@ const ConfigPanel = ({
                 </div>
               ) : null}
 
-              {/* Device list with multi-icon assignment */}
-              {(() => {
-                const icons = Array.isArray(controlIconsIndex?.icons) ? controlIconsIndex.icons : [];
-                
-                // Use local state for display (optimistic updates)
-                const currentAssignments = localIconAssignments;
-                
-                // Get devices with commands that could use control icons
-                const commandDevices = allDevices
-                  .filter((d) => Array.isArray(d.commands) && d.commands.length > 0)
-                  .map((d) => {
-                    const cmds = Array.isArray(d.commands) ? d.commands : [];
-                    // Find compatible icons for this device
-                    const compatibleIcons = icons.filter((icon) => {
-                      const required = Array.isArray(icon.requiredCommands) ? icon.requiredCommands : [];
-                      return required.every((cmd) => cmds.includes(cmd));
-                    });
-                    return { ...d, compatibleIcons };
-                  })
-                  .filter((d) => d.compatibleIcons.length > 0); // Only show devices with at least one compatible icon
-                
-                if (commandDevices.length === 0) {
-                  return (
-                    <div className="mt-4 text-xs text-white/45">
-                      No devices with compatible control icons.
-                    </div>
-                  );
-                }
+              {error ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {error}</div>
+              ) : null}
 
-                // Helper to get current icons array for a device
-                const getDeviceIcons = (deviceId) => {
-                  const val = currentAssignments[deviceId];
-                  if (!val) return [];
-                  if (Array.isArray(val)) return val;
-                  return [val]; // backward compat: single string → array
-                };
-
-                return (
-                  <div className="mt-4 space-y-3">
-                    {commandDevices.map((device) => {
-                      const currentIconIds = getDeviceIcons(device.id);
-
-                      return (
-                        <div key={device.id} className="rounded-lg border border-white/10 bg-black/20 p-3">
-                          {/* Device name */}
-                          <div className="text-sm font-medium text-white/90 mb-2">
-                            {device.label}
+              {!allDevices.length ? (
+                <div className="mt-3 text-sm text-white/45">No devices available.</div>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  {allDevices.map((d) => {
+                    const isExpanded = String(selectedDeviceIdForEdit) === String(d.id);
+                    return (
+                      <div key={d.id} className="rounded-xl border border-white/10 bg-black/20 overflow-hidden">
+                        {/* Collapsible header */}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDeviceIdForEdit(isExpanded ? '' : String(d.id))}
+                          className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-white/5 transition-colors"
+                        >
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-white/90 truncate">{d.label}</div>
+                            <div className="text-[10px] text-white/40">ID: {d.id}</div>
                           </div>
-                          
-                          {/* Icon checkboxes - multiple select */}
-                          <div className="flex flex-wrap gap-2">
-                            {device.compatibleIcons.map((icon) => {
-                              const isSelected = currentIconIds.includes(icon.id);
-                              
-                              return (
-                                <button
-                                  key={icon.id}
-                                  disabled={!connected || busy}
-                                  onClick={async () => {
-                                    setError(null);
-                                    try {
-                                      // Compute next state from current local state (use ref for fresh value)
-                                      const currentAssignmentsNow = localIconAssignmentsRef.current;
-                                      const prevVal = currentAssignmentsNow[device.id];
-                                      const prevIconIds = prevVal
-                                        ? (Array.isArray(prevVal) ? prevVal : [prevVal]).map((v) => String(v || '').trim()).filter(Boolean)
-                                        : [];
-                                      
-                                      const alreadySelected = prevIconIds.includes(icon.id);
-                                      let nextIcons;
-                                      if (alreadySelected) {
-                                        nextIcons = prevIconIds.filter((id) => id !== icon.id);
-                                      } else {
-                                        nextIcons = [...prevIconIds, icon.id];
-                                      }
-                                      
-                                      const nextVal = nextIcons.length > 0 ? nextIcons : null;
-                                      
-                                      // Update local state optimistically (also updates ref on next render)
-                                      setLocalIconAssignments((prev) => {
-                                        const updated = {
-                                          ...prev,
-                                          [device.id]: nextVal,
-                                        };
-                                        localIconAssignmentsRef.current = updated;
-                                        return updated;
-                                      });
-                                      
-                                      // Save to server
-                                      await deviceControlIconsSave.run({ [device.id]: nextVal });
-                                    } catch (err) {
-                                      setError(err?.message || String(err));
-                                    }
+                          <span className={`text-white/40 text-xs shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+                        </button>
+
+                        {isExpanded ? (() => {
+                          const draft = (deviceOverrideDrafts && deviceOverrideDrafts[d.id] && typeof deviceOverrideDrafts[d.id] === 'object')
+                            ? deviceOverrideDrafts[d.id]
+                            : {};
+                          const displayNameDraft = String(draft.label ?? '');
+                          const hasCommandsOverride = Object.prototype.hasOwnProperty.call(draft, 'commands');
+                          const explicitCommands = hasCommandsOverride
+                            ? (draft.commands === null
+                              ? null
+                              : (Array.isArray(draft.commands) ? draft.commands.map((c) => String(c)) : []))
+                            : null;
+                          const explicitHomeMetrics = Array.isArray(draft.homeMetrics) ? draft.homeMetrics.map((c) => String(c)) : null;
+                          const explicitInfoMetrics = Array.isArray(draft.infoMetrics) ? draft.infoMetrics.map((c) => String(c)) : null;
+                          const availableAllowedCommands = Array.isArray(d.commands)
+                            ? Array.from(new Set(d.commands.map((c) => String(c || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+                            : [];
+
+                          const attrs = statuses?.[String(d.id)]?.attributes || {};
+                          const availableHomeMetrics = (() => {
+                            const out = new Set();
+                            const caps = Array.isArray(d?.capabilities) ? d.capabilities : [];
+                            if (caps.includes('TemperatureMeasurement') || asNumber(attrs.temperature) !== null) out.add('temperature');
+                            if (caps.includes('RelativeHumidityMeasurement') || asNumber(attrs.humidity) !== null) out.add('humidity');
+                            if (caps.includes('IlluminanceMeasurement') || asNumber(attrs.illuminance) !== null) out.add('illuminance');
+                            if (caps.includes('MotionSensor') || typeof attrs.motion === 'string') out.add('motion');
+                            if (caps.includes('ContactSensor') || typeof attrs.contact === 'string') out.add('contact');
+                            if (caps.includes('GarageDoorControl') || typeof attrs.door === 'string') out.add('door');
+                            return Array.from(out);
+                          })();
+
+                          const availableInfoMetrics = getAvailableInfoMetrics(d);
+
+                          const labelSave = deviceOverrideSaveState?.[d.id]?.label || null;
+                          const cmdSave = deviceOverrideSaveState?.[d.id]?.commands || null;
+                          const homeMetricsSave = deviceOverrideSaveState?.[d.id]?.homeMetrics || null;
+                          const infoMetricsSave = deviceOverrideSaveState?.[d.id]?.infoMetrics || null;
+                          const isInheritHomeMetrics = explicitHomeMetrics === null;
+                          const isInheritInfoMetrics = explicitInfoMetrics === null;
+                          const isInheritCommands = explicitCommands === null;
+
+                          // Control Icons for this device
+                          const icons = Array.isArray(controlIconsIndex?.icons) ? controlIconsIndex.icons : [];
+                          const cmds = Array.isArray(d.commands) ? d.commands : [];
+                          const compatibleIcons = icons.filter((icon) => {
+                            const required = Array.isArray(icon.requiredCommands) ? icon.requiredCommands : [];
+                            return required.every((cmd) => cmds.includes(cmd));
+                          });
+                          const currentAssignments = localIconAssignments;
+                          const iconVal = currentAssignments[d.id];
+                          const currentIconIds = iconVal ? (Array.isArray(iconVal) ? iconVal : [iconVal]) : [];
+
+                          return (
+                            <div className={`px-3 pb-3 border-t border-white/10 ${!connected ? 'opacity-50' : ''}`}>
+                              {/* Per-device visibility */}
+                              <div className="mt-3 flex items-center gap-4">
+                                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45 mr-1">Visible on</div>
+                                {(() => {
+                                  const isHome = homeVisibleDeviceIds ? homeVisibleDeviceIds.has(String(d.id)) : true;
+                                  const isCtrl = ctrlVisibleDeviceIds ? ctrlVisibleDeviceIds.has(String(d.id)) : true;
+                                  return (
+                                    <>
+                                      <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
+                                        <input
+                                          type="checkbox"
+                                          className={`h-5 w-5 ${scheme.checkboxAccent}`}
+                                          disabled={!connected || homeVisibleSave.status === 'saving' || isPresetSelected}
+                                          checked={isHome}
+                                          onChange={(e) => setHomeVisible(d.id, e.target.checked, allDeviceIds)}
+                                        />
+                                        Home
+                                      </label>
+                                      <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
+                                        <input
+                                          type="checkbox"
+                                          className={`h-5 w-5 ${scheme.checkboxAccent}`}
+                                          disabled={!connected || ctrlVisibleSave.status === 'saving' || isPresetSelected}
+                                          checked={isCtrl}
+                                          onChange={(e) => setCtrlVisible(d.id, e.target.checked, allDeviceIds)}
+                                        />
+                                        Controls
+                                      </label>
+                                    </>
+                                  );
+                                })()}
+                                <div className="flex-1" />
+                                <div className="text-[10px] text-white/35">
+                                  {[statusText(homeVisibleSave.status), statusText(ctrlVisibleSave.status)].filter(Boolean).join(' · ')}
+                                </div>
+                              </div>
+
+                              {/* Display Name */}
+                              <label className="mt-3 block">
+                                <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                                  <span>Display Name</span>
+                                  <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">
+                                    {labelSave?.status === 'saving'
+                                      ? 'Saving…'
+                                      : (labelSave?.status === 'saved'
+                                        ? 'Saved'
+                                        : (labelSave?.status === 'error' ? 'Error' : ''))}
+                                  </span>
+                                </div>
+                                <input
+                                  value={displayNameDraft}
+                                  onChange={(e) => {
+                                    const next = String(e.target.value);
+                                    setDeviceOverrideDrafts((prev) => ({
+                                      ...prev,
+                                      [d.id]: { ...(prev[d.id] || {}), label: next },
+                                    }));
+                                    queueDeviceLabelAutosave(d.id, next);
                                   }}
-                                  className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border transition-all ${
-                                    isSelected 
-                                      ? 'border-neon-blue/60 bg-neon-blue/20 text-white' 
-                                      : 'border-white/10 bg-black/30 text-white/60 hover:border-white/20'
-                                  }`}
-                                  title={icon.description || icon.name}
-                                >
-                                  <div className="w-6 h-6 flex items-center justify-center">
-                                    <img
-                                      src={`${API_HOST}${controlIconsIndex.rootUrl}/${icon.file}`}
-                                      alt={icon.name || icon.id}
-                                      className="max-w-full max-h-full"
-                                    />
+                                  placeholder="(inherit)"
+                                  className={`mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 placeholder:text-white/35 ${scheme.focusRing}`}
+                                  disabled={!connected || busy}
+                                />
+                                {labelSave?.status === 'error' ? (
+                                  <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {labelSave.error}</div>
+                                ) : null}
+                              </label>
+
+                              {/* Home Metrics */}
+                              {availableHomeMetrics.length > 0 ? (
+                                <div className="mt-4">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Home Metrics</div>
+                                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">
+                                      {homeMetricsSave?.status === 'saving'
+                                        ? 'Saving…'
+                                        : (homeMetricsSave?.status === 'saved'
+                                          ? 'Saved'
+                                          : (homeMetricsSave?.status === 'error'
+                                            ? 'Error'
+                                            : (isInheritHomeMetrics ? 'Inherit' : 'Custom')))}
+                                    </div>
                                   </div>
-                                  <span className="text-[11px]">{icon.name || icon.id}</span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                          
-                          {/* Preview of selected icons */}
-                          {currentIconIds.length > 0 ? (
-                            <div className="mt-2 flex gap-1 items-center">
-                              <span className="text-[10px] text-white/40 mr-1">Active:</span>
-                              {currentIconIds.map((iconId) => {
-                                const icon = icons.find((i) => i.id === iconId);
-                                if (!icon) return null;
-                                return (
-                                  <div key={iconId} className="w-8 h-8 rounded border border-white/10 bg-black/40 flex items-center justify-center p-0.5">
-                                    <img
-                                      src={`${API_HOST}${controlIconsIndex.rootUrl}/${icon.file}`}
-                                      alt={icon.name || icon.id}
-                                      className="max-w-full max-h-full"
-                                    />
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {UI_HOME_METRICS.filter((k) => availableHomeMetrics.includes(k)).map((k) => {
+                                      const checked = isInheritHomeMetrics ? true : explicitHomeMetrics.includes(k);
+                                      const metricLabel = k === 'temperature' ? 'Temp'
+                                        : k === 'humidity' ? 'Humidity'
+                                        : k === 'illuminance' ? 'Lux'
+                                        : k === 'motion' ? 'Motion'
+                                        : k === 'contact' ? 'Contact'
+                                        : 'Door';
+                                      return (
+                                        <label key={k} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                                          <input type="checkbox" checked={checked} disabled={!connected || busy} onChange={(e) => toggleHomeMetric(d, k, Boolean(e.target.checked))} />
+                                          <span className="text-xs font-semibold text-white/80">{metricLabel}</span>
+                                        </label>
+                                      );
+                                    })}
+                                    <button
+                                      type="button"
+                                      disabled={!connected || busy || isInheritHomeMetrics}
+                                      onClick={async () => {
+                                        setDeviceOverrideDrafts((prev) => ({ ...prev, [d.id]: { ...(prev[d.id] || {}), homeMetrics: null } }));
+                                        if (!connected) return;
+                                        setDeviceOverrideSaveState((prev) => ({ ...prev, [d.id]: { ...(prev[d.id] || {}), homeMetrics: { status: 'saving', error: null } } }));
+                                        try {
+                                          await saveDeviceOverrides({ deviceId: String(d.id), homeMetrics: null, ...(selectedPanelName ? { panelName: selectedPanelName } : {}) });
+                                          setDeviceOverrideSaveState((prev) => ({ ...prev, [d.id]: { ...(prev[d.id] || {}), homeMetrics: { status: 'saved', error: null } } }));
+                                        } catch (e) {
+                                          setDeviceOverrideSaveState((prev) => ({ ...prev, [d.id]: { ...(prev[d.id] || {}), homeMetrics: { status: 'error', error: e?.message || String(e) } } }));
+                                        }
+                                      }}
+                                      className={`rounded-xl border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || isInheritHomeMetrics) ? 'opacity-50' : 'hover:bg-white/5'}`}
+                                    >
+                                      Reset
+                                    </button>
                                   </div>
-                                );
-                              })}
+                                  {homeMetricsSave?.status === 'error' ? (
+                                    <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {homeMetricsSave.error}</div>
+                                  ) : null}
+                                </div>
+                              ) : null}
+
+                              {/* Info Cards */}
+                              {availableInfoMetrics.length > 0 ? (
+                                <div className="mt-4">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Info Cards</div>
+                                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">
+                                      {infoMetricsSave?.status === 'saving'
+                                        ? 'Saving…'
+                                        : (infoMetricsSave?.status === 'saved'
+                                          ? 'Saved'
+                                          : (infoMetricsSave?.status === 'error'
+                                            ? 'Error'
+                                            : (isInheritInfoMetrics
+                                              ? 'Default'
+                                              : (explicitInfoMetrics.length ? 'Selected' : 'None'))))}
+                                    </div>
+                                  </div>
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {availableInfoMetrics.map((k) => {
+                                      const checked = isInheritInfoMetrics ? false : explicitInfoMetrics.includes(k);
+                                      return (
+                                        <label key={k} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                                          <input type="checkbox" checked={checked} disabled={!connected || busy} onChange={(e) => toggleInfoMetric(d, k, Boolean(e.target.checked))} />
+                                          <span className="text-xs font-semibold text-white/80">{formatInfoMetricLabel(k)}</span>
+                                        </label>
+                                      );
+                                    })}
+                                    <button
+                                      type="button"
+                                      disabled={!connected || busy || isInheritInfoMetrics}
+                                      onClick={async () => {
+                                        setDeviceOverrideDrafts((prev) => ({ ...prev, [d.id]: { ...(prev[d.id] || {}), infoMetrics: null } }));
+                                        if (!connected) return;
+                                        setDeviceOverrideSaveState((prev) => ({ ...prev, [d.id]: { ...(prev[d.id] || {}), infoMetrics: { status: 'saving', error: null } } }));
+                                        try {
+                                          await saveDeviceOverrides({ deviceId: String(d.id), infoMetrics: null, ...(selectedPanelName ? { panelName: selectedPanelName } : {}) });
+                                          setDeviceOverrideSaveState((prev) => ({ ...prev, [d.id]: { ...(prev[d.id] || {}), infoMetrics: { status: 'saved', error: null } } }));
+                                        } catch (e) {
+                                          setDeviceOverrideSaveState((prev) => ({ ...prev, [d.id]: { ...(prev[d.id] || {}), infoMetrics: { status: 'error', error: e?.message || String(e) } } }));
+                                        }
+                                      }}
+                                      className={`rounded-xl border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || isInheritInfoMetrics) ? 'opacity-50' : 'hover:bg-white/5'}`}
+                                    >
+                                      Reset
+                                    </button>
+                                  </div>
+                                  {infoMetricsSave?.status === 'error' ? (
+                                    <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {infoMetricsSave.error}</div>
+                                  ) : null}
+                                </div>
+                              ) : null}
+
+                              {/* Commands */}
+                              {availableAllowedCommands.length > 0 ? (
+                                <div className="mt-4">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Commands</div>
+                                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">
+                                      {cmdSave?.status === 'saving'
+                                        ? 'Saving…'
+                                        : (cmdSave?.status === 'saved'
+                                          ? 'Saved'
+                                          : (cmdSave?.status === 'error'
+                                            ? 'Error'
+                                            : (isInheritCommands ? 'All' : (explicitCommands.length ? 'Selected' : 'None'))))}
+                                    </div>
+                                  </div>
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {availableAllowedCommands.map((cmd) => {
+                                      const checked = isInheritCommands ? true : explicitCommands.includes(cmd);
+                                      const cmdLabel = cmd === 'setLevel' ? 'Level' : cmd;
+                                      return (
+                                        <label key={cmd} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                                          <input type="checkbox" checked={checked} disabled={!connected || busy} onChange={(e) => toggleDeviceCommand(d, cmd, Boolean(e.target.checked))} />
+                                          <span className="text-xs font-semibold text-white/80">{cmdLabel}</span>
+                                        </label>
+                                      );
+                                    })}
+                                    <button
+                                      type="button"
+                                      disabled={!connected || busy || isInheritCommands}
+                                      onClick={async () => {
+                                        setDeviceOverrideDrafts((prev) => ({ ...prev, [d.id]: { ...(prev[d.id] || {}), commands: null } }));
+                                        if (!connected) return;
+                                        setDeviceOverrideSaveState((prev) => ({ ...prev, [d.id]: { ...(prev[d.id] || {}), commands: { status: 'saving', error: null } } }));
+                                        try {
+                                          await saveDeviceOverrides({ deviceId: String(d.id), commands: null, ...(selectedPanelName ? { panelName: selectedPanelName } : {}) });
+                                          setDeviceOverrideSaveState((prev) => ({ ...prev, [d.id]: { ...(prev[d.id] || {}), commands: { status: 'saved', error: null } } }));
+                                        } catch (e) {
+                                          setDeviceOverrideSaveState((prev) => ({ ...prev, [d.id]: { ...(prev[d.id] || {}), commands: { status: 'error', error: e?.message || String(e) } } }));
+                                        }
+                                      }}
+                                      className={`rounded-xl border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || isInheritCommands) ? 'opacity-50' : 'hover:bg-white/5'}`}
+                                    >
+                                      Reset
+                                    </button>
+                                  </div>
+                                  {cmdSave?.status === 'error' ? (
+                                    <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {cmdSave.error}</div>
+                                  ) : null}
+                                </div>
+                              ) : null}
+
+                              {/* Control Icons */}
+                              {compatibleIcons.length > 0 ? (
+                                <div className="mt-4">
+                                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Control Icons</div>
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {compatibleIcons.map((icon) => {
+                                      const isSelected = currentIconIds.includes(icon.id);
+                                      return (
+                                        <button
+                                          key={icon.id}
+                                          disabled={!connected || busy}
+                                          onClick={async () => {
+                                            setError(null);
+                                            try {
+                                              const currentAssignmentsNow = localIconAssignmentsRef.current;
+                                              const prevVal = currentAssignmentsNow[d.id];
+                                              const prevIconIds = prevVal
+                                                ? (Array.isArray(prevVal) ? prevVal : [prevVal]).map((v) => String(v || '').trim()).filter(Boolean)
+                                                : [];
+                                              const alreadySelected = prevIconIds.includes(icon.id);
+                                              const nextIcons = alreadySelected
+                                                ? prevIconIds.filter((id) => id !== icon.id)
+                                                : [...prevIconIds, icon.id];
+                                              const nextVal = nextIcons.length > 0 ? nextIcons : null;
+                                              setLocalIconAssignments((prev) => {
+                                                const updated = { ...prev, [d.id]: nextVal };
+                                                localIconAssignmentsRef.current = updated;
+                                                return updated;
+                                              });
+                                              await deviceControlIconsSave.run({ [d.id]: nextVal });
+                                            } catch (err) {
+                                              setError(err?.message || String(err));
+                                            }
+                                          }}
+                                          className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border transition-all ${
+                                            isSelected
+                                              ? 'border-neon-blue/60 bg-neon-blue/20 text-white'
+                                              : 'border-white/10 bg-black/30 text-white/60 hover:border-white/20'
+                                          }`}
+                                          title={icon.description || icon.name}
+                                        >
+                                          <div className="w-6 h-6 flex items-center justify-center">
+                                            <img
+                                              src={`${API_HOST}${controlIconsIndex.rootUrl}/${icon.file}`}
+                                              alt={icon.name || icon.id}
+                                              className="max-w-full max-h-full"
+                                            />
+                                          </div>
+                                          <span className="text-[11px]">{icon.name || icon.id}</span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                  {currentIconIds.length > 0 ? (
+                                    <div className="mt-2 flex gap-1 items-center">
+                                      <span className="text-[10px] text-white/40 mr-1">Active:</span>
+                                      {currentIconIds.map((iconId) => {
+                                        const icon = icons.find((i) => i.id === iconId);
+                                        if (!icon) return null;
+                                        return (
+                                          <div key={iconId} className="w-8 h-8 rounded border border-white/10 bg-black/40 flex items-center justify-center p-0.5">
+                                            <img
+                                              src={`${API_HOST}${controlIconsIndex.rootUrl}/${icon.file}`}
+                                              alt={icon.name || icon.id}
+                                              className="max-w-full max-h-full"
+                                            />
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : null}
                             </div>
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
+                          );
+                        })() : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {!connected ? (
+                <div className="mt-3 text-xs text-white/45">Server offline: editing disabled.</div>
+              ) : null}
 
               <div className="mt-3 flex items-center justify-end gap-3">
                 <div className="text-xs text-white/45">

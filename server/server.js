@@ -50,6 +50,7 @@ const {
     HOME_TOP_ROW_CARD_IDS,
     ALLOWED_HOME_TOP_ROW_CARD_IDS,
     ALLOWED_PANEL_DEVICE_COMMANDS,
+    SKIP_DEFAULT_COMMANDS,
     ALLOWED_HOME_METRIC_KEYS,
     ALLOWED_HOME_ROOM_METRIC_KEYS,
     
@@ -3960,8 +3961,15 @@ app.put('/api/ui/allowed-device-ids', (req, res) => {
     const nextCtrlIds = Array.isArray(incomingCtrl) ? normalizeIds(incomingCtrl) : null;
     const nextMainIds = Array.isArray(incomingMain) ? normalizeIds(incomingMain) : null;
 
-    // If a device becomes newly available, default to "no commands allowed" for that scope.
-    // (Missing allowlist means "allow all"; explicit empty array means "allow none".)
+    // If a device becomes newly available, pre-enable its primary control
+    // commands and skip utility / lifecycle commands (configure, initialize, etc.).
+    const smartDefaultCommands = (deviceId) => {
+        const entry = (Array.isArray(discoveredDevicesCatalog) ? discoveredDevicesCatalog : [])
+            .find((d) => String(d.id) === String(deviceId));
+        const cmds = Array.isArray(entry?.commands) ? entry.commands : [];
+        return cmds.filter((c) => !SKIP_DEFAULT_COMMANDS.has(c));
+    };
+
     const computeNewlyAvailableIds = () => {
         const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
 
@@ -4021,7 +4029,7 @@ app.put('/api/ui/allowed-device-ids', (req, res) => {
         const nextCmds = { ...prevCmds };
         for (const id of newlyAvailableIds) {
             if (!Object.prototype.hasOwnProperty.call(nextCmds, id)) {
-                nextCmds[id] = [];
+                nextCmds[id] = smartDefaultCommands(id);
             }
         }
 
@@ -4047,7 +4055,7 @@ app.put('/api/ui/allowed-device-ids', (req, res) => {
         const nextCmds = { ...prevCmds };
         for (const id of newlyAvailableIds) {
             if (!Object.prototype.hasOwnProperty.call(nextCmds, id)) {
-                nextCmds[id] = [];
+                nextCmds[id] = smartDefaultCommands(id);
             }
         }
 

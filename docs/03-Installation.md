@@ -1,42 +1,43 @@
 # Installation
 
-## Recommended: One-Command Install (Debian/Ubuntu)
+## Quick Start (Debian / Ubuntu)
+
+One command installs everything:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jeamajoal/JVSHomeControl/main/scripts/install-debian.sh | sudo bash
 ```
 
-The script will:
-- Install Node.js 22, git, and ffmpeg
-- Clone the repo to `/opt/jvshomecontrol`
-- Build the UI
-- Create HTTPS certificates (prompts you)
-- Set up a systemd service
-- Preserve your config on future updates
+**What the script does:**
+
+1. Installs Node.js 22 LTS, git, and ffmpeg
+2. Creates a `jvshome` system user
+3. Clones the repo to `/opt/jvshomecontrol`
+4. Builds the React UI
+5. Generates self-signed HTTPS certificates (interactive prompt)
+6. Creates a systemd service that auto-starts on boot
+7. Preserves your config and certs on future updates
 
 ---
 
-## After Install
+## After Installation
 
-### 1. Configure Hubitat credentials
+### 1. Add your Hubitat credentials
 
-Edit the environment file:
 ```bash
 sudo nano /etc/jvshomecontrol.env
 ```
 
-Set these values (get them from Hubitat > Apps > Maker API):
+Set these three values (find them in Hubitat → Apps → Maker API):
+
 ```bash
-# Recommended: Use HTTPS for Hubitat (even on local network)
 HUBITAT_HOST=https://192.168.1.50
 HUBITAT_APP_ID=30
 HUBITAT_ACCESS_TOKEN=your-token-here
-
-# Required if Hubitat uses a self-signed certificate
 HUBITAT_TLS_INSECURE=1
 ```
 
-> **Security Note:** I recommend using HTTPS for both the dashboard AND Hubitat, even on your local network. The Maker API access token should always be encrypted in transit.
+> **Why HTTPS?** Your Maker API access token is sent with every poll request. Even on a local network, use HTTPS to protect it. Set `HUBITAT_TLS_INSECURE=1` because Hubitat uses a self-signed certificate.
 
 ### 2. Restart the service
 
@@ -46,13 +47,21 @@ sudo systemctl restart jvshomecontrol
 
 ### 3. Open the dashboard
 
-Browse to `https://your-server-ip:3000`
+Navigate to `https://your-server-ip:3000` in any browser.
+
+Your browser will warn about the self-signed certificate — accept it once. On tablets, you can install the certificate permanently (see [08-HTTPS.md](08-HTTPS.md)).
 
 ---
 
 ## Updating
 
-Run the same install command - it will update in place and preserve your config:
+Run the same install command again. The script detects an existing installation and:
+
+- Backs up your `config.json`, certificates, and custom backgrounds
+- Pulls the latest code
+- Rebuilds the UI
+- Restores your files
+- Restarts the service
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jeamajoal/JVSHomeControl/main/scripts/install-debian.sh | sudo bash
@@ -60,47 +69,44 @@ curl -fsSL https://raw.githubusercontent.com/jeamajoal/JVSHomeControl/main/scrip
 
 ---
 
-## Check Status
+## Verify It's Working
 
 ```bash
-# View logs
+# Check the service is running
+sudo systemctl status jvshomecontrol
+
+# View live logs
 sudo journalctl -u jvshomecontrol -f
 
-# Check health
+# Test the API
 curl -sk https://localhost:3000/api/hubitat/health
 ```
 
 ---
 
-## Environment Variables
+## All Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `HUBITAT_HOST` | Yes | Hubitat URL (e.g., `https://192.168.1.50`) |
-| `HUBITAT_APP_ID` | Yes | Maker API app ID |
-| `HUBITAT_ACCESS_TOKEN` | Yes | Maker API token |
-| `HUBITAT_TLS_INSECURE` | Recommended | Set to `1` for self-signed Hubitat HTTPS |
-| `HUBITAT_POLL_INTERVAL_MS` | No | Poll interval in ms (default: 2000) |
-| `PORT` | No | Server port (default: 3000) |
-
----
-
-## Changing the Server Port
-
-To run on a different port:
-
-```bash
-# In /etc/jvshomecontrol.env:
-PORT=8443
-```
-
-Then restart: `sudo systemctl restart jvshomecontrol`
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `HUBITAT_HOST` | **Yes** | — | Hubitat URL (e.g., `https://192.168.1.50`) |
+| `HUBITAT_APP_ID` | **Yes** | — | Maker API app ID number |
+| `HUBITAT_ACCESS_TOKEN` | **Yes** | — | Maker API access token |
+| `HUBITAT_TLS_INSECURE` | Recommended | `false` | Set `1` for self-signed Hubitat HTTPS certs |
+| `PORT` | No | `3000` | Server listen port |
+| `HUBITAT_POLL_INTERVAL_MS` | No | `2000` | How often to poll Hubitat (milliseconds) |
+| `EVENTS_INGEST_TOKEN` | No | — | Token to protect the events endpoint |
+| `EVENTS_MAX` | No | `500` | Max events kept in memory |
+| `EVENTS_PERSIST_JSONL` | No | `false` | Persist events to disk |
+| `BACKUP_MAX_FILES` | No | `200` | Config backup retention |
+| `HTTP_ONLY` | No | `false` | Force HTTP (skip HTTPS) |
+| `HTTPS_CERT_PATH` | No | Auto | Custom TLS certificate path |
+| `HTTPS_KEY_PATH` | No | Auto | Custom TLS private key path |
 
 ---
 
 ## Weather Location
 
-Weather uses [Open-Meteo](https://open-meteo.com/) (free, no API key needed). By default it auto-detects your location from IP. To set a specific location:
+Weather uses [Open-Meteo](https://open-meteo.com/) — a free API with no key required. By default, location is auto-detected. To set manually:
 
 ```bash
 # In /etc/jvshomecontrol.env:
@@ -108,37 +114,58 @@ OPEN_METEO_LAT=35.2271
 OPEN_METEO_LON=-80.8431
 ```
 
-Then restart: `sudo systemctl restart jvshomecontrol`
+Restart after changes: `sudo systemctl restart jvshomecontrol`
 
 ---
 
-## Installing a Different Branch
+## Changing the Port
+
+```bash
+# In /etc/jvshomecontrol.env:
+PORT=8443
+```
+
+Then: `sudo systemctl restart jvshomecontrol`
+
+---
+
+## Installing a Specific Branch
 
 ```bash
 sudo REPO_BRANCH=develop bash scripts/install-debian.sh
 ```
 
+Or interactively — type `?` when prompted to list available branches.
+
 ---
 
-## Manual Install (Advanced)
+## Manual Installation (Advanced)
 
-If you prefer not to use the script:
+If you prefer full control:
 
 ```bash
+git clone https://github.com/jeamajoal/JVSHomeControl.git
+cd JVSHomeControl
+
 # Build the UI
-cd client && npm install && npm run build
+cd client && npm ci && npm run build && cd ..
 
 # Start the server
-cd ../server && npm install && npm start
+cd server && npm ci && node server.js
 ```
+
+Set environment variables before running, or create `/etc/jvshomecontrol.env`.
 
 ---
 
 ## File Locations
 
-| File | Purpose |
+| Path | Purpose |
 |------|---------|
-| `/opt/jvshomecontrol/` | Application files |
-| `/etc/jvshomecontrol.env` | Environment variables |
-| `/opt/jvshomecontrol/server/data/config.json` | UI settings |
+| `/opt/jvshomecontrol/` | Application root |
+| `/etc/jvshomecontrol.env` | Environment variables (credentials, settings) |
+| `/opt/jvshomecontrol/server/data/config.json` | UI configuration (themes, device lists, layout) |
 | `/opt/jvshomecontrol/server/data/certs/` | HTTPS certificates |
+| `/opt/jvshomecontrol/server/data/backups/` | Automatic config backups |
+| `/opt/jvshomecontrol/server/data/backgrounds/` | Custom background images |
+| `/opt/jvshomecontrol/server/data/sounds/` | Alert sound files |

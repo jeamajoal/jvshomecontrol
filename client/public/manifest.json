@@ -1,0 +1,19 @@
+{
+  "name": "JVS Home Control",
+  "short_name": "Home Control",
+  "description": "A beautiful, local-first smart home dashboard for Hubitat.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["utilities", "lifestyle"]
+}

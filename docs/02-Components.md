@@ -1,43 +1,66 @@
 # Components
 
-What you need to run JVSHomeControl.
+Everything you need — and everything that's optional — to run JVSHomeControl.
 
 ---
 
 ## Required
 
-| Component | Purpose |
-|-----------|---------|
-| **Hubitat Hub** | Your smart home brain (tested on C-8) |
-| **Maker API** | Hubitat app that exposes devices via HTTP |
-| **Server** | Raspberry Pi, mini PC, or any Debian/Ubuntu machine |
-| **Display** | Wall tablet, phone, or any browser on your network |
+| Component | What It Does | Notes |
+|-----------|-------------|-------|
+| **Hubitat Hub** | Controls your smart devices | Tested on C-8. Any model with Maker API should work. |
+| **Maker API** | Exposes Hubitat devices over HTTP | Built-in Hubitat app — just enable and select devices. |
+| **Server machine** | Runs the JVS backend | Raspberry Pi 4+, mini PC, NAS, or any Debian/Ubuntu box. |
+| **Display** | Shows the dashboard | Wall tablet, spare phone, desktop browser, or any screen on your network. |
+
+> **Minimum specs:** 512 MB RAM, 1 CPU core, 200 MB disk. A Raspberry Pi 4 handles everything comfortably.
 
 ---
 
 ## Optional
 
-| Component | Purpose |
-|-----------|---------|
-| **Google Assistant Relay** | Control Google-only devices through Hubitat |
-| **Custom Hubitat Driver** | Makes Google devices appear as Hubitat switches |
-| **RTSP Cameras** | Server converts to browser-friendly HLS |
+| Component | What It Does | When You Need It |
+|-----------|-------------|-----------------|
+| **RTSP cameras** | Live camera feeds in the dashboard | Server uses ffmpeg to convert RTSP → HLS for browser playback. |
+| **ffmpeg** | Video transcoding | Installed automatically by the install script. Only needed for cameras. |
+| **Google Assistant Relay** | Control Google-only devices via Hubitat | For cheap smart devices that only support Google Home. See [05-Google-Assistant-Relay.md](05-Google-Assistant-Relay.md). |
+| **Custom Hubitat Driver** | Makes GAR devices look like Hubitat switches | Included in this repo. See [06-Custom-Driver.md](06-Custom-Driver.md). |
 
 ---
 
 ## How They Connect
 
 ```
-[Hubitat] <--Maker API--> [JVSHomeControl Server] <--WebSocket--> [Tablet/Browser]
-                                    |
-                          [Optional: Google Assistant Relay]
+                                    ┌──────────────┐
+                                    │  RTSP Camera │ (optional)
+                                    └──────┬───────┘
+                                           │ RTSP
+┌─────────────┐    Maker API    ┌──────────┴────────┐    WebSocket    ┌──────────────┐
+│   Hubitat   │ ◄─────────────  │   JVS Server      │ ──────────────  │  Tablet /    │
+│   Hub       │ ─────────────  │   (Express)        │                │  Browser     │
+└─────────────┘    Events       └───────────────────┘                 └──────────────┘
+                                        │
+                               ┌────────┴────────┐
+                               │   Open-Meteo    │ (free weather)
+                               └─────────────────┘
 ```
 
 ---
 
-## Built-in Weather
+## Supported Devices
 
-The server fetches weather from **Open-Meteo** (free, no API key needed) and caches it for the UI.
+JVSHomeControl works with any device exposed through Hubitat Maker API, including:
+
+- **Switches** — on/off toggle (lights, outlets, smart plugs)
+- **Dimmers** — brightness slider with on/off
+- **Sensors** — temperature, humidity, illuminance, motion, contact
+- **Locks** — lock/unlock
+- **Shades** — open/close
+- **Fans** — speed control
+- **Media players** — transport controls, volume
+- **Garage doors** — open/close
+- **Sirens** — activate/deactivate
+- **Valves** — open/close
 
 ---
 

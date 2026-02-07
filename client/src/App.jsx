@@ -7,15 +7,17 @@ import WeatherPanel from './components/WeatherPanel';
 import ActivityPanel from './components/ActivityPanel';
 import AboutPanel from './components/AboutPanel';
 import EventsPanel from './components/EventsPanel';
+import PanelSelector from './components/PanelSelector';
+import NavMenu from './components/NavMenu';
 import { Activity, Maximize, Minimize } from 'lucide-react';
 
 import { getUiScheme } from './uiScheme';
 import { API_HOST } from './apiHost';
 import { AppStateProvider } from './AppStateProvider';
-
-import { getToleranceColorStyle, getToleranceTextClass } from './toleranceColors';
-
+import { getToleranceTextClass } from './toleranceColors';
 import { socket } from './socket';
+import { PAGE, PAGE_LABELS } from './pages';
+import { useCssCustomProperties } from './hooks/useCssCustomProperties';
 
 function App() {
   const [sensors, setSensors] = useState({});
@@ -27,11 +29,15 @@ function App() {
   const [dataLoaded, setDataLoaded] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [hubitatHealth, setHubitatHealth] = useState(null);
-  const [page, setPage] = useState(0); // 0=Home, 1=Climate, 2=Weather, 3=Activity, 4=Controls, 5=Settings, 6=Info, 7=Events (hidden)
+  const [page, setPage] = useState(PAGE.HOME);
 
   const PANEL_NAME_STORAGE_KEY = 'jvs.panelName';
   const [panelName, setPanelNameState] = useState(() => {
     try {
+      // URL parameter takes priority over localStorage
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlPanel = (urlParams.get('panel') || '').trim();
+      if (urlPanel) return urlPanel;
       return String(localStorage.getItem(PANEL_NAME_STORAGE_KEY) || '');
     } catch {
       return '';
@@ -47,56 +53,50 @@ function App() {
     } catch {
       // ignore
     }
+    // Keep URL in sync
+    try {
+      const url = new URL(window.location.href);
+      if (v) {
+        url.searchParams.set('panel', v);
+      } else {
+        url.searchParams.delete('panel');
+      }
+      window.history.replaceState(null, '', url.toString());
+    } catch {
+      // ignore
+    }
   }, []);
 
+  // ── Effective config (base + panel profile merge) ───────────────────────
   const effectiveConfig = useMemo(() => {
     const base = config && typeof config === 'object' ? config : { rooms: [], sensors: [] };
     const ui = (base.ui && typeof base.ui === 'object') ? base.ui : {};
     const profiles = (ui.panelProfiles && typeof ui.panelProfiles === 'object') ? ui.panelProfiles : {};
-    const profile = (panelName && profiles && typeof profiles === 'object' && profiles[panelName] && typeof profiles[panelName] === 'object')
+    const profile = (panelName && profiles[panelName] && typeof profiles[panelName] === 'object')
       ? profiles[panelName]
       : null;
 
-    const baseDeviceLabelOverrides = (ui.deviceLabelOverrides && typeof ui.deviceLabelOverrides === 'object') ? ui.deviceLabelOverrides : {};
-    const baseDeviceCommandAllowlist = (ui.deviceCommandAllowlist && typeof ui.deviceCommandAllowlist === 'object') ? ui.deviceCommandAllowlist : {};
-    const baseDeviceHomeMetricAllowlist = (ui.deviceHomeMetricAllowlist && typeof ui.deviceHomeMetricAllowlist === 'object') ? ui.deviceHomeMetricAllowlist : {};
-    const baseDeviceInfoMetricAllowlist = (ui.deviceInfoMetricAllowlist && typeof ui.deviceInfoMetricAllowlist === 'object') ? ui.deviceInfoMetricAllowlist : {};
-    const profileDeviceLabelOverrides = (profile && profile.deviceLabelOverrides && typeof profile.deviceLabelOverrides === 'object') ? profile.deviceLabelOverrides : {};
-    const profileDeviceCommandAllowlist = (profile && profile.deviceCommandAllowlist && typeof profile.deviceCommandAllowlist === 'object') ? profile.deviceCommandAllowlist : {};
-    const profileDeviceHomeMetricAllowlist = (profile && profile.deviceHomeMetricAllowlist && typeof profile.deviceHomeMetricAllowlist === 'object') ? profile.deviceHomeMetricAllowlist : {};
-    const profileDeviceInfoMetricAllowlist = (profile && profile.deviceInfoMetricAllowlist && typeof profile.deviceInfoMetricAllowlist === 'object') ? profile.deviceInfoMetricAllowlist : {};
-
-    const nextUi = {
-      ...ui,
-      ...(profile || {}),
-      panelProfiles: ui.panelProfiles,
-      deviceLabelOverrides: {
-        ...baseDeviceLabelOverrides,
-        ...profileDeviceLabelOverrides,
-      },
-      deviceCommandAllowlist: {
-        ...baseDeviceCommandAllowlist,
-        ...profileDeviceCommandAllowlist,
-      },
-      deviceHomeMetricAllowlist: {
-        ...baseDeviceHomeMetricAllowlist,
-        ...profileDeviceHomeMetricAllowlist,
-      },
-      deviceInfoMetricAllowlist: {
-        ...baseDeviceInfoMetricAllowlist,
-        ...profileDeviceInfoMetricAllowlist,
-      },
-    };
+    const mergeObj = (baseObj, profileObj) => ({
+      ...((baseObj && typeof baseObj === 'object') ? baseObj : {}),
+      ...((profileObj && typeof profileObj === 'object') ? profileObj : {}),
+    });
 
     return {
       ...base,
-      ui: nextUi,
+      ui: {
+        ...ui,
+        ...(profile || {}),
+        panelProfiles: ui.panelProfiles,
+        deviceLabelOverrides: mergeObj(ui.deviceLabelOverrides, profile?.deviceLabelOverrides),
+        deviceCommandAllowlist: mergeObj(ui.deviceCommandAllowlist, profile?.deviceCommandAllowlist),
+        deviceHomeMetricAllowlist: mergeObj(ui.deviceHomeMetricAllowlist, profile?.deviceHomeMetricAllowlist),
+        deviceInfoMetricAllowlist: mergeObj(ui.deviceInfoMetricAllowlist, profile?.deviceInfoMetricAllowlist),
+      },
     };
   }, [config, panelName]);
 
-  const accentColorId = String(effectiveConfig?.ui?.accentColorId || 'neon-blue');
-  const baseScheme = getUiScheme(accentColorId);
-
+  // ── UI scheme (accent + icon colour) ────────────────────────────────────
+  const baseScheme = getUiScheme();
   const iconColorIdRaw = String(effectiveConfig?.ui?.iconColorId ?? '').trim();
   const iconColorClass = iconColorIdRaw && iconColorIdRaw !== 'none'
     ? (getToleranceTextClass(iconColorIdRaw) || baseScheme.metricIcon)
@@ -107,219 +107,12 @@ function App() {
     metricIcon: iconColorClass,
   }), [baseScheme, iconColorClass]);
 
-  useEffect(() => {
-    const resolveRgbTripletFromBgClass = (bgClass) => {
-      const el = document.createElement('div');
-      el.className = bgClass;
-      el.style.position = 'absolute';
-      el.style.left = '-99999px';
-      el.style.top = '-99999px';
-      el.style.width = '1px';
-      el.style.height = '1px';
-      try {
-        document.body.appendChild(el);
-      } catch {
-        return null;
-      }
+  // ── CSS custom properties (single hook replaces 8 useEffects) ───────────
+  useCssCustomProperties(effectiveConfig?.ui);
 
-      try {
-        const color = window.getComputedStyle(el).backgroundColor;
-        const m = String(color || '').match(/rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
-        if (!m) return null;
-        const r = Number(m[1]);
-        const g = Number(m[2]);
-        const b = Number(m[3]);
-        if (![r, g, b].every((n) => Number.isFinite(n))) return null;
-        return `${r} ${g} ${b}`;
-      } catch {
-        return null;
-      } finally {
-        try {
-          el.remove();
-        } catch {
-          // ignore
-        }
-      }
-    };
-
-    try {
-      const accentColorIdRaw = String(effectiveConfig?.ui?.accentColorId ?? '').trim();
-      const resolvedAccentColorId = accentColorIdRaw || 'neon-blue';
-      const accentStyle = getToleranceColorStyle(resolvedAccentColorId);
-      const accentTokens = String(accentStyle?.swatch || '').split(/\s+/).filter(Boolean);
-      const accentBgToken = accentTokens.find((t) => t.startsWith('bg-'));
-      const accentTriplet = accentBgToken ? resolveRgbTripletFromBgClass(accentBgToken) : null;
-      if (accentTriplet) {
-        document.documentElement.style.setProperty('--accent-rgb', accentTriplet);
-      }
-    } catch {
-      // ignore
-    }
-
-    try {
-      const glowColorIdRaw = String(effectiveConfig?.ui?.glowColorId ?? '').trim();
-      const shouldInherit = !glowColorIdRaw || glowColorIdRaw === 'none';
-
-      if (shouldInherit) {
-        document.documentElement.style.setProperty('--jvs-glow-rgb', `var(--accent-rgb)`);
-        return;
-      }
-
-      const style = getToleranceColorStyle(glowColorIdRaw);
-      const tokens = String(style?.swatch || '').split(/\s+/).filter(Boolean);
-      const bgToken = tokens.find((t) => t.startsWith('bg-'));
-      const triplet = bgToken ? resolveRgbTripletFromBgClass(bgToken) : null;
-      if (triplet) {
-        document.documentElement.style.setProperty('--jvs-glow-rgb', triplet);
-      } else {
-        document.documentElement.style.setProperty('--jvs-glow-rgb', `var(--accent-rgb)`);
-      }
-    } catch {
-      // ignore
-    }
-  }, [effectiveConfig?.ui?.accentColorId, effectiveConfig?.ui?.glowColorId]);
-
-  useEffect(() => {
-    try {
-      const opacityRaw = Number(effectiveConfig?.ui?.iconOpacityPct);
-      const opacityPct = Number.isFinite(opacityRaw) ? Math.max(0, Math.min(100, Math.round(opacityRaw))) : 100;
-      document.documentElement.style.setProperty('--jvs-icon-opacity', String(opacityPct / 100));
-
-      const sizeRaw = Number(effectiveConfig?.ui?.iconSizePct);
-      const sizePct = Number.isFinite(sizeRaw) ? Math.max(50, Math.min(200, Math.round(sizeRaw))) : 100;
-      document.documentElement.style.setProperty('--jvs-icon-size-scale', String(sizePct / 100));
-    } catch {
-      // ignore
-    }
-  }, [effectiveConfig?.ui?.iconOpacityPct, effectiveConfig?.ui?.iconSizePct]);
-
-  useEffect(() => {
-    try {
-      const raw = Number(effectiveConfig?.ui?.cardOpacityScalePct);
-      const scalePct = Number.isFinite(raw) ? Math.max(0, Math.min(200, Math.round(raw))) : 100;
-      const scale = scalePct / 100;
-      const clamp01 = (n) => Math.max(0, Math.min(1, n));
-      const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-
-      // Keep existing look at scalePct=100.
-      document.documentElement.style.setProperty('--jvs-glass-panel-bg-opacity', String(clamp01(0.30 * scale)));
-      document.documentElement.style.setProperty('--jvs-utility-panel-bg-opacity', String(clamp01(0.10 * scale)));
-      document.documentElement.style.setProperty('--jvs-utility-group-bg-opacity', String(clamp01(0.20 * scale)));
-      document.documentElement.style.setProperty('--jvs-accent-card-bg-opacity', String(clamp01(0.10 * scale)));
-
-      const blurRaw = Number(effectiveConfig?.ui?.blurScalePct);
-      const blurScalePct = Number.isFinite(blurRaw) ? Math.max(0, Math.min(200, Math.round(blurRaw))) : 100;
-      const blurScale = blurScalePct / 100;
-
-      const baseBlurPx = 24;
-      const blurPx = clamp(baseBlurPx * blurScale, 0, baseBlurPx * 2);
-      document.documentElement.style.setProperty('--jvs-glass-panel-blur-px', `${blurPx}px`);
-      document.documentElement.style.setProperty('--jvs-utility-panel-blur-px', `${blurPx}px`);
-
-      // Menu/header surfaces should also fade out so Home background can be full-screen.
-      const baseMenuBlurPx = 12;
-      const menuBlurPx = clamp(baseMenuBlurPx * blurScale, 0, baseMenuBlurPx * 2);
-      document.documentElement.style.setProperty('--jvs-header-bg-opacity', String(clamp01(0.20 * scale)));
-      document.documentElement.style.setProperty('--jvs-menu-surface-bg-opacity', String(clamp01(0.20 * scale)));
-      document.documentElement.style.setProperty('--jvs-menu-row-bg-opacity', String(clamp01(0.10 * scale)));
-      document.documentElement.style.setProperty('--jvs-menu-select-bg-opacity', String(clamp01(0.10 * scale)));
-      document.documentElement.style.setProperty('--jvs-menu-select-strong-bg-opacity', String(clamp01(0.30 * scale)));
-      document.documentElement.style.setProperty('--jvs-header-blur-px', `${menuBlurPx}px`);
-      document.documentElement.style.setProperty('--jvs-menu-blur-px', `${menuBlurPx}px`);
-    } catch {
-      // ignore
-    }
-  }, [effectiveConfig?.ui?.cardOpacityScalePct, effectiveConfig?.ui?.blurScalePct]);
-
-  useEffect(() => {
-    try {
-      const raw = Number(effectiveConfig?.ui?.secondaryTextOpacityPct);
-      const pct = Number.isFinite(raw) ? Math.max(0, Math.min(100, Math.round(raw))) : 45;
-      const base = pct / 100;
-      const strong = Math.max(0, Math.min(1, base + 0.10));
-      document.documentElement.style.setProperty('--jvs-secondary-text-opacity', String(base));
-      document.documentElement.style.setProperty('--jvs-secondary-text-strong-opacity', String(strong));
-    } catch {
-      // ignore
-    }
-  }, [effectiveConfig?.ui?.secondaryTextOpacityPct]);
-
-  useEffect(() => {
-    try {
-      const raw = Number(effectiveConfig?.ui?.secondaryTextSizePct);
-      const pct = Number.isFinite(raw) ? Math.max(50, Math.min(200, Math.round(raw))) : 100;
-      const scale = pct / 100;
-      document.documentElement.style.setProperty('--jvs-secondary-text-size-scale', String(scale));
-    } catch {
-      // ignore
-    }
-  }, [effectiveConfig?.ui?.secondaryTextSizePct]);
-
-  useEffect(() => {
-    try {
-      const raw = Number(effectiveConfig?.ui?.primaryTextOpacityPct);
-      const pct = Number.isFinite(raw) ? Math.max(0, Math.min(100, Math.round(raw))) : 100;
-      const base = pct / 100;
-      const strong = Math.max(0, Math.min(1, base + 0.10));
-      document.documentElement.style.setProperty('--jvs-primary-text-opacity', String(base));
-      document.documentElement.style.setProperty('--jvs-primary-text-strong-opacity', String(strong));
-    } catch {
-      // ignore
-    }
-  }, [effectiveConfig?.ui?.primaryTextOpacityPct]);
-
-  useEffect(() => {
-    try {
-      const raw = Number(effectiveConfig?.ui?.primaryTextSizePct);
-      const pct = Number.isFinite(raw) ? Math.max(50, Math.min(200, Math.round(raw))) : 100;
-      const scale = pct / 100;
-      document.documentElement.style.setProperty('--jvs-primary-text-size-scale', String(scale));
-    } catch {
-      // ignore
-    }
-  }, [effectiveConfig?.ui?.primaryTextSizePct]);
-
-  useEffect(() => {
-    try {
-      const raw = Number(effectiveConfig?.ui?.tertiaryTextOpacityPct);
-      const pct = Number.isFinite(raw) ? Math.max(0, Math.min(100, Math.round(raw))) : 70;
-      const base = pct / 100;
-      const strong = Math.max(0, Math.min(1, base + 0.10));
-      document.documentElement.style.setProperty('--jvs-tertiary-text-opacity', String(base));
-      document.documentElement.style.setProperty('--jvs-tertiary-text-strong-opacity', String(strong));
-    } catch {
-      // ignore
-    }
-  }, [effectiveConfig?.ui?.tertiaryTextOpacityPct]);
-
-  useEffect(() => {
-    try {
-      const raw = Number(effectiveConfig?.ui?.tertiaryTextSizePct);
-      const pct = Number.isFinite(raw) ? Math.max(50, Math.min(200, Math.round(raw))) : 100;
-      const scale = pct / 100;
-      document.documentElement.style.setProperty('--jvs-tertiary-text-size-scale', String(scale));
-    } catch {
-      // ignore
-    }
-  }, [effectiveConfig?.ui?.tertiaryTextSizePct]);
-
-  const pageLabel = page === 0
-    ? 'Home'
-    : page === 1
-      ? 'Climate'
-      : page === 2
-        ? 'Weather'
-        : page === 3
-          ? 'Activity'
-          : page === 4
-            ? 'Controls'
-            : page === 5
-              ? 'Settings'
-              : page === 7
-                ? 'Events'
-                : 'Info';
-
-  const menuPage = page === 7 ? 5 : page;
+  // ── Derived page state ──────────────────────────────────────────────────
+  const pageLabel = PAGE_LABELS[page] || 'Home';
+  const menuPage = page === PAGE.EVENTS ? PAGE.SETTINGS : page;
 
   const refreshNow = useCallback(async () => {
     try {
@@ -452,6 +245,7 @@ function App() {
   };
 
   return (
+    <AppStateProvider value={{ config: effectiveConfig, statuses: sensors, connected, uiScheme, refreshNow, panelName, setPanelName }}>
     <div className="h-[100dvh] w-screen flex flex-col overflow-hidden bg-background">
       {/* Header */}
       <header className="relative flex-none flex items-center justify-between p-3 border-b border-white/5 z-20 jvs-header-bar">
@@ -470,42 +264,31 @@ function App() {
         </div>
 
         {/* Desktop menu (compact) */}
-        <div className="hidden md:block absolute left-1/2 -translate-x-1/2">
-          <div className="rounded-2xl border border-white/10 px-3 py-2 jvs-menu-surface">
-            <div className="flex items-center gap-3">
-              <div className={`h-3 w-3 rounded-full ${uiScheme.swatch} opacity-80`} />
-              <select
-                value={menuPage}
-                onChange={(e) => setPage(Number(e.target.value))}
-                className={`menu-select min-w-[180px] rounded-xl border border-white/10 px-4 py-2.5 text-sm font-bold uppercase tracking-[0.18em] text-white/85 hover:bg-white/5 jvs-menu-select ${uiScheme.focusRing}`}
-              >
-                <option value={0}>Home</option>
-                <option value={1}>Climate</option>
-                <option value={2}>Weather</option>
-                <option value={3}>Activity</option>
-                <option value={4}>Controls</option>
-                <option value={5}>Settings</option>
-                <option value={6}>Info</option>
-              </select>
-            </div>
-          </div>
-        </div>
+        <nav className="hidden md:block absolute left-1/2 -translate-x-1/2" aria-label="Main navigation">
+          <NavMenu page={menuPage} setPage={setPage} />
+        </nav>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Status</span>
+          <div className="flex items-center gap-2" role="status" aria-live="polite">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/40" aria-hidden="true">Status</span>
             <span
               className={`w-2.5 h-2.5 rounded-full ring-2 ${connected ? 'bg-success ring-success/30' : 'bg-danger ring-danger/30'}`}
+              aria-hidden="true"
             />
             <span className={`text-[10px] font-bold uppercase tracking-widest ${connected ? 'text-neon-green' : 'text-neon-red'}`}>
               {connected ? 'ONLINE' : 'OFFLINE'}
             </span>
           </div>
 
-          <div className="w-px h-6 bg-white/10 mx-1" />
+          <div className="w-px h-6 bg-white/10 mx-1" aria-hidden="true" />
+
+          <PanelSelector />
+
+          <div className="w-px h-6 bg-white/10 mx-1" aria-hidden="true" />
 
           <button
             onClick={toggleFullscreen}
+            aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
             className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
           >
             {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
@@ -514,34 +297,19 @@ function App() {
       </header>
 
       {/* Mobile dropdown nav */}
-      <div className="md:hidden flex-none px-3 pb-3 border-b border-white/5 jvs-menu-row">
-        <div className="flex items-center gap-2">
-          <label className="text-[10px] font-bold uppercase tracking-widest text-white/40">Menu</label>
-          <select
-            value={menuPage}
-            onChange={(e) => {
-              ensureFullscreen();
-              setPage(Number(e.target.value));
-            }}
-            className="menu-select flex-1 rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 [-webkit-tap-highlight-color:transparent] jvs-menu-select-strong"
-          >
-            <option value={0}>Home</option>
-            <option value={1}>Climate</option>
-            <option value={2}>Weather</option>
-            <option value={3}>Activity</option>
-            <option value={4}>Controls</option>
-            <option value={5}>Settings</option>
-            <option value={6}>Info</option>
-          </select>
-        </div>
-      </div>
+      <nav className="md:hidden flex-none px-3 pb-3 border-b border-white/5 jvs-menu-row" aria-label="Mobile navigation">
+        <NavMenu page={menuPage} setPage={setPage} onNavigate={ensureFullscreen} />
+      </nav>
 
       {/* Main Grid */}
       <main className="flex-1 min-h-0 w-full overflow-y-auto md:overflow-hidden relative bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-900 via-black to-black">
         {!dataLoaded ? (
-          <div className="flex items-center justify-center h-full text-gray-500 animate-pulse">LOADING SYSTEM...</div>
+          <div className="flex flex-col items-center justify-center h-full gap-4" role="status" aria-live="polite">
+            <div className="w-8 h-8 border-2 border-white/20 border-t-white/70 rounded-full animate-spin" />
+            <span className="text-sm text-gray-500 font-semibold tracking-widest uppercase">Loading System…</span>
+          </div>
         ) : (
-          <AppStateProvider value={{ config: effectiveConfig, statuses: sensors, connected, uiScheme, refreshNow, panelName, setPanelName }}>
+          <>
             {roomsEmpty ? (
               <div className="flex items-center justify-center h-full p-8">
                 <div className="glass-panel border border-white/10 p-6 max-w-xl w-full text-center">
@@ -577,41 +345,42 @@ function App() {
               </div>
             ) : null}
 
-            {page === 0 ? (
+            {page === PAGE.HOME && (
               <EnvironmentPanel config={effectiveConfig} statuses={sensors} connected={connected} uiScheme={uiScheme} />
-            ) : null}
-            {page === 1 ? (
+            )}
+            {page === PAGE.CLIMATE && (
               <HeatmapPanel config={effectiveConfig} statuses={sensors} uiScheme={uiScheme} />
-            ) : null}
-            {page === 2 ? (
+            )}
+            {page === PAGE.WEATHER && (
               <WeatherPanel uiScheme={uiScheme} />
-            ) : null}
-            {page === 3 ? (
+            )}
+            {page === PAGE.ACTIVITY && (
               <ActivityPanel config={effectiveConfig} statuses={sensors} connected={connected} uiScheme={uiScheme} />
-            ) : null}
-            {page === 4 ? (
+            )}
+            {page === PAGE.CONTROLS && (
               <InteractionPanel config={effectiveConfig} statuses={sensors} connected={connected} uiScheme={uiScheme} />
-            ) : null}
-            {page === 5 ? (
+            )}
+            {page === PAGE.SETTINGS && (
               <ConfigPanel
                 config={effectiveConfig}
                 baseConfig={config}
                 statuses={sensors}
                 connected={connected}
                 uiScheme={uiScheme}
-                onOpenEvents={() => setPage(7)}
+                onOpenEvents={() => setPage(PAGE.EVENTS)}
               />
-            ) : null}
-            {page === 6 ? (
+            )}
+            {page === PAGE.INFO && (
               <AboutPanel uiScheme={uiScheme} />
-            ) : null}
-            {page === 7 ? (
-              <EventsPanel onBack={() => setPage(5)} />
-            ) : null}
-          </AppStateProvider>
+            )}
+            {page === PAGE.EVENTS && (
+              <EventsPanel onBack={() => setPage(PAGE.SETTINGS)} />
+            )}
+          </>
         )}
       </main>
     </div>
+    </AppStateProvider>
   );
 }
 

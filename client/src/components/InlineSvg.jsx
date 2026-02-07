@@ -42,20 +42,27 @@ function ensureSvgViewportSizing(svgMarkup) {
   if (!text) return text;
 
   return text.replace(/<svg\b([^>]*)>/i, (match, attrs) => {
-    const a = String(attrs || '');
+    let a = String(attrs || '');
 
-    const hasWidth = /\bwidth\s*=\s*("[^"]*"|'[^']*')/i.test(a);
-    const hasHeight = /\bheight\s*=\s*("[^"]*"|'[^']*')/i.test(a);
-    const hasPar = /\bpreserveAspectRatio\s*=\s*("[^"]*"|'[^']*')/i.test(a);
-    const hasStyle = /\bstyle\s*=\s*("[^"]*"|'[^']*')/i.test(a);
+    // Always force width/height to 100% so the SVG fills its container
+    // rather than rendering at a fixed pixel size offset to the top-left.
+    a = a.replace(/\bwidth\s*=\s*("[^"]*"|'[^']*')/gi, '');
+    a = a.replace(/\bheight\s*=\s*("[^"]*"|'[^']*')/gi, '');
+    a += ' width="100%" height="100%"';
 
-    let nextAttrs = a;
-    if (!hasWidth) nextAttrs += ' width="100%"';
-    if (!hasHeight) nextAttrs += ' height="100%"';
-    if (!hasPar) nextAttrs += ' preserveAspectRatio="xMidYMid meet"';
-    if (!hasStyle) nextAttrs += ' style="display:block"';
+    if (!/\bpreserveAspectRatio\s*=\s*("[^"]*"|'[^']*')/i.test(a)) {
+      a += ' preserveAspectRatio="xMidYMid meet"';
+    }
+    if (!/\bstyle\s*=\s*("[^"]*"|'[^']*')/i.test(a)) {
+      a += ' style="display:block"';
+    }
 
-    return `<svg${nextAttrs}>`;
+    // Inject a <style> so interactive elements capture clicks on their
+    // entire bounding box — not just on visible fill/stroke edges.
+    const interactiveStyle =
+      '<style>[data-region],[data-jvs-command],[data-command],[data-jvs-action]{pointer-events:all;cursor:pointer}</style>';
+
+    return `<svg${a}>${interactiveStyle}`;
   });
 }
 

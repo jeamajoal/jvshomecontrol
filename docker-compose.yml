@@ -1,0 +1,26 @@
+services:
+  jvshomecontrol:
+    build: .
+    container_name: jvshomecontrol
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      # Persist config, backgrounds, certs, and sounds across container restarts
+      - jvs-data:/app/server/data
+    environment:
+      # ── Required: Hubitat Maker API ──────────────────────────────────────
+      - HUBITAT_HOST=${HUBITAT_HOST:-}
+      - HUBITAT_APP_ID=${HUBITAT_APP_ID:-}
+      - HUBITAT_ACCESS_TOKEN=${HUBITAT_ACCESS_TOKEN:-}
+
+      # ── Optional ─────────────────────────────────────────────────────────
+      # - PORT=3000
+      # - POLL_INTERVAL=8000
+      # - USE_HTTPS=false
+      # - OPEN_METEO_LAT=
+      # - OPEN_METEO_LON=
+      # - OPEN_METEO_TIMEZONE=auto
+
+volumes:
+  jvs-data:

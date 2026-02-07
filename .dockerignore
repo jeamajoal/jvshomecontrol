@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Build outputs (rebuilt in Docker)
+client/dist/
+
+# Git / IDE
+.git/
+.gitignore
+.vscode/
+*.swp
+*.swo
+
+# Docs (not needed at runtime)
+docs/
+hubitat/
+scripts/
+*.md
+!server/MAKER_API.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore

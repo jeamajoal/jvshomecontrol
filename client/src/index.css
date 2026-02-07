@@ -283,21 +283,21 @@ select option:active {
   }
 }
 
-/* Utility pages (Settings / Events): slightly brighter and more structured. */
+/* Utility pages (Settings / Events): fully opaque, immune to appearance settings. */
 .utility-page {
   @apply p-3 md:p-4 text-sm md:text-base;
 }
 
 .utility-panel {
-  @apply rounded-2xl border border-white/20 bg-white backdrop-blur-xl shadow-2xl;
-  --tw-bg-opacity: var(--jvs-utility-panel-bg-opacity, 0.10);
-  -webkit-backdrop-filter: blur(var(--jvs-utility-panel-blur-px, 24px));
-  backdrop-filter: blur(var(--jvs-utility-panel-blur-px, 24px));
+  @apply rounded-2xl border border-white/20 shadow-2xl;
+  background-color: rgb(20 20 28 / 0.97);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
 }
 
 .utility-group {
-  @apply rounded-2xl border-2 border-white/20 bg-black;
-  --tw-bg-opacity: var(--jvs-utility-group-bg-opacity, 0.20);
+  @apply rounded-2xl border-2 border-white/20;
+  background-color: rgb(10 10 16 / 0.95);
 }
 
 /* Make form controls easier to read/tap on tablets. */

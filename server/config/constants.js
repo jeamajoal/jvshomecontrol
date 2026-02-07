@@ -79,6 +79,13 @@ const ALLOWED_HOME_TOP_ROW_CARD_IDS = new Set(HOME_TOP_ROW_CARD_IDS);
 // (We intentionally constrain this so config can't inject arbitrary commands into the UI.)
 const ALLOWED_PANEL_DEVICE_COMMANDS = new Set(['on', 'off', 'toggle', 'setLevel', 'refresh', 'push']);
 
+// Utility/lifecycle commands that should NOT be enabled by default when a
+// device first becomes available.  Everything not in this set is auto-checked.
+const SKIP_DEFAULT_COMMANDS = new Set([
+    'configure', 'initialize', 'refresh', 'poll',
+    'updated', 'installed', 'ping', 'clearState',
+]);
+
 // Home metrics that can be shown on the Home dashboard per device.
 // (Used for multi-sensors where you want to hide/show specific attributes.)
 const ALLOWED_HOME_METRIC_KEYS = new Set(['temperature', 'humidity', 'illuminance', 'motion', 'contact', 'door']);
@@ -483,6 +490,7 @@ module.exports = {
     HOME_TOP_ROW_CARD_IDS,
     ALLOWED_HOME_TOP_ROW_CARD_IDS,
     ALLOWED_PANEL_DEVICE_COMMANDS,
+    SKIP_DEFAULT_COMMANDS,
     ALLOWED_HOME_METRIC_KEYS,
     ALLOWED_HOME_ROOM_METRIC_KEYS,
     
