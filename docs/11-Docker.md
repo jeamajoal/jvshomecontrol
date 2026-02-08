@@ -13,16 +13,14 @@ The fastest way to get running. No cloning or building required.
 ```bash
 docker run -d --name jvshomecontrol \
   -p 3000:3000 \
-  -e HUBITAT_HOST=https://192.168.1.50 \
-  -e HUBITAT_APP_ID=30 \
-  -e HUBITAT_ACCESS_TOKEN=your-token-here \
-  -e HUBITAT_TLS_INSECURE=1 \
   -v jvs-data:/app/server/data \
   --restart unless-stopped \
   jeamajoal/jvshomecontrol:latest
 ```
 
-Open `http://localhost:3000` — all configuration (rooms, layouts, themes) happens in the browser.
+Open `http://localhost:3000` — **all configuration happens in the browser**, including Hubitat connection credentials.
+
+> **Prefer environment variables?** You can still pass `HUBITAT_HOST`, `HUBITAT_APP_ID`, `HUBITAT_ACCESS_TOKEN`, and `HUBITAT_TLS_INSECURE` as `-e` flags if you'd rather configure them outside the UI. Env vars take priority over UI settings and lock those fields in the Settings page.
 
 ### Using Docker Compose (recommended)
 
@@ -38,22 +36,14 @@ services:
       - "3000:3000"
     volumes:
       - jvs-data:/app/server/data
-    environment:
-      - HUBITAT_HOST=${HUBITAT_HOST}
-      - HUBITAT_APP_ID=${HUBITAT_APP_ID}
-      - HUBITAT_ACCESS_TOKEN=${HUBITAT_ACCESS_TOKEN}
-      # - HUBITAT_TLS_INSECURE=1        # Uncomment for self-signed Hubitat certs
+    # environment:                         # Optional — configure in browser instead
+    #   - HUBITAT_HOST=https://192.168.1.50
+    #   - HUBITAT_APP_ID=30
+    #   - HUBITAT_ACCESS_TOKEN=your-token
+    #   - HUBITAT_TLS_INSECURE=1
 
 volumes:
   jvs-data:
-```
-
-Create a `.env` file next to it:
-
-```bash
-HUBITAT_HOST=https://192.168.1.50
-HUBITAT_APP_ID=30
-HUBITAT_ACCESS_TOKEN=your-token-here
 ```
 
 Then start:
@@ -62,7 +52,9 @@ Then start:
 docker compose up -d
 ```
 
-> **Security:** Never commit your `.env` file to source control.
+Open `http://localhost:3000` and configure your Hubitat connection in **Settings → Server**.
+
+> **Prefer a `.env` file?** Create one next to `docker-compose.yml` with `HUBITAT_HOST`, `HUBITAT_APP_ID`, `HUBITAT_ACCESS_TOKEN` and uncomment the `environment` block above. Env vars take priority and lock those fields in the Settings UI. Never commit your `.env` file to source control.
 
 ---
 
@@ -91,12 +83,15 @@ docker push your-user/jvshomecontrol:latest
 
 Once the container starts, **all setup happens in the browser** at `http://<host>:3000`:
 
-1. **Rooms & devices** are auto-discovered from Hubitat — no manual editing needed.
-2. Open **Settings** (gear icon) to configure rooms, layouts, weather, themes, cameras, and more.
-3. Changes are saved to `config.json` inside the `jvs-data` volume automatically.
-4. You never need to SSH into the container or edit files by hand.
+1. Open **Settings** (gear icon) → **Server** tab.
+2. Enter your **Hubitat Host**, **Maker API App ID**, and **Access Token**. Toggle **TLS Insecure** if your Hubitat uses a self-signed certificate.
+3. The dashboard connects immediately — rooms and devices are auto-discovered.
+4. Configure rooms, layouts, weather, themes, cameras, and more from the other Settings tabs.
+5. All changes are saved to `config.json` inside the `jvs-data` volume automatically.
 
-> The only things that **must** be set as environment variables are the three Hubitat Maker API credentials (`HUBITAT_HOST`, `HUBITAT_APP_ID`, `HUBITAT_ACCESS_TOKEN`). Everything else can be configured from the UI.
+You never need to SSH into the container or edit files by hand.
+
+> **Tip:** If you prefer to keep credentials outside the UI (e.g. for automated deployments), pass them as environment variables instead. Env vars take priority over UI settings and lock those fields in the Settings page.
 
 ---
 
@@ -118,19 +113,16 @@ The `jvs-data` volume stores everything that should survive container restarts:
 
 Pass them via the `environment` key in `docker-compose.yml`, a `.env` file, or `docker run -e`.
 
-### Required
+### Hubitat Connection (optional — can be set in the browser instead)
 
 | Variable | Example | Description |
 |----------|---------|-------------|
 | `HUBITAT_HOST` | `https://192.168.1.50` | Hubitat URL |
 | `HUBITAT_APP_ID` | `30` | Maker API app ID |
 | `HUBITAT_ACCESS_TOKEN` | `abc123...` | Maker API token |
+| `HUBITAT_TLS_INSECURE` | `1` | Skip TLS verification for self-signed Hubitat certs |
 
-### Recommended
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `HUBITAT_TLS_INSECURE` | `false` | Set `1` for self-signed Hubitat HTTPS certs |
+> When set as env vars, these values take priority over the UI and the corresponding Settings fields are shown as locked.
 
 ### Optional
 
@@ -148,9 +140,9 @@ For the full list, see [03-Installation.md](03-Installation.md#all-environment-v
 
 ---
 
-## Using a .env File
+## Using a .env File (optional)
 
-If you didn't already create one in the [Quick Start](#quick-start--pull-from-docker-hub), create a `.env` file next to your `docker-compose.yml`:
+If you prefer to keep Hubitat credentials outside the UI — for example in automated or headless deployments — create a `.env` file next to your `docker-compose.yml`:
 
 ```bash
 HUBITAT_HOST=https://192.168.1.50
@@ -168,6 +160,8 @@ environment:
   - HUBITAT_ACCESS_TOKEN=${HUBITAT_ACCESS_TOKEN}
   - HUBITAT_TLS_INSECURE=${HUBITAT_TLS_INSECURE}
 ```
+
+Fields set via env vars will show an **ENV** badge in the Settings UI and cannot be changed from the browser.
 
 > **Security:** Add `.env` to your `.gitignore` so you don't commit secrets.
 
@@ -199,10 +193,6 @@ Or with `docker run`:
 ```bash
 docker run -d --name jvshomecontrol \
   -p 3000:3000 \
-  -e HUBITAT_HOST=https://192.168.1.50 \
-  -e HUBITAT_APP_ID=30 \
-  -e HUBITAT_ACCESS_TOKEN=your-token-here \
-  -e HUBITAT_TLS_INSECURE=1 \
   -e HTTPS_SETUP_ASSUME_YES=1 \
   -e HTTPS_CERT_HOSTNAME=192.168.1.100 \
   -v jvs-data:/app/server/data \

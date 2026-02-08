@@ -24,11 +24,17 @@ curl -fsSL https://raw.githubusercontent.com/jeamajoal/JVSHomeControl/main/scrip
 
 ### 1. Add your Hubitat credentials
 
+**Option A — Configure in the browser (easiest):**
+
+Open `https://your-server-ip:3000`, go to **Settings → Server**, and enter your Hubitat Host, Maker API App ID, and Access Token. The dashboard connects immediately.
+
+**Option B — Use the environment file:**
+
 ```bash
 sudo nano /etc/jvshomecontrol.env
 ```
 
-Set these three values (find them in Hubitat → Apps → Maker API):
+Set these values (find them in Hubitat → Apps → Maker API):
 
 ```bash
 HUBITAT_HOST=https://192.168.1.50
@@ -37,15 +43,15 @@ HUBITAT_ACCESS_TOKEN=your-token-here
 HUBITAT_TLS_INSECURE=1
 ```
 
-> **Why HTTPS?** Your Maker API access token is sent with every poll request. Even on a local network, use HTTPS to protect it. Set `HUBITAT_TLS_INSECURE=1` because Hubitat uses a self-signed certificate.
-
-### 2. Restart the service
+Then restart the service:
 
 ```bash
 sudo systemctl restart jvshomecontrol
 ```
 
-### 3. Open the dashboard
+> **Why HTTPS?** Your Maker API access token is sent with every poll request. Even on a local network, use HTTPS to protect it. Set `HUBITAT_TLS_INSECURE=1` because Hubitat uses a self-signed certificate. Env vars take priority over UI settings and lock those fields in the Settings page.
+
+### 2. Open the dashboard
 
 Navigate to `https://your-server-ip:3000` in any browser.
 
@@ -88,10 +94,10 @@ curl -sk https://localhost:3000/api/hubitat/health
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `HUBITAT_HOST` | **Yes** | — | Hubitat URL (e.g., `https://192.168.1.50`) |
-| `HUBITAT_APP_ID` | **Yes** | — | Maker API app ID number |
-| `HUBITAT_ACCESS_TOKEN` | **Yes** | — | Maker API access token |
-| `HUBITAT_TLS_INSECURE` | Recommended | `false` | Set `1` for self-signed Hubitat HTTPS certs |
+| `HUBITAT_HOST` | No | — | Hubitat URL (e.g., `https://192.168.1.50`). Can also be set in Settings UI. |
+| `HUBITAT_APP_ID` | No | — | Maker API app ID number. Can also be set in Settings UI. |
+| `HUBITAT_ACCESS_TOKEN` | No | — | Maker API access token. Can also be set in Settings UI. |
+| `HUBITAT_TLS_INSECURE` | No | `false` | Set `1` for self-signed Hubitat HTTPS certs. Can also be set in Settings UI. |
 | `PORT` | No | `3000` | Server listen port |
 | `HUBITAT_POLL_INTERVAL_MS` | No | `2000` | How often to poll Hubitat (milliseconds) |
 | `EVENTS_INGEST_TOKEN` | No | — | Token to protect the events endpoint |
