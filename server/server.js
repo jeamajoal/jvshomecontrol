@@ -214,7 +214,7 @@ const server = USE_HTTPS
     )
     : http.createServer(app);
 
-const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
+const io = new Server(server, { cors: { origin: corsOriginAllowed, methods: ['GET', 'POST'] } });
 
 // --- Certificate info helper ---
 // Uses Node's built-in X509Certificate to read cert metadata.
@@ -325,7 +325,40 @@ function applyWeatherEnvOverrides() {
     }
 }
 
-app.use(cors());
+/**
+ * Dynamic CORS origin check.
+ * Allows:
+ *  - Same-origin / non-browser requests (no Origin header)
+ *  - Localhost variants: localhost, 127.0.0.1, [::1] (any port/protocol)
+ *  - The configured Hubitat host (so hub-hosted iframes work)
+ * Everything else is rejected so external websites cannot call the API.
+ */
+function corsOriginAllowed(origin, callback) {
+    // No Origin header → same-origin or non-browser (curl, Hubitat postURL, etc.)
+    if (!origin) return callback(null, true);
+
+    try {
+        const parsed = new URL(origin);
+        const host = parsed.hostname.toLowerCase();
+
+        // Always allow localhost variants (covers Vite dev server on :5173, etc.)
+        if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
+            return callback(null, true);
+        }
+
+        // Allow the configured Hubitat host
+        if (hubitat.host) {
+            try {
+                const hubHost = new URL(hubitat.host).hostname.toLowerCase();
+                if (host === hubHost) return callback(null, true);
+            } catch { /* invalid hubitat host — skip */ }
+        }
+    } catch { /* malformed origin — fall through to reject */ }
+
+    callback(new Error('CORS: origin not allowed'), false);
+}
+
+app.use(cors({ origin: corsOriginAllowed }));
 // Hubitat Maker API postURL can send JSON as text/plain (and sometimes with log prefixes).
 // Parse /api/events as raw text first, then normalize inside the handler.
 app.use('/api/events', bodyParser.text({ type: '*/*', limit: '1mb' }));
