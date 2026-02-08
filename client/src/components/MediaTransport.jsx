@@ -37,6 +37,15 @@ export default function MediaTransport({
 
   const isPressed = (cmd) => pressedButton === cmd;
 
+  // Determine which buttons to show based on device commands
+  const cmds = Array.isArray(commands) && commands.length ? commands : null;
+  const hasPrev = !cmds || cmds.includes('previousTrack');
+  const hasStop = !cmds || cmds.includes('stop');
+  const hasPlay = !cmds || cmds.includes('play');
+  const hasPause = !cmds || cmds.includes('pause');
+  const hasNext = !cmds || cmds.includes('nextTrack');
+  const hasPlayOrPause = hasPlay || hasPause;
+
   return (
     <div
       className={`media-transport ${className} ${disabled ? 'opacity-50' : ''}`}
@@ -52,6 +61,7 @@ export default function MediaTransport({
       }}
     >
       {/* Previous/Rewind */}
+      {hasPrev && (
       <button
         onClick={() => handlePress('previousTrack')}
         disabled={disabled}
@@ -77,8 +87,10 @@ export default function MediaTransport({
           <path d="M18 6v12l-9-6 9-6z" fill="#fff"/>
         </svg>
       </button>
+      )}
 
       {/* Stop */}
+      {hasStop && (
       <button
         onClick={() => handlePress('stop')}
         disabled={disabled}
@@ -103,10 +115,12 @@ export default function MediaTransport({
           <rect x="6" y="6" width="12" height="12" rx="2" fill="#fff"/>
         </svg>
       </button>
+      )}
 
       {/* Play/Pause - Main button */}
+      {hasPlayOrPause && (
       <button
-        onClick={() => handlePress(isPlaying ? 'pause' : 'play')}
+        onClick={() => handlePress(isPlaying && hasPause ? 'pause' : 'play')}
         disabled={disabled}
         title={isPlaying ? 'Pause' : 'Play'}
         style={{
@@ -141,8 +155,10 @@ export default function MediaTransport({
           </svg>
         )}
       </button>
+      )}
 
       {/* Next/Forward */}
+      {hasNext && (
       <button
         onClick={() => handlePress('nextTrack')}
         disabled={disabled}
@@ -168,6 +184,7 @@ export default function MediaTransport({
           <path d="M15.5 6h2.5v12h-2.5V6z" fill="#fff"/>
         </svg>
       </button>
+      )}
     </div>
   );
 }

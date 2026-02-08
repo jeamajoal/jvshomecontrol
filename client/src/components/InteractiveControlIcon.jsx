@@ -134,7 +134,23 @@ export default function InteractiveControlIcon({
     if (region.action === 'command') {
       onCommand(device.id, region.command, []);
     } else if (region.action === 'toggle') {
-      const currentValue = device[region.stateAttribute];
+      // Resolve current state value with fallbacks for common attribute aliases
+      let currentValue = device[region.stateAttribute];
+      if (currentValue === undefined || currentValue === null) {
+        const fallbacks = {
+          playbackStatus: ['transportStatus', 'status'],
+          transportStatus: ['playbackStatus', 'status'],
+        };
+        const alts = fallbacks[region.stateAttribute];
+        if (alts) {
+          for (const alt of alts) {
+            if (device[alt] !== undefined && device[alt] !== null) {
+              currentValue = device[alt];
+              break;
+            }
+          }
+        }
+      }
       const commands = region.toggleCommands || ['on', 'off'];
       const nextCmd = currentValue === region.onValue ? commands[1] : commands[0];
       onCommand(device.id, nextCmd, []);
@@ -513,7 +529,7 @@ export default function InteractiveControlIcon({
   // Render React media transport component
   // Transport uses its own sizing for proper button layout
   if (isMediaTransport) {
-    const playbackStatus = device?.playbackStatus || device?.transportStatus || '';
+    const playbackStatus = device?.transportStatus || device?.playbackStatus || device?.status || '';
     const isPlaying = playbackStatus === 'playing';
     const isPaused = playbackStatus === 'paused';
     return (

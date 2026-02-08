@@ -11,7 +11,7 @@
   "stateBindings": {
     "playbackStatus": {
       "type": "boolean",
-      "attribute": "playbackStatus",
+      "attribute": "transportStatus",
       "onValue": "playing",
       "offValue": "paused",
       "cssClass": {
@@ -26,7 +26,7 @@
       "id": "toggle",
       "selector": "[data-region='toggle']",
       "action": "toggle",
-      "stateAttribute": "playbackStatus",
+      "stateAttribute": "transportStatus",
       "onValue": "playing",
       "toggleCommands": ["play", "pause"],
       "eventType": "click",

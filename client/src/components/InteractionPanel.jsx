@@ -1147,6 +1147,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                           switch: isOn ? 'on' : 'off',
                           level: asNumber(level) ?? 0,
                           ...d.attrs,
+                          commands: d.commands,
                         };
 
                         if (switchControl && hasLevel && d.commands.includes('setLevel')) {
@@ -1263,6 +1264,22 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                             </div>
 
                             <DeviceInfoGrid items={d.infoItems} />
+
+                            {/* Interactive control icons for fallback devices (e.g. media players without switch) */}
+                            {controlIconIds.length > 0 && (
+                              <div className="mt-3 flex flex-wrap justify-center gap-2 items-end">
+                                {controlIconIds.map((iconId) => (
+                                  <InteractiveControlIcon
+                                    key={iconId}
+                                    iconId={iconId}
+                                    device={deviceObj}
+                                    onCommand={(deviceId, command, args) => run(deviceId, command, args)}
+                                    className="w-16 h-20"
+                                    disabled={!connected}
+                                  />
+                                ))}
+                              </div>
+                            )}
 
                             <div className="mt-2 flex flex-col gap-2">
                               {schemaList.map((schema) => {
