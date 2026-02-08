@@ -378,7 +378,7 @@ const ServerSettingsTab = ({ config }) => {
               label="Port"
               value={ss.port}
               locked={locked.port}
-              min={1}
+              min={80}
               max={65535}
               step={1}
               field="port"

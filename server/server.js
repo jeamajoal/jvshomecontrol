@@ -1829,8 +1829,8 @@ function normalizePersistedConfig(raw) {
             hubitatAppId: safeStr(raw.hubitatAppId),
             hubitatAccessToken: safeStr(raw.hubitatAccessToken),
             hubitatTlsInsecure: typeof raw.hubitatTlsInsecure === 'boolean' ? raw.hubitatTlsInsecure : null,
-            // Network (port requires restart to take effect)
-            port: safeInt(raw.port, 1, 65535),
+            // Network (port requires restart to take effect; min 80 prevents accidental low-port saves)
+            port: safeInt(raw.port, 80, 65535),
         };
     })();
 
@@ -2211,7 +2211,8 @@ function applyServerSettings() {
         runtimeBackupMaxFiles = ss.backupMaxFiles;
     }
     if (!process.env.PORT && ss.port != null) {
-        runtimePort = ss.port;
+        const p = Number(ss.port);
+        runtimePort = (Number.isFinite(p) && p >= 80 && p <= 65535) ? Math.floor(p) : PORT;
     }
 
     // --- Hubitat connection settings ---
@@ -7637,8 +7638,8 @@ app.put('/api/server-settings', (req, res) => {
     const eventsMax = safeInt(body.eventsMax, 50, 10000);
     const backupMaxFiles = safeInt(body.backupMaxFiles, 10, 1000);
 
-    // --- Port (requires server restart) ---
-    const port = safeInt(body.port, 1, 65535);
+    // --- Port (requires server restart; min 80 prevents accidental low-port saves) ---
+    const port = safeInt(body.port, 80, 65535);
 
     // --- Boolean settings ---
     const eventsPersistJsonl = typeof body.eventsPersistJsonl === 'boolean' ? body.eventsPersistJsonl : undefined;
