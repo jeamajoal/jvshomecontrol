@@ -4,31 +4,34 @@ Run JVSHomeControl in a Docker container — no system-level Node.js or ffmpeg i
 
 ---
 
-## Quick Start
+## Quick Start — Pull from Docker Hub
+
+The fastest way to get running. No cloning or building required.
+
+### One command
 
 ```bash
-git clone https://github.com/jeamajoal/JVSHomeControl.git
-cd JVSHomeControl
-
-# Create your environment file
-cp docker-compose.yml docker-compose.override.yml
-# Edit docker-compose.override.yml with your Hubitat credentials
-
-docker compose up -d
+docker run -d --name jvshomecontrol \
+  -p 3000:3000 \
+  -e HUBITAT_HOST=https://192.168.1.50 \
+  -e HUBITAT_APP_ID=30 \
+  -e HUBITAT_ACCESS_TOKEN=your-token-here \
+  -e HUBITAT_TLS_INSECURE=1 \
+  -v jvs-data:/app/server/data \
+  --restart unless-stopped \
+  jeamajoal/jvshomecontrol:latest
 ```
 
-Open `http://localhost:3000` (or `https://` if you add certificates).
+Open `http://localhost:3000` — all configuration (rooms, layouts, themes) happens in the browser.
 
----
+### Using Docker Compose (recommended)
 
-## docker-compose.yml
-
-The included `docker-compose.yml` is ready to use:
+Create a `docker-compose.yml` anywhere on your machine:
 
 ```yaml
 services:
   jvshomecontrol:
-    build: .
+    image: jeamajoal/jvshomecontrol:latest
     container_name: jvshomecontrol
     restart: unless-stopped
     ports:
@@ -36,16 +39,64 @@ services:
     volumes:
       - jvs-data:/app/server/data
     environment:
-      - HUBITAT_HOST=https://192.168.1.50
-      - HUBITAT_APP_ID=30
-      - HUBITAT_ACCESS_TOKEN=your-token-here
-      - HUBITAT_TLS_INSECURE=1
+      - HUBITAT_HOST=${HUBITAT_HOST}
+      - HUBITAT_APP_ID=${HUBITAT_APP_ID}
+      - HUBITAT_ACCESS_TOKEN=${HUBITAT_ACCESS_TOKEN}
+      # - HUBITAT_TLS_INSECURE=1        # Uncomment for self-signed Hubitat certs
 
 volumes:
   jvs-data:
 ```
 
-> **Tip:** Use environment variables from your shell or a `.env` file instead of hardcoding secrets in `docker-compose.yml`. See [Environment Variables](#environment-variables) below.
+Create a `.env` file next to it:
+
+```bash
+HUBITAT_HOST=https://192.168.1.50
+HUBITAT_APP_ID=30
+HUBITAT_ACCESS_TOKEN=your-token-here
+```
+
+Then start:
+
+```bash
+docker compose up -d
+```
+
+> **Security:** Never commit your `.env` file to source control.
+
+---
+
+## Quick Start — Build from Source
+
+If you prefer to build the image yourself:
+
+```bash
+git clone https://github.com/jeamajoal/JVSHomeControl.git
+cd JVSHomeControl
+docker compose up -d
+```
+
+The included `docker-compose.yml` in the repo uses `build: .` so it will compile everything locally.
+
+To push your own build to a registry:
+
+```bash
+docker build -t your-user/jvshomecontrol:latest .
+docker push your-user/jvshomecontrol:latest
+```
+
+---
+
+## First-Run Configuration
+
+Once the container starts, **all setup happens in the browser** at `http://<host>:3000`:
+
+1. **Rooms & devices** are auto-discovered from Hubitat — no manual editing needed.
+2. Open **Settings** (gear icon) to configure rooms, layouts, weather, themes, cameras, and more.
+3. Changes are saved to `config.json` inside the `jvs-data` volume automatically.
+4. You never need to SSH into the container or edit files by hand.
+
+> The only things that **must** be set as environment variables are the three Hubitat Maker API credentials (`HUBITAT_HOST`, `HUBITAT_APP_ID`, `HUBITAT_ACCESS_TOKEN`). Everything else can be configured from the UI.
 
 ---
 
@@ -99,7 +150,7 @@ For the full list, see [03-Installation.md](03-Installation.md#all-environment-v
 
 ## Using a .env File
 
-Create a `.env` file next to `docker-compose.yml`:
+If you didn't already create one in the [Quick Start](#quick-start--pull-from-docker-hub), create a `.env` file next to your `docker-compose.yml`:
 
 ```bash
 HUBITAT_HOST=https://192.168.1.50
@@ -151,6 +202,15 @@ Put nginx, Caddy, or Traefik in front of the container and let it handle TLS. Se
 
 ## Updating
 
+### From Docker Hub
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+### From source
+
 ```bash
 cd JVSHomeControl
 git pull
@@ -171,6 +231,25 @@ docker compose logs -f
 # Last 100 lines
 docker compose logs --tail 100
 ```
+
+---
+
+## Health Check
+
+The Docker image includes a built-in `HEALTHCHECK` that pings `/api/status` every 30 seconds. Orchestrators like Docker Compose, Portainer, and Kubernetes will automatically monitor it.
+
+```bash
+# Check container health status
+docker inspect --format='{{.State.Health.Status}}' jvshomecontrol
+```
+
+Additional diagnostic endpoints:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/status` | Overall server status |
+| `GET /api/hubitat/health` | Hubitat connection health |
+| `GET /api/hls/health` | Camera streaming health |
 
 ---
 
