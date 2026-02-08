@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Backend for Home Automation Control Panel",
   "main": "server.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "prestart": "node scripts/https-setup.js",
     "start": "node server.js",

@@ -99,8 +99,22 @@ curl -sk https://localhost:3000/api/hubitat/health
 | `EVENTS_PERSIST_JSONL` | No | `false` | Persist events to disk |
 | `BACKUP_MAX_FILES` | No | `200` | Config backup retention |
 | `HTTP_ONLY` | No | `false` | Force HTTP (skip HTTPS) |
+| `HTTPS` | No | — | Set `1` to force HTTPS even without auto-detected certs |
 | `HTTPS_CERT_PATH` | No | Auto | Custom TLS certificate path |
 | `HTTPS_KEY_PATH` | No | Auto | Custom TLS private key path |
+| `OPEN_METEO_LAT` | No | Auto | Weather latitude (decimal or DMS) |
+| `OPEN_METEO_LON` | No | Auto | Weather longitude (decimal or DMS) |
+| `OPEN_METEO_TIMEZONE` | No | `auto` | Weather timezone (e.g., `America/New_York`) |
+| `OPEN_METEO_TEMPERATURE_UNIT` | No | `fahrenheit` | `fahrenheit` or `celsius` |
+| `OPEN_METEO_WIND_SPEED_UNIT` | No | `mph` | `mph`, `kmh`, `ms`, or `kn` |
+| `OPEN_METEO_PRECIPITATION_UNIT` | No | `inch` | `inch` or `mm` |
+| `FFMPEG_PATH` | No | Auto | Custom path to ffmpeg binary |
+| `UI_ALLOWED_DEVICE_IDS` | No | — | Comma-separated device IDs for global allowlist |
+| `UI_ALLOWED_MAIN_DEVICE_IDS` | No | — | Comma-separated device IDs for Home page |
+| `UI_ALLOWED_CTRL_DEVICE_IDS` | No | — | Comma-separated device IDs for Controls page |
+| `UI_ALLOWED_MAIN_DEVICE_IDS_LOCKED` | No | `false` | Prevent UI from changing Home allowlist |
+| `UI_ALLOWED_CTRL_DEVICE_IDS_LOCKED` | No | `false` | Prevent UI from changing Controls allowlist |
+| `UI_EXTRA_ALLOWED_PANEL_DEVICE_COMMANDS` | No | — | Extra commands allowed on control panels |
 
 ---
 

@@ -118,7 +118,14 @@ curl -sk https://localhost:3000/api/hls/health | python3 -m json.tool
 | `RTSP_HLS_MAX_RESTART_ATTEMPTS` | `5` | Max auto-restarts before giving up |
 | `RTSP_HLS_STALE_THRESHOLD_SECONDS` | `15` | How long before a stream is considered dead |
 | `RTSP_HLS_CLEANUP_ON_SHUTDOWN` | `false` | Delete HLS files when server stops |
-| `RTSP_HLS_MAX_SEGMENTS` | `5` | HLS playlist window size |
+| `RTSP_HLS_LIST_SIZE` | `5` | HLS playlist window size (number of segments) |
+| `RTSP_HLS_MAX_SEGMENT_AGE_SECONDS` | `30` | Delete segments older than this |
+| `RTSP_HLS_DIR` | Auto | Custom directory for HLS segment files |
+| `RTSP_HLS_PROBESIZE` | Auto | ffmpeg input probe size (bytes) |
+| `RTSP_HLS_ANALYZEDURATION` | Auto | ffmpeg input analysis duration (µs) |
+| `RTSP_HLS_DEBUG` | `false` | Enable verbose ffmpeg logging |
+| `RTSP_HLS_RESTART_BACKOFF_MS` | `5000` | Delay before restarting a failed stream |
+| `RTSP_HLS_STARTUP_TIMEOUT_MS` | `15000` | Timeout waiting for first HLS segment |
 
 ---
 

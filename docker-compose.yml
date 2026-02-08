@@ -14,13 +14,17 @@ services:
       - HUBITAT_APP_ID=${HUBITAT_APP_ID:-}
       - HUBITAT_ACCESS_TOKEN=${HUBITAT_ACCESS_TOKEN:-}
 
+      # ── Recommended ──────────────────────────────────────────────────────
+      # - HUBITAT_TLS_INSECURE=1          # Required for self-signed Hubitat certs
+
       # ── Optional ─────────────────────────────────────────────────────────
       # - PORT=3000
-      # - POLL_INTERVAL=8000
-      # - USE_HTTPS=false
+      # - HTTP_ONLY=1                     # Disable HTTPS (default: auto-detect certs)
+      # - HUBITAT_POLL_INTERVAL_MS=2000   # How often to poll Hubitat
       # - OPEN_METEO_LAT=
       # - OPEN_METEO_LON=
       # - OPEN_METEO_TIMEZONE=auto
+      # - EVENTS_INGEST_TOKEN=            # Protect the events endpoint
 
 volumes:
   jvs-data:

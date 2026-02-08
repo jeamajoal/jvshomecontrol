@@ -82,6 +82,11 @@ If you've been frustrated by slow cloud dashboards or ugly DIY solutions, this i
 | Hubitat Configuration | [docs/04-Hubitat.md](docs/04-Hubitat.md) |
 | Security and HTTPS | [docs/07-Security.md](docs/07-Security.md) |
 | Camera Setup (RTSP/HLS) | [docs/10-RTSP-HLS-Configuration.md](docs/10-RTSP-HLS-Configuration.md) |
+| Docker Deployment | [docs/11-Docker.md](docs/11-Docker.md) |
+| Panel Profiles & Themes | [docs/12-Panel-Profiles.md](docs/12-Panel-Profiles.md) |
+| PWA & Kiosk Mode | [docs/13-PWA-Kiosk.md](docs/13-PWA-Kiosk.md) |
+| Backgrounds & Sounds | [docs/14-Backgrounds-Sounds.md](docs/14-Backgrounds-Sounds.md) |
+| Control Icons | [docs/15-Control-Icons.md](docs/15-Control-Icons.md) |
 | Troubleshooting | [docs/09-Troubleshooting.md](docs/09-Troubleshooting.md) |
 | Google Assistant Relay | [docs/05-Google-Assistant-Relay.md](docs/05-Google-Assistant-Relay.md) |
 
@@ -89,6 +94,10 @@ If you've been frustrated by slow cloud dashboards or ugly DIY solutions, this i
 
 ## Roadmap
 
+- [x] Docker support
+- [x] 22+ built-in panel themes
+- [x] Interactive SVG control icons
+- [x] PWA support (Add to Home Screen)
 - [ ] Home Assistant integration
 - [ ] Improved camera support (more protocols, better reliability)
 - [ ] More animated SVG icons for controls

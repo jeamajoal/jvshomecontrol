@@ -93,3 +93,9 @@ curl -sk https://localhost:3000/api/hubitat/health
 **TLS/SSL errors:**
 - Make sure `HUBITAT_TLS_INSECURE=1` is set for self-signed certs
 - Restart the service after changing env vars
+
+---
+
+## Maker API Reference
+
+For a quick reference of Maker API endpoints, token security, and event callbacks, see [server/MAKER_API.md](../server/MAKER_API.md).

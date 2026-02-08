@@ -45,15 +45,17 @@ It works entirely on your local network — no cloud accounts, no subscriptions,
 ## Key Capabilities
 
 - **Real-time updates** — WebSocket push from server; no page refresh needed
-- **Panel profiles** — different themes and settings per tablet (living room ≠ bedroom)
+- **Panel profiles** — different themes and settings per tablet ([learn more](12-Panel-Profiles.md))
 - **22+ built-in themes** — plus full colour/opacity/blur customisation
-- **Custom backgrounds** — per-room or per-profile, from URL or uploaded image
-- **Camera support** — RTSP streams converted to in-browser HLS via ffmpeg
-- **Sound alerts** — configurable audio on motion/door events (great for Activity panels)
+- **Interactive control icons** — SVG-based icons with smart command mapping ([learn more](15-Control-Icons.md))
+- **Custom backgrounds** — per-room or per-profile, from URL or uploaded image ([learn more](14-Backgrounds-Sounds.md))
+- **Camera support** — RTSP streams converted to in-browser HLS via ffmpeg ([learn more](10-RTSP-HLS-Configuration.md))
+- **Sound alerts** — configurable audio on motion/door events ([learn more](14-Backgrounds-Sounds.md))
 - **Device allowlists** — control exactly which devices appear on each page
 - **Label overrides** — rename devices per-panel without changing Hubitat
-- **Kiosk-friendly** — auto-fullscreen on mobile, PWA installable, dark theme
-- **Works offline** — no cloud dependency; your data never leaves your network
+- **Docker support** — run in a container with a single command ([learn more](11-Docker.md))
+- **Kiosk-friendly** — PWA installable, auto-fullscreen, wall-tablet ready ([learn more](13-PWA-Kiosk.md))
+- **Local-first** — no cloud dependency; your data never leaves your network
 
 ---
 
@@ -75,4 +77,8 @@ This dual approach (polling + callbacks) ensures updates are both fast and relia
 | What you need | [02-Components.md](02-Components.md) |
 | Installation | [03-Installation.md](03-Installation.md) |
 | Hubitat setup | [04-Hubitat.md](04-Hubitat.md) |
+| Docker deployment | [11-Docker.md](11-Docker.md) |
+| Panel profiles | [12-Panel-Profiles.md](12-Panel-Profiles.md) |
+| PWA & kiosk mode | [13-PWA-Kiosk.md](13-PWA-Kiosk.md) |
+| Security best practices | [07-Security.md](07-Security.md) |
 | Security best practices | [07-Security.md](07-Security.md) |
