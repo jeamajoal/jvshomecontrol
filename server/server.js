@@ -78,9 +78,6 @@ const {
     HUBITAT_CONFIGURED,
     HUBITAT_POLL_INTERVAL_MS,
     HUBITAT_TLS_INSECURE,
-    HUBITAT_API_BASE,
-    HUBITAT_API_URL,
-    HUBITAT_MODES_URL,
     
     // Events Configuration
     MAX_INGESTED_EVENTS,
@@ -117,6 +114,31 @@ let runtimeEventsPersistJsonl = EVENTS_PERSIST_JSONL;
 let runtimeBackupMaxFiles = MAX_BACKUP_FILES;
 let hubitatPollIntervalId = null;
 
+// --- Mutable Hubitat connection state ---
+// Seeded from the imported constants (which read env vars at startup).
+// Updated at runtime via /api/server-settings and persisted to config.json.
+const { normalizeHubitatHost } = require('./config/hubitat');
+const hubitat = {
+    host: HUBITAT_HOST,
+    appId: HUBITAT_APP_ID,
+    accessToken: HUBITAT_ACCESS_TOKEN,
+    tlsInsecure: HUBITAT_TLS_INSECURE,
+    configured: HUBITAT_CONFIGURED,
+    fetchDispatcher: null, // set below after UndiciAgent loads
+};
+function hubitatApiBase() {
+    return hubitat.configured ? `${hubitat.host}/apps/api/${hubitat.appId}` : '';
+}
+function hubitatApiUrl() {
+    return hubitat.configured ? `${hubitatApiBase()}/devices/all?access_token=${encodeURIComponent(hubitat.accessToken)}` : '';
+}
+function hubitatModesUrl() {
+    return hubitat.configured ? `${hubitatApiBase()}/modes?access_token=${encodeURIComponent(hubitat.accessToken)}` : '';
+}
+function refreshHubitatConfigured() {
+    hubitat.configured = Boolean(hubitat.host && hubitat.appId && hubitat.accessToken);
+}
+
 // --- Import HLS service ---
 const hlsService = require('./services/hls');
 
@@ -132,6 +154,14 @@ try {
 } catch {
     UndiciAgent = null;
 }
+
+// Initialize the mutable fetch dispatcher now that UndiciAgent is loaded.
+function rebuildHubitatFetchDispatcher() {
+    hubitat.fetchDispatcher = (hubitat.tlsInsecure && UndiciAgent)
+        ? new UndiciAgent({ connect: { rejectUnauthorized: false } })
+        : null;
+}
+rebuildHubitatFetchDispatcher();
 
 const app = express();
 
@@ -196,21 +226,17 @@ function buildHttpUrl(req, p) {
 // Note: checkFfmpegAvailable is now available from hlsService
 
 // --- Hubitat Maker API ---
-// Note: Hubitat configuration constants are imported from ./config/hubitat
+// Note: Hubitat configuration is now in the mutable `hubitat` object.
 // Functions: describeFetchError, redactAccessToken are imported from ./utils
 
-if (HUBITAT_TLS_INSECURE && !UndiciAgent) {
-    console.warn('HUBITAT_TLS_INSECURE=1 was set but undici could not be loaded; TLS verification may still fail for Hubitat HTTPS.');
+if (hubitat.tlsInsecure && !UndiciAgent) {
+    console.warn('hubitat.tlsInsecure=1 was set but undici could not be loaded; TLS verification may still fail for Hubitat HTTPS.');
 }
-
-const HUBITAT_FETCH_DISPATCHER = (HUBITAT_TLS_INSECURE && UndiciAgent)
-    ? new UndiciAgent({ connect: { rejectUnauthorized: false } })
-    : null;
 
 function hubitatFetch(url, options) {
     const base = options && typeof options === 'object' ? { ...options } : {};
-    if (HUBITAT_FETCH_DISPATCHER) {
-        return fetch(url, { ...base, dispatcher: HUBITAT_FETCH_DISPATCHER });
+    if (hubitat.fetchDispatcher) {
+        return fetch(url, { ...base, dispatcher: hubitat.fetchDispatcher });
     }
     return fetch(url, base);
 }
@@ -1768,11 +1794,20 @@ function normalizePersistedConfig(raw) {
             const num = Number(v);
             return Number.isFinite(num) ? Math.max(min, Math.min(max, Math.floor(num))) : null;
         };
+        const safeStr = (v) => {
+            const s = String(v ?? '').trim();
+            return s || null;
+        };
         return {
             pollIntervalMs: safeInt(raw.pollIntervalMs, 1000, 3600000),
             eventsMax: safeInt(raw.eventsMax, 50, 10000),
             eventsPersistJsonl: typeof raw.eventsPersistJsonl === 'boolean' ? raw.eventsPersistJsonl : null,
             backupMaxFiles: safeInt(raw.backupMaxFiles, 10, 1000),
+            // Hubitat connection (persisted so the UI can configure without env vars)
+            hubitatHost: safeStr(raw.hubitatHost),
+            hubitatAppId: safeStr(raw.hubitatAppId),
+            hubitatAccessToken: safeStr(raw.hubitatAccessToken),
+            hubitatTlsInsecure: typeof raw.hubitatTlsInsecure === 'boolean' ? raw.hubitatTlsInsecure : null,
         };
     })();
 
@@ -2152,6 +2187,28 @@ function applyServerSettings() {
     if (!process.env.BACKUP_MAX_FILES && ss.backupMaxFiles != null) {
         runtimeBackupMaxFiles = ss.backupMaxFiles;
     }
+
+    // --- Hubitat connection settings ---
+    // Env vars always win over config.json values.
+    let tlsChanged = false;
+
+    if (!process.env.HUBITAT_HOST && ss.hubitatHost != null) {
+        hubitat.host = normalizeHubitatHost(ss.hubitatHost);
+    }
+    if (!process.env.HUBITAT_APP_ID && ss.hubitatAppId != null) {
+        hubitat.appId = ss.hubitatAppId;
+    }
+    if (!process.env.HUBITAT_ACCESS_TOKEN && ss.hubitatAccessToken != null) {
+        hubitat.accessToken = ss.hubitatAccessToken;
+    }
+    if (!process.env.HUBITAT_TLS_INSECURE && ss.hubitatTlsInsecure != null) {
+        const newVal = ss.hubitatTlsInsecure === true;
+        if (newVal !== hubitat.tlsInsecure) tlsChanged = true;
+        hubitat.tlsInsecure = newVal;
+    }
+
+    refreshHubitatConfigured();
+    if (tlsChanged) rebuildHubitatFetchDispatcher();
 }
 
 function schedulePersist(label) {
@@ -2221,6 +2278,12 @@ function rebuildRuntimeConfigFromPersisted() {
             temperatureUnit: openMeteo.temperatureUnit || 'fahrenheit',
             windSpeedUnit: openMeteo.windSpeedUnit || 'mph',
             precipitationUnit: openMeteo.precipitationUnit || 'inch',
+            // Hubitat connection state (token is NEVER sent — write-only from UI)
+            hubitatHost: hubitat.host || '',
+            hubitatAppId: hubitat.appId || '',
+            hubitatConfigured: hubitat.configured,
+            hubitatHasAccessToken: Boolean(hubitat.accessToken),
+            hubitatTlsInsecure: hubitat.tlsInsecure,
         },
         serverSettingsEnvLocked: {
             pollIntervalMs: Boolean(String(process.env.HUBITAT_POLL_INTERVAL_MS || '').trim()),
@@ -2230,6 +2293,10 @@ function rebuildRuntimeConfigFromPersisted() {
             temperatureUnit: Boolean(String(process.env.OPEN_METEO_TEMPERATURE_UNIT || '').trim()),
             windSpeedUnit: Boolean(String(process.env.OPEN_METEO_WIND_SPEED_UNIT || '').trim()),
             precipitationUnit: Boolean(String(process.env.OPEN_METEO_PRECIPITATION_UNIT || '').trim()),
+            hubitatHost: Boolean(String(process.env.HUBITAT_HOST || '').trim()),
+            hubitatAppId: Boolean(String(process.env.HUBITAT_APP_ID || '').trim()),
+            hubitatAccessToken: Boolean(String(process.env.HUBITAT_ACCESS_TOKEN || '').trim()),
+            hubitatTlsInsecure: Boolean(String(process.env.HUBITAT_TLS_INSECURE || '').trim()),
         },
     };
 }
@@ -2816,14 +2883,15 @@ async function syncHubitatData() {
 }
 
 async function fetchHubitatAllDevices() {
-    if (!HUBITAT_CONFIGURED) {
-        throw new Error('Hubitat not configured. Set HUBITAT_HOST, HUBITAT_APP_ID, and HUBITAT_ACCESS_TOKEN to enable Hubitat polling.');
+    if (!hubitat.configured) {
+        throw new Error('Hubitat not configured. Set Hubitat Host, App ID, and Access Token in Settings (or via environment variables).');
     }
     let res;
+    const apiUrl = hubitatApiUrl();
     try {
-        res = await hubitatFetch(HUBITAT_API_URL);
+        res = await hubitatFetch(apiUrl);
     } catch (err) {
-        const safeUrl = redactAccessToken(HUBITAT_API_URL);
+        const safeUrl = redactAccessToken(apiUrl);
         throw new Error(`Hubitat fetch failed: ${describeFetchError(err)} (url: ${safeUrl})`);
     }
     if (!res.ok) {
@@ -2859,11 +2927,11 @@ function restartHubitatPollInterval() {
     hubitatPollIntervalId = setInterval(syncHubitatData, runtimePollIntervalMs);
 }
 
-if (HUBITAT_CONFIGURED) {
+if (hubitat.configured) {
     restartHubitatPollInterval();
     syncHubitatData();
 } else {
-    lastHubitatError = 'Hubitat not configured. Set HUBITAT_HOST, HUBITAT_APP_ID, and HUBITAT_ACCESS_TOKEN to enable Hubitat polling.';
+    lastHubitatError = 'Hubitat not configured. Set Hubitat Host, App ID, and Access Token in Settings (or via environment variables).';
     console.warn(lastHubitatError);
 }
 
@@ -3590,7 +3658,7 @@ app.post('/api/rooms', (req, res) => {
     persistedConfig.rooms = roomsArr;
     persistConfigToDiskIfChanged('api-room-add');
 
-    if (HUBITAT_CONFIGURED) {
+    if (hubitat.configured) {
         syncHubitatData();
     } else {
         config = {
@@ -3637,7 +3705,7 @@ app.delete('/api/rooms/:id', (req, res) => {
     persistedConfig.rooms = roomsArr.filter((r) => String(r?.id) !== id);
     persistConfigToDiskIfChanged('api-room-delete');
 
-    if (HUBITAT_CONFIGURED) {
+    if (hubitat.configured) {
         syncHubitatData();
     } else {
         config = {
@@ -3673,7 +3741,7 @@ app.post('/api/labels', (req, res) => {
     persistedConfig.labels = labelsArr;
     persistConfigToDiskIfChanged('api-label-add');
 
-    if (HUBITAT_CONFIGURED) {
+    if (hubitat.configured) {
         syncHubitatData();
     } else {
         config = {
@@ -3707,7 +3775,7 @@ app.put('/api/labels/:id', (req, res) => {
     persistedConfig.labels = labelsArr;
     persistConfigToDiskIfChanged('api-label-update');
 
-    if (HUBITAT_CONFIGURED) {
+    if (hubitat.configured) {
         syncHubitatData();
     } else {
         config = {
@@ -3739,7 +3807,7 @@ app.delete('/api/labels/:id', (req, res) => {
     persistedConfig.labels = next;
     persistConfigToDiskIfChanged('api-label-delete');
 
-    if (HUBITAT_CONFIGURED) {
+    if (hubitat.configured) {
         syncHubitatData();
     } else {
         config = {
@@ -7194,11 +7262,11 @@ app.put('/api/ui/alert-sounds', (req, res) => {
 app.get('/api/hubitat/health', (req, res) => {
     res.json({
         ok: !lastHubitatError,
-        configured: HUBITAT_CONFIGURED,
-        host: HUBITAT_HOST || null,
-        appId: HUBITAT_APP_ID || null,
-        tlsInsecure: HUBITAT_TLS_INSECURE,
-        tlsDispatcher: Boolean(HUBITAT_FETCH_DISPATCHER),
+        configured: hubitat.configured,
+        host: hubitat.host || null,
+        appId: hubitat.appId || null,
+        tlsInsecure: hubitat.tlsInsecure,
+        tlsDispatcher: Boolean(hubitat.fetchDispatcher),
         lastFetchAt: lastHubitatFetchAt,
         lastError: lastHubitatError,
         cachedCount: Array.isArray(lastHubitatDevices) ? lastHubitatDevices.length : 0,
@@ -7207,15 +7275,15 @@ app.get('/api/hubitat/health', (req, res) => {
 
 // Hubitat Maker API modes (proxy). Useful for displaying the currently active Mode.
 app.get('/api/hubitat/modes', async (req, res) => {
-    if (!HUBITAT_CONFIGURED) {
+    if (!hubitat.configured) {
         return res.status(409).json({ ok: false, error: 'Hubitat not configured' });
     }
 
     let hubitatRes;
     try {
-        hubitatRes = await hubitatFetch(HUBITAT_MODES_URL);
+        hubitatRes = await hubitatFetch(hubitatModesUrl());
     } catch (err) {
-        const safeUrl = redactAccessToken(HUBITAT_MODES_URL);
+        const safeUrl = redactAccessToken(hubitatModesUrl());
         return res.status(502).json({ ok: false, error: `Hubitat fetch failed: ${describeFetchError(err)} (url: ${safeUrl})` });
     }
 
@@ -7252,7 +7320,7 @@ app.get('/api/hubitat/modes', async (req, res) => {
 // Trigger an immediate refresh from Hubitat (useful when polling interval is long).
 // Returns the latest known hubitat error status after attempting a sync.
 app.post('/api/refresh', async (req, res) => {
-    if (!HUBITAT_CONFIGURED) {
+    if (!hubitat.configured) {
         return res.status(409).json({ ok: false, error: 'Hubitat not configured' });
     }
 
@@ -7375,7 +7443,7 @@ app.post('/api/events', (req, res) => {
         }
 
         // If we got an event for a device we don't have cached, trigger a refresh.
-        if (hadUnknownDevice && HUBITAT_CONFIGURED) {
+        if (hadUnknownDevice && hubitat.configured) {
             setTimeout(() => {
                 try {
                     syncHubitatData();
@@ -7548,6 +7616,22 @@ app.put('/api/server-settings', (req, res) => {
     const windSpeedUnit = VALID_WIND_UNITS.includes(body.windSpeedUnit) ? body.windSpeedUnit : undefined;
     const precipitationUnit = VALID_PRECIP_UNITS.includes(body.precipitationUnit) ? body.precipitationUnit : undefined;
 
+    // --- Hubitat connection settings ---
+    const hubitatHost = (typeof body.hubitatHost === 'string')
+        ? normalizeHubitatHost(body.hubitatHost.trim()) || undefined
+        : undefined;
+    const hubitatAppId = (typeof body.hubitatAppId === 'string')
+        ? (body.hubitatAppId.trim() || undefined)
+        : undefined;
+    const hubitatAccessToken = (typeof body.hubitatAccessToken === 'string')
+        ? (body.hubitatAccessToken.trim() || undefined)
+        : undefined;
+    const hubitatTlsInsecure = (typeof body.hubitatTlsInsecure === 'boolean')
+        ? body.hubitatTlsInsecure
+        : undefined;
+
+    const prevConfigured = hubitat.configured;
+
     // Update persistedConfig.serverSettings (only set fields that were provided)
     const prev = persistedConfig?.serverSettings || {};
     const next = { ...prev };
@@ -7555,6 +7639,10 @@ app.put('/api/server-settings', (req, res) => {
     if (eventsMax !== undefined) next.eventsMax = eventsMax;
     if (backupMaxFiles !== undefined) next.backupMaxFiles = backupMaxFiles;
     if (eventsPersistJsonl !== undefined) next.eventsPersistJsonl = eventsPersistJsonl;
+    if (hubitatHost !== undefined) next.hubitatHost = hubitatHost;
+    if (hubitatAppId !== undefined) next.hubitatAppId = hubitatAppId;
+    if (hubitatAccessToken !== undefined) next.hubitatAccessToken = hubitatAccessToken;
+    if (hubitatTlsInsecure !== undefined) next.hubitatTlsInsecure = hubitatTlsInsecure;
 
     persistedConfig = normalizePersistedConfig({
         ...(persistedConfig || {}),
@@ -7591,8 +7679,13 @@ app.put('/api/server-settings', (req, res) => {
     applyServerSettings();
 
     // Restart the poll interval so the new value takes effect immediately.
-    if (HUBITAT_CONFIGURED) {
+    if (hubitat.configured) {
         restartHubitatPollInterval();
+        // If Hubitat just became configured (user set credentials via UI), do an immediate sync.
+        if (!prevConfigured) {
+            console.log('Hubitat now configured via Settings UI — starting poll');
+            syncHubitatData();
+        }
     }
 
     persistConfigToDiskIfChanged('api-server-settings');
@@ -7618,7 +7711,7 @@ app.get('/api/weather/health', (req, res) => {
 // Body: { command: string, args?: (string|number)[] }
 app.get('/api/devices/:id/commands', async (req, res) => {
     try {
-        if (!HUBITAT_CONFIGURED) {
+        if (!hubitat.configured) {
             return res.status(503).json({ error: 'Hubitat not configured' });
         }
 
@@ -7632,7 +7725,7 @@ app.get('/api/devices/:id/commands', async (req, res) => {
 
         // Maker API command metadata pattern:
         //   /devices/<DEVICE_ID>/commands?access_token=...
-        const url = `${HUBITAT_API_BASE}/devices/${encodeURIComponent(deviceId)}/commands?access_token=${encodeURIComponent(HUBITAT_ACCESS_TOKEN)}`;
+        const url = `${hubitatApiBase()}/devices/${encodeURIComponent(deviceId)}/commands?access_token=${encodeURIComponent(hubitat.accessToken)}`;
         const hubRes = await hubitatFetch(url, { method: 'GET' });
         const text = await hubRes.text().catch(() => '');
         if (!hubRes.ok) {
@@ -7688,7 +7781,7 @@ app.get('/api/devices/:id/commands', async (req, res) => {
 
 app.post('/api/devices/:id/command', async (req, res) => {
     try {
-        if (!HUBITAT_CONFIGURED) {
+        if (!hubitat.configured) {
             return res.status(503).json({ error: 'Hubitat not configured' });
         }
         const deviceId = req.params.id;
@@ -7736,7 +7829,7 @@ app.post('/api/devices/:id/command', async (req, res) => {
         // Maker API command pattern:
         //   /devices/<DEVICE_ID>/<COMMAND>/<SECONDARY?>?access_token=...
         // Do NOT include an extra "/command/" path segment.
-        const url = `${HUBITAT_API_BASE}/devices/${encodeURIComponent(deviceId)}/${encodeURIComponent(command)}${argsPath}?access_token=${encodeURIComponent(HUBITAT_ACCESS_TOKEN)}`;
+        const url = `${hubitatApiBase()}/devices/${encodeURIComponent(deviceId)}/${encodeURIComponent(command)}${argsPath}?access_token=${encodeURIComponent(hubitat.accessToken)}`;
 
         const hubRes = await hubitatFetch(url, { method: 'GET' });
         if (!hubRes.ok) {
@@ -7818,7 +7911,7 @@ app.post('/api/layout', (req, res) => {
     persistConfigToDiskIfChanged('api-layout');
 
     // Re-sync runtime (positions + layouts affect UI)
-    if (HUBITAT_CONFIGURED) {
+    if (hubitat.configured) {
         syncHubitatData();
     } else {
         config = {
@@ -7855,7 +7948,7 @@ app.delete('/api/layout', (req, res) => {
         }
     }
     persistConfigToDiskIfChanged('api-layout-delete');
-    if (HUBITAT_CONFIGURED) {
+    if (hubitat.configured) {
         syncHubitatData();
     } else {
         config = {

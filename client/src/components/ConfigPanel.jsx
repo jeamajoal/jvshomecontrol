@@ -7736,6 +7736,87 @@ const ConfigPanel = ({
             </div>
           );
 
+          const TextField = ({ label, value, locked: isLocked, field, placeholder, type = 'text' }) => {
+            const [draft, setDraft] = React.useState(value || '');
+            React.useEffect(() => { setDraft(value || ''); }, [value]);
+            return (
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  {label}{isLocked ? <LockBadge /> : null}
+                </label>
+                <input
+                  type={type}
+                  value={draft}
+                  disabled={isLocked}
+                  placeholder={placeholder}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onBlur={() => {
+                    const trimmed = draft.trim();
+                    if (trimmed !== (value || '')) saveServerSettings({ [field]: trimmed }).catch(() => {});
+                  }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                  className={`mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white/85 placeholder-white/25 ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                />
+              </div>
+            );
+          };
+
+          const PasswordField = ({ label, locked: isLocked, field, hasValue }) => {
+            const [draft, setDraft] = React.useState('');
+            const [editing, setEditing] = React.useState(false);
+            return (
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  {label}{isLocked ? <LockBadge /> : null}
+                </label>
+                {!editing ? (
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className={`text-sm ${hasValue ? 'text-emerald-400/70' : 'text-white/30'}`}>
+                      {hasValue ? '••••••••••••' : 'Not set'}
+                    </span>
+                    {!isLocked && (
+                      <button
+                        type="button"
+                        onClick={() => { setDraft(''); setEditing(true); }}
+                        className="text-[10px] font-bold uppercase tracking-widest text-sky-400/70 hover:text-sky-300/90"
+                      >
+                        {hasValue ? 'Change' : 'Set'}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mt-1 flex items-center gap-2">
+                    <input
+                      type="password"
+                      value={draft}
+                      autoFocus
+                      placeholder="Paste access token"
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.target.blur();
+                        if (e.key === 'Escape') { setEditing(false); setDraft(''); }
+                      }}
+                      onBlur={() => {
+                        const trimmed = draft.trim();
+                        if (trimmed) saveServerSettings({ [field]: trimmed }).catch(() => {});
+                        setEditing(false);
+                        setDraft('');
+                      }}
+                      className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white/85 placeholder-white/25"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setEditing(false); setDraft(''); }}
+                      className="text-[10px] font-bold uppercase tracking-widest text-white/40 hover:text-white/60"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          };
+
           return (
             <div className="utility-panel p-4 md:p-6">
               <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
@@ -7748,9 +7829,47 @@ const ConfigPanel = ({
                 Runtime-tunable server configuration. Settings marked <span className="text-amber-400/80 font-semibold">ENV</span> are locked by environment variables.
               </div>
 
-              {/* Hubitat Polling */}
+              {/* Hubitat Connection */}
               <div className="mt-6">
-                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50 mb-3">Hubitat</div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50 mb-3">Hubitat Connection</div>
+                <div className="flex items-center gap-2 mb-4">
+                  <span className={`inline-block h-2 w-2 rounded-full ${ss.hubitatConfigured ? 'bg-emerald-400' : 'bg-red-400/70'}`} />
+                  <span className="text-[11px] text-white/50">{ss.hubitatConfigured ? 'Connected' : 'Not configured — set Host, App ID, and Access Token below'}</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <TextField
+                    label="Hubitat Host"
+                    value={ss.hubitatHost}
+                    locked={locked.hubitatHost}
+                    field="hubitatHost"
+                    placeholder="http://192.168.1.x"
+                  />
+                  <TextField
+                    label="Maker API App ID"
+                    value={ss.hubitatAppId}
+                    locked={locked.hubitatAppId}
+                    field="hubitatAppId"
+                    placeholder="e.g. 42"
+                  />
+                  <PasswordField
+                    label="Access Token"
+                    locked={locked.hubitatAccessToken}
+                    field="hubitatAccessToken"
+                    hasValue={ss.hubitatHasAccessToken}
+                  />
+                  <ToggleField
+                    label="TLS Insecure"
+                    value={ss.hubitatTlsInsecure}
+                    locked={locked.hubitatTlsInsecure}
+                    field="hubitatTlsInsecure"
+                    description="Skip certificate verification (self-signed certs)"
+                  />
+                </div>
+              </div>
+
+              {/* Hubitat Polling */}
+              <div className="mt-6 pt-4 border-t border-white/5">
+                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50 mb-3">Hubitat Polling</div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <NumericField
                     label="Poll Interval"
