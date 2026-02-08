@@ -103,6 +103,12 @@ const {
     describeFetchError,
     redactAccessToken,
     tryParseJsonFromText,
+    sanitizeUrl,
+    sanitizeRtspUrl,
+    sanitizeHostname,
+    sanitizeNumericId,
+    sanitizeString,
+    sanitizeToken,
 } = require('./utils');
 
 // --- Mutable runtime server settings ---
@@ -1826,8 +1832,8 @@ function normalizePersistedConfig(raw) {
             backupMaxFiles: safeInt(raw.backupMaxFiles, 10, 1000),
             // Hubitat connection (persisted so the UI can configure without env vars)
             hubitatHost: safeStr(raw.hubitatHost),
-            hubitatAppId: safeStr(raw.hubitatAppId),
-            hubitatAccessToken: safeStr(raw.hubitatAccessToken),
+            hubitatAppId: sanitizeNumericId(raw.hubitatAppId) || safeStr(raw.hubitatAppId),
+            hubitatAccessToken: sanitizeToken(raw.hubitatAccessToken) || safeStr(raw.hubitatAccessToken),
             hubitatTlsInsecure: typeof raw.hubitatTlsInsecure === 'boolean' ? raw.hubitatTlsInsecure : null,
             // Network (port requires restart to take effect; min 80 prevents accidental low-port saves)
             port: safeInt(raw.port, 80, 65535),
@@ -3663,7 +3669,7 @@ function redactCameraForUi(cam) {
 
 // Create/delete manual rooms (rooms not discovered via Maker API)
 app.post('/api/rooms', (req, res) => {
-    const name = String(req.body?.name || '').trim();
+    const name = sanitizeString(req.body?.name, 128);
     if (!name) return res.status(400).json({ error: 'Missing name' });
 
     const baseId = slugifyId(name);
@@ -3760,7 +3766,7 @@ app.delete('/api/rooms/:id', (req, res) => {
 
 // Labels (freeform text boxes placed on the Heatmap grid)
 app.post('/api/labels', (req, res) => {
-    const text = String(req.body?.text ?? 'Label').trim() || 'Label';
+    const text = sanitizeString(req.body?.text, 256) || 'Label';
     const labelsArr = Array.isArray(persistedConfig?.labels) ? persistedConfig.labels : [];
 
     const id = `lbl_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 6)}`;
@@ -3797,7 +3803,7 @@ app.post('/api/labels', (req, res) => {
 app.put('/api/labels/:id', (req, res) => {
     const id = String(req.params.id || '').trim();
     if (!id) return res.status(400).json({ error: 'Missing id' });
-    const text = String(req.body?.text ?? '').trim();
+    const text = sanitizeString(req.body?.text, 256);
     if (!text) return res.status(400).json({ error: 'Missing text' });
 
     const labelsArr = Array.isArray(persistedConfig?.labels) ? persistedConfig.labels : [];
@@ -3898,10 +3904,31 @@ app.post('/api/ui/cameras', (req, res) => {
         label: label || id,
         enabled: rawCam.enabled !== false,
         defaultRoomId: String(rawCam.defaultRoomId || '').trim(),
-        snapshot: rawCam.snapshot,
-        embed: rawCam.embed,
-        rtsp: rawCam.rtsp,
+        snapshot: undefined,
+        embed: undefined,
+        rtsp: undefined,
     };
+
+    // --- Validate camera URLs on create ---
+    if (rawCam.snapshot && typeof rawCam.snapshot === 'object') {
+        const url = sanitizeUrl(rawCam.snapshot.url);
+        if (url) {
+            const auth = (rawCam.snapshot.basicAuth && typeof rawCam.snapshot.basicAuth === 'object')
+                ? rawCam.snapshot.basicAuth : {};
+            cam.snapshot = { url };
+            const u = sanitizeString(auth.username, 128);
+            const p = sanitizeString(auth.password, 256);
+            if (u || p) cam.snapshot.basicAuth = { username: u || '', password: p || '' };
+        }
+    }
+    if (rawCam.embed && typeof rawCam.embed === 'object') {
+        const url = sanitizeUrl(rawCam.embed.url);
+        if (url) cam.embed = { url };
+    }
+    if (rawCam.rtsp && typeof rawCam.rtsp === 'object') {
+        const url = sanitizeRtspUrl(rawCam.rtsp.url);
+        if (url) cam.rtsp = { url };
+    }
 
     persistedConfig = normalizePersistedConfig({
         ...(persistedConfig || {}),
@@ -3959,7 +3986,7 @@ app.put('/api/ui/cameras/:id', (req, res) => {
             password: hasPasswordField ? String(authRaw.password ?? '').trim() : String(prevAuth.password ?? '').trim(),
         };
 
-        const url = String(snapRaw.url ?? prevSnap.url ?? '').trim();
+        const url = sanitizeUrl(String(snapRaw.url ?? prevSnap.url ?? '').trim()) || '';
         if (url) {
             next.snapshot = {
                 url,
@@ -3972,7 +3999,7 @@ app.put('/api/ui/cameras/:id', (req, res) => {
 
     if (Object.prototype.hasOwnProperty.call(rawCam, 'embed')) {
         const embedRaw = (rawCam.embed && typeof rawCam.embed === 'object') ? rawCam.embed : {};
-        const url = String(embedRaw.url || '').trim();
+        const url = sanitizeUrl(String(embedRaw.url || '').trim());
         if (url) next.embed = { url };
         else delete next.embed;
     }
@@ -3991,6 +4018,9 @@ app.put('/api/ui/cameras/:id', (req, res) => {
                 url = prevRtspUrl;
             }
         }
+
+        // Validate protocol — only rtsp:// and rtsps:// are accepted.
+        url = sanitizeRtspUrl(url) || '';
 
         if (url) {
             next.rtsp = { url };
@@ -7657,10 +7687,10 @@ app.put('/api/server-settings', (req, res) => {
         ? normalizeHubitatHost(body.hubitatHost.trim()) || undefined
         : undefined;
     const hubitatAppId = (typeof body.hubitatAppId === 'string')
-        ? (body.hubitatAppId.trim() || undefined)
+        ? (sanitizeNumericId(body.hubitatAppId) || undefined)
         : undefined;
     const hubitatAccessToken = (typeof body.hubitatAccessToken === 'string')
-        ? (body.hubitatAccessToken.trim() || undefined)
+        ? (sanitizeToken(body.hubitatAccessToken) || undefined)
         : undefined;
     const hubitatTlsInsecure = (typeof body.hubitatTlsInsecure === 'boolean')
         ? body.hubitatTlsInsecure
@@ -7739,7 +7769,10 @@ app.post('/api/server/generate-cert', (req, res) => {
     try {
         const selfsigned = require('selfsigned');
         const body = (req.body && typeof req.body === 'object') ? req.body : {};
-        const hostname = String(body.hostname || '').trim() || require('os').hostname() || 'localhost';
+        const rawHostname = String(body.hostname || '').trim();
+        const hostname = sanitizeHostname(rawHostname)
+            || sanitizeHostname(require('os').hostname())
+            || 'localhost';
 
         const altNames = [
             { type: 2, value: 'localhost' },

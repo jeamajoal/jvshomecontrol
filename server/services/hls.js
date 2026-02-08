@@ -195,11 +195,14 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
     // Stable command for RTSP to HLS transcoding.
     // - Uses loglevel and stats for better diagnostics.
     // - Timeout prevents hanging on connection issues.
+    // - protocol_whitelist restricts ffmpeg to RTSP-related protocols only,
+    //   blocking file://, concat:, http:// and other abuse vectors.
     // - vsync cfr ensures constant frame rate for reliable segmentation.
     // - independent_segments and program_date_time improve HLS compatibility.
     const args = [
         '-loglevel', 'level+info',
         '-stats',
+        '-protocol_whitelist', 'file,rtsp,rtp,udp,tcp,tls,crypto',
         '-rtsp_transport', RTSP_HLS_RTSP_TRANSPORT,
         '-timeout', '5000000',
         '-i', streamUrl,

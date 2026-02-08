@@ -9,6 +9,15 @@ const {
     PRESET_PANEL_PROFILE_NAMES,
 } = require('../config/constants');
 
+const {
+    sanitizeUrl,
+    sanitizeRtspUrl,
+    sanitizeHostname,
+    sanitizeNumericId,
+    sanitizeString,
+    sanitizeToken,
+} = require('./sanitize');
+
 // --- Boolean Helpers ---
 const truthy = (v) => ['1', 'true', 'yes', 'on'].includes(String(v || '').trim().toLowerCase());
 const falsy = (v) => ['0', 'false', 'no', 'off'].includes(String(v || '').trim().toLowerCase());
@@ -212,4 +221,12 @@ module.exports = {
     
     // JSON parsing
     tryParseJsonFromText,
+
+    // Input sanitization
+    sanitizeUrl,
+    sanitizeRtspUrl,
+    sanitizeHostname,
+    sanitizeNumericId,
+    sanitizeString,
+    sanitizeToken,
 };
