@@ -108,6 +108,15 @@ const {
     tryParseJsonFromText,
 } = require('./utils');
 
+// --- Mutable runtime server settings ---
+// These shadow the imported constants and can be updated at runtime via the Settings UI.
+// Env vars still override config.json values at startup.
+let runtimePollIntervalMs = HUBITAT_POLL_INTERVAL_MS;
+let runtimeEventsMax = MAX_INGESTED_EVENTS;
+let runtimeEventsPersistJsonl = EVENTS_PERSIST_JSONL;
+let runtimeBackupMaxFiles = MAX_BACKUP_FILES;
+let hubitatPollIntervalId = null;
+
 // --- Import HLS service ---
 const hlsService = require('./services/hls');
 
@@ -349,8 +358,8 @@ let lastWeatherErrorLoggedAt = 0;
 let ingestedEvents = [];
 
 function pruneIngestedEvents() {
-    if (ingestedEvents.length > MAX_INGESTED_EVENTS) {
-        ingestedEvents = ingestedEvents.slice(-MAX_INGESTED_EVENTS);
+    if (ingestedEvents.length > runtimeEventsMax) {
+        ingestedEvents = ingestedEvents.slice(-runtimeEventsMax);
     }
 }
 
@@ -529,7 +538,7 @@ function listDeviceIconFilesForType(deviceType) {
 
 // Note: stableStringify is imported from ./utils
 
-function pruneBackupsSync({ maxFiles = MAX_BACKUP_FILES } = {}) {
+function pruneBackupsSync({ maxFiles = runtimeBackupMaxFiles } = {}) {
     try {
         ensureDataDirs();
         const entries = fs.readdirSync(BACKUP_DIR, { withFileTypes: true })
@@ -1752,6 +1761,21 @@ function normalizePersistedConfig(raw) {
         panelProfiles,
     };
 
+    // --- Server settings (non-sensitive, runtime-tunable) ---
+    out.serverSettings = (() => {
+        const raw = (out.serverSettings && typeof out.serverSettings === 'object') ? out.serverSettings : {};
+        const safeInt = (v, min, max) => {
+            const num = Number(v);
+            return Number.isFinite(num) ? Math.max(min, Math.min(max, Math.floor(num))) : null;
+        };
+        return {
+            pollIntervalMs: safeInt(raw.pollIntervalMs, 1000, 3600000),
+            eventsMax: safeInt(raw.eventsMax, 50, 10000),
+            eventsPersistJsonl: typeof raw.eventsPersistJsonl === 'boolean' ? raw.eventsPersistJsonl : null,
+            backupMaxFiles: safeInt(raw.backupMaxFiles, 10, 1000),
+        };
+    })();
+
     return out;
 }
 
@@ -2099,6 +2123,7 @@ function loadPersistedConfig() {
         // Derive runtime settings from persisted config
         settings.weather = persistedConfig.weather;
         applyWeatherEnvOverrides();
+        applyServerSettings();
 
         lastPersistedSerialized = stableStringify(persistedConfig);
         console.log('Config loaded');
@@ -2107,6 +2132,25 @@ function loadPersistedConfig() {
         persistedConfig = normalizePersistedConfig({ weather: settings.weather, rooms: [], sensors: [] });
         lastPersistedSerialized = stableStringify(persistedConfig);
         applyWeatherEnvOverrides();
+        applyServerSettings();
+    }
+}
+
+// Apply persisted serverSettings to the mutable runtime variables.
+// Env vars take priority: if an env var is set, the persisted value is ignored.
+function applyServerSettings() {
+    const ss = persistedConfig?.serverSettings || {};
+    if (!process.env.HUBITAT_POLL_INTERVAL_MS && ss.pollIntervalMs != null) {
+        runtimePollIntervalMs = ss.pollIntervalMs;
+    }
+    if (!process.env.EVENTS_MAX && ss.eventsMax != null) {
+        runtimeEventsMax = ss.eventsMax;
+    }
+    if (!process.env.EVENTS_PERSIST_JSONL && ss.eventsPersistJsonl != null) {
+        runtimeEventsPersistJsonl = ss.eventsPersistJsonl;
+    }
+    if (!process.env.BACKUP_MAX_FILES && ss.backupMaxFiles != null) {
+        runtimeBackupMaxFiles = ss.backupMaxFiles;
     }
 }
 
@@ -2157,6 +2201,7 @@ loadPersistedConfig();
 function rebuildRuntimeConfigFromPersisted() {
     // Ensure the UI has something meaningful immediately on startup even if
     // Hubitat polling is disabled or temporarily failing.
+    const openMeteo = settings?.weather?.openMeteo || {};
     config = {
         rooms: Array.isArray(persistedConfig?.rooms) ? persistedConfig.rooms : [],
         sensors: Array.isArray(persistedConfig?.sensors) ? persistedConfig.sensors : [],
@@ -2167,6 +2212,24 @@ function rebuildRuntimeConfigFromPersisted() {
             mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
             // Back-compat
             allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+        },
+        serverSettings: {
+            pollIntervalMs: runtimePollIntervalMs,
+            eventsMax: runtimeEventsMax,
+            eventsPersistJsonl: runtimeEventsPersistJsonl,
+            backupMaxFiles: runtimeBackupMaxFiles,
+            temperatureUnit: openMeteo.temperatureUnit || 'fahrenheit',
+            windSpeedUnit: openMeteo.windSpeedUnit || 'mph',
+            precipitationUnit: openMeteo.precipitationUnit || 'inch',
+        },
+        serverSettingsEnvLocked: {
+            pollIntervalMs: Boolean(String(process.env.HUBITAT_POLL_INTERVAL_MS || '').trim()),
+            eventsMax: Boolean(String(process.env.EVENTS_MAX || '').trim()),
+            eventsPersistJsonl: Boolean(String(process.env.EVENTS_PERSIST_JSONL || '').trim()),
+            backupMaxFiles: Boolean(String(process.env.BACKUP_MAX_FILES || '').trim()),
+            temperatureUnit: Boolean(String(process.env.OPEN_METEO_TEMPERATURE_UNIT || '').trim()),
+            windSpeedUnit: Boolean(String(process.env.OPEN_METEO_WIND_SPEED_UNIT || '').trim()),
+            precipitationUnit: Boolean(String(process.env.OPEN_METEO_PRECIPITATION_UNIT || '').trim()),
         },
     };
 }
@@ -2791,8 +2854,13 @@ async function fetchHubitatAllDevices() {
 }
 
 
+function restartHubitatPollInterval() {
+    if (hubitatPollIntervalId) clearInterval(hubitatPollIntervalId);
+    hubitatPollIntervalId = setInterval(syncHubitatData, runtimePollIntervalMs);
+}
+
 if (HUBITAT_CONFIGURED) {
-    setInterval(syncHubitatData, HUBITAT_POLL_INTERVAL_MS);
+    restartHubitatPollInterval();
     syncHubitatData();
 } else {
     lastHubitatError = 'Hubitat not configured. Set HUBITAT_HOST, HUBITAT_APP_ID, and HUBITAT_ACCESS_TOKEN to enable Hubitat polling.';
@@ -7265,7 +7333,7 @@ app.post('/api/events', (req, res) => {
         acceptedCount += 1;
 
         // Optional disk persistence for debugging (disabled by default).
-        if (EVENTS_PERSIST_JSONL) {
+        if (runtimeEventsPersistJsonl) {
             try {
                 ensureDataDirs();
                 fs.appendFileSync(path.join(DATA_DIR, 'events.jsonl'), JSON.stringify(event) + '\n');
@@ -7450,6 +7518,88 @@ app.put('/api/weather/open-meteo-config', (req, res) => {
         openMeteo: persistedConfig.weather.openMeteo,
         overriddenByEnv: env,
     });
+});
+
+// --- Server Settings API ---
+// Non-sensitive runtime-tunable server settings.
+// Env vars always take priority — if set, the persisted value is ignored and the UI shows the field as locked.
+app.put('/api/server-settings', (req, res) => {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+
+    // --- Numeric settings ---
+    const safeInt = (v, min, max) => {
+        if (v === undefined || v === null) return undefined; // not provided
+        const num = Number(v);
+        return Number.isFinite(num) ? Math.max(min, Math.min(max, Math.floor(num))) : undefined;
+    };
+
+    const pollIntervalMs = safeInt(body.pollIntervalMs, 1000, 3600000);
+    const eventsMax = safeInt(body.eventsMax, 50, 10000);
+    const backupMaxFiles = safeInt(body.backupMaxFiles, 10, 1000);
+
+    // --- Boolean settings ---
+    const eventsPersistJsonl = typeof body.eventsPersistJsonl === 'boolean' ? body.eventsPersistJsonl : undefined;
+
+    // --- Weather units ---
+    const VALID_TEMP_UNITS = ['fahrenheit', 'celsius'];
+    const VALID_WIND_UNITS = ['mph', 'kmh', 'ms', 'kn'];
+    const VALID_PRECIP_UNITS = ['inch', 'mm'];
+    const temperatureUnit = VALID_TEMP_UNITS.includes(body.temperatureUnit) ? body.temperatureUnit : undefined;
+    const windSpeedUnit = VALID_WIND_UNITS.includes(body.windSpeedUnit) ? body.windSpeedUnit : undefined;
+    const precipitationUnit = VALID_PRECIP_UNITS.includes(body.precipitationUnit) ? body.precipitationUnit : undefined;
+
+    // Update persistedConfig.serverSettings (only set fields that were provided)
+    const prev = persistedConfig?.serverSettings || {};
+    const next = { ...prev };
+    if (pollIntervalMs !== undefined) next.pollIntervalMs = pollIntervalMs;
+    if (eventsMax !== undefined) next.eventsMax = eventsMax;
+    if (backupMaxFiles !== undefined) next.backupMaxFiles = backupMaxFiles;
+    if (eventsPersistJsonl !== undefined) next.eventsPersistJsonl = eventsPersistJsonl;
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        serverSettings: next,
+    });
+
+    // Update weather units if provided
+    const weatherChanged = temperatureUnit !== undefined || windSpeedUnit !== undefined || precipitationUnit !== undefined;
+    if (weatherChanged) {
+        const prevOpen = (persistedConfig?.weather?.openMeteo && typeof persistedConfig.weather.openMeteo === 'object')
+            ? persistedConfig.weather.openMeteo : {};
+        const nextOpen = { ...prevOpen };
+        if (temperatureUnit !== undefined) nextOpen.temperatureUnit = temperatureUnit;
+        if (windSpeedUnit !== undefined) nextOpen.windSpeedUnit = windSpeedUnit;
+        if (precipitationUnit !== undefined) nextOpen.precipitationUnit = precipitationUnit;
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            weather: {
+                ...((persistedConfig && persistedConfig.weather) ? persistedConfig.weather : {}),
+                openMeteo: nextOpen,
+            },
+        });
+
+        settings.weather = persistedConfig.weather;
+        applyWeatherEnvOverrides();
+        // Weather units changed — clear cache.
+        lastWeather = null;
+        lastWeatherFetchAt = null;
+        lastWeatherError = null;
+    }
+
+    // Apply runtime changes
+    applyServerSettings();
+
+    // Restart the poll interval so the new value takes effect immediately.
+    if (HUBITAT_CONFIGURED) {
+        restartHubitatPollInterval();
+    }
+
+    persistConfigToDiskIfChanged('api-server-settings');
+    rebuildRuntimeConfigFromPersisted();
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, serverSettings: config.serverSettings });
 });
 
 app.get('/api/weather/health', (req, res) => {

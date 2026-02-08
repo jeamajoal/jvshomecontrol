@@ -99,6 +99,19 @@ async function saveDeviceControlStyles(deviceControlStyles) {
   return res.json().catch(() => ({}));
 }
 
+async function saveServerSettings(payload) {
+  const res = await fetch(`${API_HOST}/api/server-settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Server settings save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveDeviceTypeIcons(deviceTypeIcons) {
   const res = await fetch(`${API_HOST}/api/ui/device-type-icons`, {
     method: 'PUT',
@@ -887,7 +900,7 @@ const ConfigPanel = ({
   useEffect(() => {
     // Panel profile selection is only relevant on non-Global tabs.
     // If no profile is selected, pick the first available profile.
-    if (activeTab === 'display') return;
+    if (activeTab === 'display' || activeTab === 'server') return;
     if (selectedPanelName) return;
     if (!panelNames.length) return;
     if (ctx?.setPanelName) ctx.setPanelName(panelNames[0]);
@@ -899,6 +912,7 @@ const ConfigPanel = ({
     { id: 'appearance', label: 'Panel Options' },
     { id: 'climate', label: 'Climate' },
     { id: 'events', label: 'Events' },
+    { id: 'server', label: 'Server' },
   ];
 
   useEffect(() => {
@@ -3477,7 +3491,7 @@ const ConfigPanel = ({
             })}
           </div>
 
-          {activeTab !== 'display' ? (
+          {activeTab !== 'display' && activeTab !== 'server' ? (
             <div className="mt-3 grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
               <div className="md:col-span-4">
                 <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
@@ -7636,6 +7650,201 @@ const ConfigPanel = ({
             </div>
           </div>
         ) : null}
+
+        {activeTab === 'server' ? (() => {
+          const ss = config?.serverSettings || {};
+          const locked = config?.serverSettingsEnvLocked || {};
+
+          const LockBadge = () => (
+            <span className="ml-2 inline-flex items-center rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-400/80">
+              env
+            </span>
+          );
+
+          const NumericField = ({ label, value, locked: isLocked, min, max, step, unit, field }) => {
+            const [draft, setDraft] = React.useState(String(value ?? ''));
+            React.useEffect(() => { setDraft(String(value ?? '')); }, [value]);
+            return (
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  {label}{isLocked ? <LockBadge /> : null}
+                </label>
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={min}
+                    max={max}
+                    step={step || 1}
+                    value={draft}
+                    disabled={isLocked}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onBlur={() => {
+                      const num = Number(draft);
+                      if (!Number.isFinite(num)) { setDraft(String(value ?? '')); return; }
+                      const clamped = Math.max(min, Math.min(max, Math.floor(num)));
+                      setDraft(String(clamped));
+                      if (clamped !== value) saveServerSettings({ [field]: clamped }).catch(() => {});
+                    }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                    className={`w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white/85 ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  />
+                  {unit ? <span className="text-[11px] text-white/40 shrink-0">{unit}</span> : null}
+                </div>
+              </div>
+            );
+          };
+
+          const SelectField = ({ label, value, locked: isLocked, options, field }) => (
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                {label}{isLocked ? <LockBadge /> : null}
+              </label>
+              <select
+                value={value || ''}
+                disabled={isLocked}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (next && next !== value) saveServerSettings({ [field]: next }).catch(() => {});
+                }}
+                className={`mt-1 menu-select w-full rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 jvs-menu-select ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {options.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+          );
+
+          const ToggleField = ({ label, value, locked: isLocked, field, description }) => (
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                {label}{isLocked ? <LockBadge /> : null}
+              </label>
+              <div className="mt-1 flex items-center gap-3">
+                <button
+                  type="button"
+                  disabled={isLocked}
+                  onClick={() => saveServerSettings({ [field]: !value }).catch(() => {})}
+                  className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${value ? 'bg-emerald-500/70' : 'bg-white/15'} ${isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                  role="switch"
+                  aria-checked={!!value}
+                >
+                  <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition duration-200 ease-in-out ${value ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
+                {description ? <span className="text-[11px] text-white/45">{description}</span> : null}
+              </div>
+            </div>
+          );
+
+          return (
+            <div className="utility-panel p-4 md:p-6">
+              <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+                Server
+              </div>
+              <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
+                Server Settings
+              </div>
+              <div className="mt-1 text-xs text-white/45">
+                Runtime-tunable server configuration. Settings marked <span className="text-amber-400/80 font-semibold">ENV</span> are locked by environment variables.
+              </div>
+
+              {/* Hubitat Polling */}
+              <div className="mt-6">
+                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50 mb-3">Hubitat</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <NumericField
+                    label="Poll Interval"
+                    value={ss.pollIntervalMs}
+                    locked={locked.pollIntervalMs}
+                    min={1000}
+                    max={3600000}
+                    step={500}
+                    unit="ms"
+                    field="pollIntervalMs"
+                  />
+                </div>
+              </div>
+
+              {/* Weather Units */}
+              <div className="mt-6 pt-4 border-t border-white/5">
+                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50 mb-3">Weather Units</div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <SelectField
+                    label="Temperature"
+                    value={ss.temperatureUnit}
+                    locked={locked.temperatureUnit}
+                    field="temperatureUnit"
+                    options={[
+                      { value: 'fahrenheit', label: 'Fahrenheit (°F)' },
+                      { value: 'celsius', label: 'Celsius (°C)' },
+                    ]}
+                  />
+                  <SelectField
+                    label="Wind Speed"
+                    value={ss.windSpeedUnit}
+                    locked={locked.windSpeedUnit}
+                    field="windSpeedUnit"
+                    options={[
+                      { value: 'mph', label: 'mph' },
+                      { value: 'kmh', label: 'km/h' },
+                      { value: 'ms', label: 'm/s' },
+                      { value: 'kn', label: 'Knots' },
+                    ]}
+                  />
+                  <SelectField
+                    label="Precipitation"
+                    value={ss.precipitationUnit}
+                    locked={locked.precipitationUnit}
+                    field="precipitationUnit"
+                    options={[
+                      { value: 'inch', label: 'Inches (in)' },
+                      { value: 'mm', label: 'Millimeters (mm)' },
+                    ]}
+                  />
+                </div>
+              </div>
+
+              {/* Events */}
+              <div className="mt-6 pt-4 border-t border-white/5">
+                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50 mb-3">Events</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <NumericField
+                    label="Max Events in Memory"
+                    value={ss.eventsMax}
+                    locked={locked.eventsMax}
+                    min={50}
+                    max={10000}
+                    step={50}
+                    field="eventsMax"
+                  />
+                  <ToggleField
+                    label="Persist Events to Disk"
+                    value={ss.eventsPersistJsonl}
+                    locked={locked.eventsPersistJsonl}
+                    field="eventsPersistJsonl"
+                    description="Write events to events.jsonl"
+                  />
+                </div>
+              </div>
+
+              {/* Backups */}
+              <div className="mt-6 pt-4 border-t border-white/5">
+                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50 mb-3">Backups</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <NumericField
+                    label="Max Backup Files"
+                    value={ss.backupMaxFiles}
+                    locked={locked.backupMaxFiles}
+                    min={10}
+                    max={1000}
+                    step={10}
+                    field="backupMaxFiles"
+                  />
+                </div>
+              </div>
+            </div>
+          );
+        })() : null}
         </div>
       </div>
     </div>
