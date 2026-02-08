@@ -112,6 +112,7 @@ let runtimePollIntervalMs = HUBITAT_POLL_INTERVAL_MS;
 let runtimeEventsMax = MAX_INGESTED_EVENTS;
 let runtimeEventsPersistJsonl = EVENTS_PERSIST_JSONL;
 let runtimeBackupMaxFiles = MAX_BACKUP_FILES;
+let runtimePort = PORT;
 let hubitatPollIntervalId = null;
 
 // --- Mutable Hubitat connection state ---
@@ -208,6 +209,26 @@ const server = USE_HTTPS
     : http.createServer(app);
 
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
+
+// --- Certificate info helper ---
+// Uses Node's built-in X509Certificate to read cert metadata.
+function getCertificateInfo() {
+    try {
+        if (!fs.existsSync(HTTPS_CERT_PATH)) return null;
+        const pem = fs.readFileSync(HTTPS_CERT_PATH, 'utf8');
+        const cert = new crypto.X509Certificate(pem);
+        return {
+            subject: cert.subject,
+            issuer: cert.issuer,
+            validFrom: cert.validFrom,
+            validTo: cert.validTo,
+            fingerprint256: cert.fingerprint256,
+            selfSigned: cert.subject === cert.issuer,
+        };
+    } catch {
+        return null;
+    }
+}
 
 
 // --- RTSP -> HLS (HTTPS-friendly) ---
@@ -1808,6 +1829,8 @@ function normalizePersistedConfig(raw) {
             hubitatAppId: safeStr(raw.hubitatAppId),
             hubitatAccessToken: safeStr(raw.hubitatAccessToken),
             hubitatTlsInsecure: typeof raw.hubitatTlsInsecure === 'boolean' ? raw.hubitatTlsInsecure : null,
+            // Network (port requires restart to take effect)
+            port: safeInt(raw.port, 1, 65535),
         };
     })();
 
@@ -2187,6 +2210,9 @@ function applyServerSettings() {
     if (!process.env.BACKUP_MAX_FILES && ss.backupMaxFiles != null) {
         runtimeBackupMaxFiles = ss.backupMaxFiles;
     }
+    if (!process.env.PORT && ss.port != null) {
+        runtimePort = ss.port;
+    }
 
     // --- Hubitat connection settings ---
     // Env vars always win over config.json values.
@@ -2284,6 +2310,11 @@ function rebuildRuntimeConfigFromPersisted() {
             hubitatConfigured: hubitat.configured,
             hubitatHasAccessToken: Boolean(hubitat.accessToken),
             hubitatTlsInsecure: hubitat.tlsInsecure,
+            // Network & Security
+            port: runtimePort,
+            httpsActive: USE_HTTPS,
+            certInfo: getCertificateInfo(),
+            certExists: fs.existsSync(HTTPS_CERT_PATH) && fs.existsSync(HTTPS_KEY_PATH),
         },
         serverSettingsEnvLocked: {
             pollIntervalMs: Boolean(String(process.env.HUBITAT_POLL_INTERVAL_MS || '').trim()),
@@ -2297,6 +2328,7 @@ function rebuildRuntimeConfigFromPersisted() {
             hubitatAppId: Boolean(String(process.env.HUBITAT_APP_ID || '').trim()),
             hubitatAccessToken: Boolean(String(process.env.HUBITAT_ACCESS_TOKEN || '').trim()),
             hubitatTlsInsecure: Boolean(String(process.env.HUBITAT_TLS_INSECURE || '').trim()),
+            port: Boolean(String(process.env.PORT || '').trim()),
         },
     };
 }
@@ -7605,6 +7637,9 @@ app.put('/api/server-settings', (req, res) => {
     const eventsMax = safeInt(body.eventsMax, 50, 10000);
     const backupMaxFiles = safeInt(body.backupMaxFiles, 10, 1000);
 
+    // --- Port (requires server restart) ---
+    const port = safeInt(body.port, 1, 65535);
+
     // --- Boolean settings ---
     const eventsPersistJsonl = typeof body.eventsPersistJsonl === 'boolean' ? body.eventsPersistJsonl : undefined;
 
@@ -7643,6 +7678,7 @@ app.put('/api/server-settings', (req, res) => {
     if (hubitatAppId !== undefined) next.hubitatAppId = hubitatAppId;
     if (hubitatAccessToken !== undefined) next.hubitatAccessToken = hubitatAccessToken;
     if (hubitatTlsInsecure !== undefined) next.hubitatTlsInsecure = hubitatTlsInsecure;
+    if (port !== undefined) next.port = port;
 
     persistedConfig = normalizePersistedConfig({
         ...(persistedConfig || {}),
@@ -7693,6 +7729,118 @@ app.put('/api/server-settings', (req, res) => {
     io.emit('config_update', config);
 
     return res.json({ ok: true, serverSettings: config.serverSettings });
+});
+
+// --- Certificate Management API ---
+
+// Generate a self-signed certificate.
+app.post('/api/server/generate-cert', (req, res) => {
+    try {
+        const selfsigned = require('selfsigned');
+        const body = (req.body && typeof req.body === 'object') ? req.body : {};
+        const hostname = String(body.hostname || '').trim() || require('os').hostname() || 'localhost';
+
+        const altNames = [
+            { type: 2, value: 'localhost' },
+            { type: 2, value: hostname },
+            { type: 7, ip: '127.0.0.1' },
+        ];
+        if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)) {
+            altNames.push({ type: 7, ip: hostname });
+        }
+
+        const attrs = [{ name: 'commonName', value: hostname }];
+        const pems = selfsigned.generate(attrs, {
+            algorithm: 'sha256',
+            keySize: 2048,
+            days: 3650,
+            extensions: [{ name: 'subjectAltName', altNames }],
+        });
+
+        const certDir = path.dirname(HTTPS_CERT_PATH);
+        fs.mkdirSync(certDir, { recursive: true });
+        fs.writeFileSync(HTTPS_KEY_PATH, pems.private, { encoding: 'utf8', mode: 0o600 });
+        fs.writeFileSync(HTTPS_CERT_PATH, pems.cert, { encoding: 'utf8' });
+
+        console.log(`HTTPS: self-signed certificate generated for '${hostname}' via Settings UI`);
+
+        // Refresh config so the UI sees updated cert info
+        rebuildRuntimeConfigFromPersisted();
+        io.emit('config_update', config);
+
+        return res.json({
+            ok: true,
+            message: `Self-signed certificate generated for '${hostname}'. Restart the server to activate HTTPS.`,
+            certInfo: getCertificateInfo(),
+        });
+    } catch (err) {
+        console.error('Certificate generation failed:', err);
+        return res.status(500).json({ error: 'Certificate generation failed', details: String(err.message || err) });
+    }
+});
+
+// Upload custom PEM certificate and key.
+app.post('/api/server/upload-cert', (req, res) => {
+    try {
+        const body = (req.body && typeof req.body === 'object') ? req.body : {};
+        const certPem = String(body.cert || '').trim();
+        const keyPem = String(body.key || '').trim();
+
+        if (!certPem || !keyPem) {
+            return res.status(400).json({ error: 'Both "cert" and "key" PEM fields are required.' });
+        }
+
+        // Validate that the PEM data is actually parseable.
+        try {
+            new crypto.X509Certificate(certPem);
+        } catch (e) {
+            return res.status(400).json({ error: 'Invalid certificate PEM.', details: String(e.message || e) });
+        }
+        try {
+            crypto.createPrivateKey(keyPem);
+        } catch (e) {
+            return res.status(400).json({ error: 'Invalid private key PEM.', details: String(e.message || e) });
+        }
+
+        const certDir = path.dirname(HTTPS_CERT_PATH);
+        fs.mkdirSync(certDir, { recursive: true });
+        fs.writeFileSync(HTTPS_KEY_PATH, keyPem, { encoding: 'utf8', mode: 0o600 });
+        fs.writeFileSync(HTTPS_CERT_PATH, certPem, { encoding: 'utf8' });
+
+        console.log('HTTPS: custom certificate uploaded via Settings UI');
+
+        // Refresh config so the UI sees updated cert info
+        rebuildRuntimeConfigFromPersisted();
+        io.emit('config_update', config);
+
+        return res.json({
+            ok: true,
+            message: 'Certificate uploaded. Restart the server to activate HTTPS.',
+            certInfo: getCertificateInfo(),
+        });
+    } catch (err) {
+        console.error('Certificate upload failed:', err);
+        return res.status(500).json({ error: 'Certificate upload failed', details: String(err.message || err) });
+    }
+});
+
+// Delete certificates (revert to HTTP).
+app.delete('/api/server/cert', (req, res) => {
+    try {
+        let deleted = false;
+        if (fs.existsSync(HTTPS_CERT_PATH)) { fs.unlinkSync(HTTPS_CERT_PATH); deleted = true; }
+        if (fs.existsSync(HTTPS_KEY_PATH)) { fs.unlinkSync(HTTPS_KEY_PATH); deleted = true; }
+
+        if (deleted) console.log('HTTPS: certificates deleted via Settings UI');
+
+        rebuildRuntimeConfigFromPersisted();
+        io.emit('config_update', config);
+
+        return res.json({ ok: true, message: deleted ? 'Certificates deleted. Restart the server to revert to HTTP.' : 'No certificates found.' });
+    } catch (err) {
+        console.error('Certificate deletion failed:', err);
+        return res.status(500).json({ error: 'Certificate deletion failed', details: String(err.message || err) });
+    }
 });
 
 app.get('/api/weather/health', (req, res) => {
@@ -7980,9 +8128,9 @@ io.on('connection', (socket) => {
     socket.emit('device_refresh', getClientSafeStatuses());
 });
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(runtimePort, '0.0.0.0', () => {
     const proto = USE_HTTPS ? 'https' : 'http';
-    console.log(`Server running on ${proto}://0.0.0.0:${PORT}`);
+    console.log(`Server running on ${proto}://0.0.0.0:${runtimePort}`);
     if (USE_HTTPS) {
         console.log(`HTTPS certificate: ${HTTPS_CERT_PATH}`);
         console.log('NOTE: If browsers warn, trust the cert on the client device.');

@@ -7817,6 +7817,162 @@ const ConfigPanel = ({
             );
           };
 
+          const CertificateSection = ({ ss: s }) => {
+            const [genHostname, setGenHostname] = React.useState('');
+            const [genLoading, setGenLoading] = React.useState(false);
+            const [genMsg, setGenMsg] = React.useState('');
+            const [uploadMode, setUploadMode] = React.useState(false);
+            const [certPem, setCertPem] = React.useState('');
+            const [keyPem, setKeyPem] = React.useState('');
+            const [uploadLoading, setUploadLoading] = React.useState(false);
+            const [uploadMsg, setUploadMsg] = React.useState('');
+            const [deleteLoading, setDeleteLoading] = React.useState(false);
+
+            const cert = s.certInfo;
+            const formatDate = (d) => { try { return new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return d; } };
+
+            const handleGenerate = async () => {
+              setGenLoading(true); setGenMsg('');
+              try {
+                const res = await fetch(`${API_HOST}/api/server/generate-cert`, {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ hostname: genHostname.trim() || undefined }),
+                });
+                const data = await res.json().catch(() => ({}));
+                setGenMsg(data.message || data.error || (res.ok ? 'Done' : 'Failed'));
+              } catch (e) { setGenMsg(String(e.message || e)); }
+              setGenLoading(false);
+            };
+
+            const handleUpload = async () => {
+              if (!certPem.trim() || !keyPem.trim()) { setUploadMsg('Both certificate and key are required.'); return; }
+              setUploadLoading(true); setUploadMsg('');
+              try {
+                const res = await fetch(`${API_HOST}/api/server/upload-cert`, {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ cert: certPem, key: keyPem }),
+                });
+                const data = await res.json().catch(() => ({}));
+                setUploadMsg(data.message || data.error || (res.ok ? 'Done' : 'Failed'));
+                if (res.ok) { setUploadMode(false); setCertPem(''); setKeyPem(''); }
+              } catch (e) { setUploadMsg(String(e.message || e)); }
+              setUploadLoading(false);
+            };
+
+            const handleDelete = async () => {
+              if (!confirm('Delete certificates? The server will revert to HTTP after restart.')) return;
+              setDeleteLoading(true);
+              try {
+                const res = await fetch(`${API_HOST}/api/server/cert`, { method: 'DELETE' });
+                const data = await res.json().catch(() => ({}));
+                setGenMsg(data.message || '');
+              } catch (e) { setGenMsg(String(e.message || e)); }
+              setDeleteLoading(false);
+            };
+
+            return (
+              <div className="mt-6 pt-4 border-t border-white/5">
+                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50 mb-3">HTTPS Certificates</div>
+
+                {cert ? (
+                  <div className="mb-4 rounded-xl border border-white/5 bg-white/[0.02] p-3 text-[11px] text-white/50 space-y-1">
+                    <div><span className="text-white/30 mr-1">Subject:</span>{cert.subject}</div>
+                    <div><span className="text-white/30 mr-1">Issuer:</span>{cert.issuer}</div>
+                    <div><span className="text-white/30 mr-1">Valid:</span>{formatDate(cert.validFrom)} — {formatDate(cert.validTo)}</div>
+                    {cert.selfSigned && <div className="text-amber-400/60">Self-signed certificate</div>}
+                  </div>
+                ) : (
+                  <div className="mb-4 text-[11px] text-white/35">No certificate found. Generate or upload one to enable HTTPS.</div>
+                )}
+
+                {/* Generate */}
+                <div className="flex flex-wrap items-end gap-2 mb-3">
+                  <div className="flex-1 min-w-[180px]">
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">Hostname / IP</label>
+                    <input
+                      type="text"
+                      value={genHostname}
+                      placeholder="e.g. 192.168.1.100"
+                      onChange={(e) => setGenHostname(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white/85 placeholder-white/25"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={genLoading}
+                    onClick={handleGenerate}
+                    className={`shrink-0 rounded-xl border border-white/10 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.15em] transition-colors hover:bg-white/5 ${genLoading ? 'opacity-50 cursor-wait' : 'text-sky-400/80'}`}
+                  >
+                    {genLoading ? 'Generating…' : 'Generate Self-Signed'}
+                  </button>
+                  {cert && (
+                    <button
+                      type="button"
+                      disabled={deleteLoading}
+                      onClick={handleDelete}
+                      className="shrink-0 rounded-xl border border-red-500/20 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.15em] text-red-400/70 transition-colors hover:bg-red-500/5"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+                {genMsg && <div className="mb-3 text-[11px] text-amber-400/70">{genMsg}</div>}
+
+                {/* Upload */}
+                {!uploadMode ? (
+                  <button
+                    type="button"
+                    onClick={() => setUploadMode(true)}
+                    className="text-[10px] font-bold uppercase tracking-widest text-sky-400/60 hover:text-sky-300/80"
+                  >
+                    Upload Custom Certificate
+                  </button>
+                ) : (
+                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3 space-y-3">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">Certificate PEM</label>
+                      <textarea
+                        rows={4}
+                        value={certPem}
+                        placeholder="-----BEGIN CERTIFICATE-----&#10;..."
+                        onChange={(e) => setCertPem(e.target.value)}
+                        className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs font-mono text-white/70 placeholder-white/20 resize-y"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">Private Key PEM</label>
+                      <textarea
+                        rows={4}
+                        value={keyPem}
+                        placeholder="-----BEGIN PRIVATE KEY-----&#10;..."
+                        onChange={(e) => setKeyPem(e.target.value)}
+                        className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs font-mono text-white/70 placeholder-white/20 resize-y"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={uploadLoading}
+                        onClick={handleUpload}
+                        className={`rounded-xl border border-white/10 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.15em] transition-colors hover:bg-white/5 ${uploadLoading ? 'opacity-50 cursor-wait' : 'text-sky-400/80'}`}
+                      >
+                        {uploadLoading ? 'Uploading…' : 'Upload'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setUploadMode(false); setCertPem(''); setKeyPem(''); setUploadMsg(''); }}
+                        className="text-[10px] font-bold uppercase tracking-widest text-white/40 hover:text-white/60"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {uploadMsg && <div className="text-[11px] text-amber-400/70">{uploadMsg}</div>}
+                  </div>
+                )}
+              </div>
+            );
+          };
+
           return (
             <div className="utility-panel p-4 md:p-6">
               <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
@@ -7828,6 +7984,36 @@ const ConfigPanel = ({
               <div className="mt-1 text-xs text-white/45">
                 Runtime-tunable server configuration. Settings marked <span className="text-amber-400/80 font-semibold">ENV</span> are locked by environment variables.
               </div>
+
+              {/* Network */}
+              <div className="mt-6">
+                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50 mb-3">Network</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <NumericField
+                      label="Port"
+                      value={ss.port}
+                      locked={locked.port}
+                      min={1}
+                      max={65535}
+                      step={1}
+                      field="port"
+                    />
+                    <div className="mt-1 text-[10px] text-amber-400/60">⚠ Port changes require a server restart to take effect.</div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">Protocol</label>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className={`inline-block h-2 w-2 rounded-full ${ss.httpsActive ? 'bg-emerald-400' : 'bg-amber-400/70'}`} />
+                      <span className="text-sm font-semibold text-white/70">{ss.httpsActive ? 'HTTPS' : 'HTTP'}</span>
+                      {ss.certExists && !ss.httpsActive && <span className="text-[10px] text-white/40">(cert found — restart to enable)</span>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* HTTPS Certificates */}
+              <CertificateSection ss={ss} />
 
               {/* Hubitat Connection */}
               <div className="mt-6">
