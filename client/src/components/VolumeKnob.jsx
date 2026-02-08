@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState, useEffect } from 'react';
+import React, { useCallback, useId, useRef, useState, useEffect } from 'react';
 
 /**
  * VolumeKnob - A rotary dial control like audio mixing consoles
@@ -35,6 +35,7 @@ export default function VolumeKnob({
   style,
 }) {
   const containerRef = useRef(null);
+  const uid = useId();
   const [isDragging, setIsDragging] = useState(false);
   const [localValue, setLocalValue] = useState(value);
   const valueRef = useRef(value);
@@ -204,16 +205,16 @@ export default function VolumeKnob({
     >
       <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%', maxWidth: 80, maxHeight: 80 }}>
         <defs>
-          <linearGradient id="knobGrad" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={`${uid}-knobGrad`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#4B5563"/>
             <stop offset="50%" stopColor="#374151"/>
             <stop offset="100%" stopColor="#1F2937"/>
           </linearGradient>
-          <linearGradient id="knobHighlight" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={`${uid}-knobHighlight`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="rgba(255,255,255,0.15)"/>
             <stop offset="100%" stopColor="rgba(255,255,255,0)"/>
           </linearGradient>
-          <filter id="knobShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <filter id={`${uid}-knobShadow`} x="-20%" y="-20%" width="140%" height="140%">
             <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="rgba(0,0,0,0.4)"/>
           </filter>
         </defs>
@@ -253,8 +254,8 @@ export default function VolumeKnob({
           cx="50"
           cy="50"
           r="32"
-          fill="url(#knobGrad)"
-          filter="url(#knobShadow)"
+          fill={`url(#${uid}-knobGrad)`}
+          filter={`url(#${uid}-knobShadow)`}
           style={{
             transition: 'transform 100ms ease',
           }}
@@ -266,7 +267,7 @@ export default function VolumeKnob({
           cy="42"
           rx="24"
           ry="16"
-          fill="url(#knobHighlight)"
+          fill={`url(#${uid}-knobHighlight)`}
         />
 
         {/* Knob edge ring */}

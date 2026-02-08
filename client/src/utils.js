@@ -123,7 +123,11 @@ export const formatInfoMetricValue = (value) => {
     return parts.length ? parts.join(', ') : null;
   }
   if (typeof value === 'boolean') return value ? 'On' : 'Off';
-  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : null;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return null;
+    if (value % 1 !== 0) return value.toFixed(1);
+    return String(Math.round(value));
+  }
   const s = String(value).trim();
   return s.length ? s : null;
 };
@@ -135,3 +139,14 @@ export const INFO_METRIC_PRIORITY = [
   'switch', 'level', 'volume', 'mute', 'position',
   'power', 'energy', 'speed',
 ];
+
+/** Sort metric keys by INFO_METRIC_PRIORITY, then alphabetically. */
+export const sortInfoMetricKeys = (keys) => {
+  const priority = new Map(INFO_METRIC_PRIORITY.map((k, i) => [k, i]));
+  return [...keys].sort((a, b) => {
+    const ia = priority.has(a) ? priority.get(a) : 999;
+    const ib = priority.has(b) ? priority.get(b) : 999;
+    if (ia !== ib) return ia - ib;
+    return String(a).localeCompare(String(b));
+  });
+};

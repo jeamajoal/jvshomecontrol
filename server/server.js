@@ -3,7 +3,6 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const http = require('http');
 const https = require('https');
-const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 // Legacy note: previous versions used `net` for RTSP websocket port allocation.
@@ -111,9 +110,6 @@ const {
 
 // --- Import HLS service ---
 const hlsService = require('./services/hls');
-
-// --- Import state management ---
-const stateModule = require('./services/state');
 
 // --- Import control icons service ---
 const controlIconsService = require('./services/controlIcons');
@@ -361,7 +357,7 @@ function pruneIngestedEvents() {
 function shouldAcceptIngestedEvent(payload) {
     // If an allowlist exists and the payload includes a deviceId, enforce it.
     try {
-        const allowed = getUiAllowedDeviceIds();
+        const allowed = getUiAllowedDeviceIdsUnion();
         if (!allowed.length) return true;
         const deviceId = payload?.deviceId ?? payload?.device_id ?? payload?.id;
         if (deviceId === undefined || deviceId === null) return true;

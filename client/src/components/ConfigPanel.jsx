@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import { API_HOST } from '../apiHost';
 import { useAppState } from '../appState';
+import { asNumber } from '../utils';
 import {
   TOLERANCE_COLOR_CHOICES,
   normalizeToleranceColorId,
@@ -789,11 +790,6 @@ const statusText = (status) => {
   if (status === 'saved') return 'Saved';
   if (status === 'error') return 'Save failed';
   return '';
-};
-
-const asNumber = (value) => {
-  const num = typeof value === 'number' ? value : parseFloat(String(value));
-  return Number.isFinite(num) ? num : null;
 };
 
 // Keep in sync with server RTSP redaction to preserve credentials when editing.

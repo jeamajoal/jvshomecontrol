@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, Plus, X, Trash2, Layout, ScanLine } from 'lucide-react';
+import { Settings, Plus, X, Trash2, Layout } from 'lucide-react';
 
 import { getUiScheme } from '../uiScheme';
 import { API_HOST } from '../apiHost';

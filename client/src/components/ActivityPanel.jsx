@@ -4,15 +4,10 @@ import { DoorOpen, Footprints, Volume2, VolumeX } from 'lucide-react';
 import { socket } from '../socket';
 import { useAppState } from '../appState';
 import { buildRoomsWithActivity } from '../deviceSelectors';
+import { asText } from '../utils';
 
 const SOUND_COOLDOWN_PER_SENSOR_MS = 12000;
 const SOUND_COOLDOWN_GLOBAL_MS = 1500;
-
-const asText = (value) => {
-  if (value === null || value === undefined) return null;
-  const s = String(value).trim();
-  return s.length ? s : null;
-};
 
 const getAlertSoundUrls = (config) => {
   const sounds = config?.ui?.alertSounds && typeof config.ui.alertSounds === 'object' ? config.ui.alertSounds : {};

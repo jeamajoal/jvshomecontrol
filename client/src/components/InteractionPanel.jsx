@@ -7,166 +7,15 @@ import { useAppState } from '../appState';
 import { buildRoomsWithStatuses, getCtrlVisibleDeviceIdSet, getDeviceCommandAllowlist, getDeviceInfoMetricAllowlist } from '../deviceSelectors';
 import { filterCommandSchemasByAllowlist, inferInternalDeviceType, mapDeviceToControls, normalizeCommandSchemas } from '../deviceMapping';
 import { getDeviceTypeIconSrc } from '../deviceIcons';
+import { asNumber, asText, isSafeInfoMetricKey, isDisplayableInfoValue, formatInfoMetricLabel, formatInfoMetricValue, sortInfoMetricKeys } from '../utils';
+import { useFitScale } from '../hooks/useLayout';
+import DeviceInfoGrid from './DeviceInfoGrid';
 import InlineSvg from './InlineSvg';
 import InteractiveControlIcon from './InteractiveControlIcon';
 import HlsPlayer from './HlsPlayer';
 
 const CONTROLS_MASONRY_MIN_WIDTH_PX_DEFAULT = 360;
 const CONTROLS_MASONRY_ROW_HEIGHT_PX_DEFAULT = 10;
-
-const asNumber = (value) => {
-  const num = typeof value === 'number' ? value : parseFloat(String(value));
-  return Number.isFinite(num) ? num : null;
-};
-
-const asText = (value) => {
-  if (value === null || value === undefined) return null;
-  const s = String(value).trim();
-  return s.length ? s : null;
-};
-
-const INFO_METRIC_PRIORITY = [
-  'temperature',
-  'humidity',
-  'illuminance',
-  'battery',
-  'motion',
-  'contact',
-  'door',
-  'lock',
-  'presence',
-  'switch',
-  'level',
-  'volume',
-  'mute',
-  'position',
-  'power',
-  'energy',
-  'speed',
-];
-
-const isSafeInfoMetricKey = (key) => typeof key === 'string' && key.length <= 64 && /^[A-Za-z0-9_]+$/.test(key);
-
-const isDisplayableInfoValue = (value) => {
-  if (value === null || value === undefined) return false;
-  if (Array.isArray(value)) {
-    return value.some((v) => ['string', 'number', 'boolean'].includes(typeof v));
-  }
-  if (typeof value === 'object') return false;
-  return ['string', 'number', 'boolean'].includes(typeof value);
-};
-
-const formatInfoMetricLabel = (key) => {
-  const s = String(key || '').trim();
-  if (!s) return '';
-  const upper = s.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
-  return upper.replace(/\b\w/g, (c) => c.toUpperCase());
-};
-
-const formatInfoMetricValue = (value) => {
-  if (value === null || value === undefined) return null;
-  if (Array.isArray(value)) {
-    const parts = value
-      .map((v) => {
-        if (v === null || v === undefined) return null;
-        if (typeof v === 'boolean') return v ? 'On' : 'Off';
-        if (typeof v === 'number' && Number.isFinite(v)) return String(v);
-        const s = String(v).trim();
-        return s.length ? s : null;
-      })
-      .filter(Boolean);
-    return parts.length ? parts.join(', ') : null;
-  }
-  if (typeof value === 'boolean') return value ? 'On' : 'Off';
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) return null;
-    if (value % 1 !== 0) return value.toFixed(1);
-    return String(Math.round(value));
-  }
-  const s = String(value).trim();
-  return s.length ? s : null;
-};
-
-const sortInfoMetricKeys = (keys) => {
-  const priority = new Map(INFO_METRIC_PRIORITY.map((k, i) => [k, i]));
-  return [...keys].sort((a, b) => {
-    const ia = priority.has(a) ? priority.get(a) : 999;
-    const ib = priority.has(b) ? priority.get(b) : 999;
-    if (ia !== ib) return ia - ib;
-    return String(a).localeCompare(String(b));
-  });
-};
-
-const DeviceInfoGrid = ({ items }) => {
-  const list = Array.isArray(items) ? items : [];
-  if (!list.length) return null;
-  return (
-    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-      {list.map((item) => (
-        <div key={item.key} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-          <div
-            className="text-[10px] uppercase tracking-[0.18em] jvs-secondary-text"
-            style={{ fontSize: 'calc(10px * var(--jvs-secondary-text-size-scale, 1))' }}
-          >
-            {item.label}
-          </div>
-          <div
-            className="mt-1 text-xs font-semibold jvs-tertiary-text"
-            style={{ fontSize: 'calc(12px * var(--jvs-tertiary-text-size-scale, 1))' }}
-          >
-            {item.value}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-const useFitScale = () => {
-  const viewportRef = useRef(null);
-  const contentRef = useRef(null);
-  const [scale, setScale] = useState(1);
-
-  useEffect(() => {
-    const viewportEl = viewportRef.current;
-    const contentEl = contentRef.current;
-    if (!viewportEl || !contentEl) return;
-
-    const compute = () => {
-      const isMdUp = typeof window !== 'undefined'
-        ? window.matchMedia('(min-width: 768px)').matches
-        : true;
-
-      if (!isMdUp) {
-        setScale(1);
-        return;
-      }
-
-      const SAFE_GUTTER_PX = 16;
-      const vw = Math.max((viewportEl.clientWidth || 1) - SAFE_GUTTER_PX, 1);
-      const vh = Math.max((viewportEl.clientHeight || 1) - SAFE_GUTTER_PX, 1);
-      const cw = Math.max(contentEl.scrollWidth, contentEl.clientWidth, 1);
-      const ch = Math.max(contentEl.scrollHeight, contentEl.clientHeight, 1);
-
-      const raw = Math.min(vw / cw, vh / ch) * 0.99;
-      const next = Math.min(raw, 1.15);
-      setScale((prev) => (Math.abs(prev - next) < 0.01 ? prev : next));
-    };
-
-    compute();
-    const ro = new ResizeObserver(compute);
-    ro.observe(viewportEl);
-    ro.observe(contentEl);
-    window.addEventListener('resize', compute);
-
-    return () => {
-      window.removeEventListener('resize', compute);
-      ro.disconnect();
-    };
-  }, []);
-
-  return { viewportRef, contentRef, scale };
-};
 
 async function sendDeviceCommand(deviceId, command, args = []) {
   const cleanedArgs = Array.isArray(args)
@@ -266,7 +115,7 @@ const SwitchTile = ({
         )}
       </div>
 
-      <DeviceInfoGrid items={infoItems} />
+      <DeviceInfoGrid items={infoItems} compact />
 
       <div className="mt-3 flex flex-wrap gap-2">
         {/* Interactive control icons - renders all assigned icons */}
@@ -450,7 +299,7 @@ const LevelTile = ({
         )}
       </div>
 
-      <DeviceInfoGrid items={infoItems} />
+      <DeviceInfoGrid items={infoItems} compact />
 
       {/* Interactive control icons - replaces both icon and slider when configured */}
       {hasControlIcons && device ? (

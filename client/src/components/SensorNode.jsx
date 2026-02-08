@@ -45,7 +45,6 @@ const SensorNode = ({ label, state, type, metadata, uiScheme }) => {
         relative flex flex-col items-center justify-center 
         rounded-2xl border transition-all duration-300 
         aspect-square
-        /* Reduced slightly to 12vmin for better spacing */
         w-[12vmin] h-[12vmin] max-w-[130px] max-h-[130px] min-w-[90px] min-h-[90px]
         ${getStatusColor()}
       `}

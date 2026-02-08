@@ -23,6 +23,8 @@ import { buildRoomsWithStatuses, getHomeVisibleDeviceIdSet, getDeviceInfoMetricA
 import { API_HOST } from '../apiHost';
 import { inferInternalDeviceType } from '../deviceMapping';
 import { getDeviceTypeIconSrc } from '../deviceIcons';
+import { asNumber, asText, formatTemp, formatPercent, formatLux, formatSpeed, formatInches, toCompass, isSafeInfoMetricKey, isDisplayableInfoValue, formatInfoMetricLabel, formatInfoMetricValue, sortInfoMetricKeys } from '../utils';
+import DeviceInfoGrid from './DeviceInfoGrid';
 import InlineSvg from './InlineSvg';
 import InteractiveControlIcon from './InteractiveControlIcon';
 import HlsPlayer from './HlsPlayer';
@@ -30,56 +32,6 @@ import {
   normalizeToleranceColorId,
   getToleranceTextClass as getToleranceTextClassForColorId,
 } from '../toleranceColors';
-
-const asNumber = (value) => {
-  const num = typeof value === 'number' ? value : parseFloat(String(value));
-  return Number.isFinite(num) ? num : null;
-};
-
-const formatTemp = (value) => {
-  const num = asNumber(value);
-  if (num === null) return '—';
-  // Hubitat typically sends configured unit; assume °F for display unless user changes.
-  return `${num.toFixed(1)}°`;
-};
-
-const formatPercent = (value) => {
-  const num = asNumber(value);
-  if (num === null) return '—';
-  return `${Math.round(num)}%`;
-};
-
-const formatLux = (value) => {
-  const num = asNumber(value);
-  if (num === null) return '—';
-  return `${Math.round(num)}`;
-};
-
-const formatSpeed = (value) => {
-  const num = asNumber(value);
-  if (num === null) return '—';
-  return `${Math.round(num)} mph`;
-};
-
-const formatInches = (value) => {
-  const num = asNumber(value);
-  if (num === null) return '—';
-  return `${num.toFixed(2)} in`;
-};
-
-const toCompass = (deg) => {
-  const num = asNumber(deg);
-  if (num === null) return null;
-  const dirs = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
-  const idx = Math.round((((num % 360) + 360) % 360) / 22.5) % 16;
-  return dirs[idx];
-};
-
-const asText = (value) => {
-  if (value === null || value === undefined) return null;
-  const s = String(value).trim();
-  return s.length ? s : null;
-};
 
 // Open-Meteo weather codes: https://open-meteo.com/en/docs
 const describeWeatherCode = (code) => {
@@ -625,88 +577,6 @@ const getDeviceCommandAllowlistForId = (deviceCommandAllowlist, deviceId) => {
   const arr = raw[id];
   if (!Array.isArray(arr)) return null;
   return arr.map((v) => String(v || '').trim()).filter(Boolean);
-};
-
-// Info card helpers
-const INFO_METRIC_PRIORITY = [
-  'temperature', 'humidity', 'illuminance', 'battery', 'motion', 'contact',
-  'door', 'lock', 'presence', 'switch', 'level', 'volume', 'mute', 'position',
-  'power', 'energy', 'speed',
-];
-
-const isSafeInfoMetricKey = (key) => typeof key === 'string' && key.length <= 64 && /^[A-Za-z0-9_]+$/.test(key);
-
-const isDisplayableInfoValue = (value) => {
-  if (value === null || value === undefined) return false;
-  if (Array.isArray(value)) return value.some((v) => ['string', 'number', 'boolean'].includes(typeof v));
-  if (typeof value === 'object') return false;
-  return ['string', 'number', 'boolean'].includes(typeof value);
-};
-
-const formatInfoMetricLabel = (key) => {
-  const s = String(key || '').trim();
-  if (!s) return '';
-  const upper = s.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
-  return upper.replace(/\b\w/g, (c) => c.toUpperCase());
-};
-
-const formatInfoMetricValue = (value) => {
-  if (value === null || value === undefined) return null;
-  if (Array.isArray(value)) {
-    const parts = value
-      .map((v) => {
-        if (v === null || v === undefined) return null;
-        if (typeof v === 'boolean') return v ? 'On' : 'Off';
-        if (typeof v === 'number' && Number.isFinite(v)) return String(v);
-        const s = String(v).trim();
-        return s.length ? s : null;
-      })
-      .filter(Boolean);
-    return parts.length ? parts.join(', ') : null;
-  }
-  if (typeof value === 'boolean') return value ? 'On' : 'Off';
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) return null;
-    if (value % 1 !== 0) return value.toFixed(1);
-    return String(Math.round(value));
-  }
-  const s = String(value).trim();
-  return s.length ? s : null;
-};
-
-const sortInfoMetricKeys = (keys) => {
-  const priority = new Map(INFO_METRIC_PRIORITY.map((k, i) => [k, i]));
-  return [...keys].sort((a, b) => {
-    const ia = priority.has(a) ? priority.get(a) : 999;
-    const ib = priority.has(b) ? priority.get(b) : 999;
-    if (ia !== ib) return ia - ib;
-    return String(a).localeCompare(String(b));
-  });
-};
-
-const DeviceInfoGrid = ({ items, scale = 1, primaryTextColorClassName = '', secondaryTextColorClassName = '', tertiaryTextColorClassName = '' }) => {
-  const list = Array.isArray(items) ? items : [];
-  if (!list.length) return null;
-  return (
-    <div className="mt-2 grid grid-cols-2 gap-1">
-      {list.map((item) => (
-        <div key={item.key} className="rounded-lg border border-white/10 bg-black/20 px-2 py-1">
-          <div
-            className={`text-[9px] uppercase tracking-[0.12em] jvs-secondary-text ${secondaryTextColorClassName || 'text-white/60'}`.trim()}
-            style={{ fontSize: `calc(9px * ${scale} * var(--jvs-secondary-text-size-scale, 1))` }}
-          >
-            {item.label}
-          </div>
-          <div
-            className={`text-[11px] font-semibold jvs-tertiary-text ${tertiaryTextColorClassName || 'text-white/80'}`.trim()}
-            style={{ fontSize: `calc(11px * ${scale} * var(--jvs-tertiary-text-size-scale, 1))` }}
-          >
-            {item.value}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
 };
 
 const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, sensorIndicatorColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, deviceCommandAllowlist, deviceHomeMetricAllowlist, deviceInfoMetricAllowlist, deviceTypeIcons, deviceControlIcons, switchControlStyle = 'auto', switchAnimationStyle = 'none', homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', tertiaryTextColorClassName = '', contentScale = 1, fillHeight = false }) => {

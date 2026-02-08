@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState, useEffect } from 'react';
+import React, { useCallback, useId, useRef, useState, useEffect } from 'react';
 
 /**
  * ColorWheel - A circular color picker for selecting hue values
@@ -25,6 +25,7 @@ export default function ColorWheel({
   style,
 }) {
   const containerRef = useRef(null);
+  const uid = useId();
   const [isDragging, setIsDragging] = useState(false);
   const [localHue, setLocalHue] = useState(hue);
   const hueRef = useRef(hue);
@@ -170,45 +171,14 @@ export default function ColorWheel({
     >
       <svg viewBox="0 0 80 80" style={{ width: '100%', height: '100%' }}>
         <defs>
-          {/* Conical gradient simulated with segments */}
-          <linearGradient id="colorWheelGrad1" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="hsl(0, 100%, 50%)" />
-            <stop offset="100%" stopColor="hsl(60, 100%, 50%)" />
-          </linearGradient>
-          
-          {/* Use conic gradient for modern browsers */}
-          <style>{`
-            .color-ring {
-              fill: none;
-              stroke-width: 10;
-              stroke: conic-gradient(from 0deg, 
-                hsl(0, 100%, 50%), 
-                hsl(60, 100%, 50%), 
-                hsl(120, 100%, 50%), 
-                hsl(180, 100%, 50%), 
-                hsl(240, 100%, 50%), 
-                hsl(300, 100%, 50%), 
-                hsl(360, 100%, 50%)
-              );
-            }
-          `}</style>
-        </defs>
-
-        {/* Background */}
-        <circle
-          cx="40"
-          cy="40"
-          r="36"
-          fill="linear-gradient(to bottom, #1F2430, #121622)"
-          style={{ fill: 'url(#bgGrad)' }}
-        />
-        <defs>
-          <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={`${uid}-bgGrad`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#1F2430"/>
             <stop offset="100%" stopColor="#121622"/>
           </linearGradient>
         </defs>
-        <circle cx="40" cy="40" r="36" fill="url(#bgGrad)"/>
+
+        {/* Background */}
+        <circle cx="40" cy="40" r="36" fill={`url(#${uid}-bgGrad)`}/>
 
         {/* Color ring - using arc segments to simulate conical gradient */}
         {Array.from({ length: 36 }, (_, i) => {

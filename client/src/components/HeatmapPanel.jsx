@@ -6,6 +6,8 @@ import Draggable from 'react-draggable';
 import { getUiScheme } from '../uiScheme';
 import { API_HOST } from '../apiHost';
 import { useAppState } from '../appState';
+import { asNumber, formatTemp, formatPercent, formatLux, clamp } from '../utils';
+import { useFitScale, useResizeObserver } from '../hooks/useLayout';
 import {
   normalizeToleranceColorId,
   getToleranceColorStyle,
@@ -22,101 +24,12 @@ const ReactGridLayout = WidthProvider(GridLayout);
 
 // NOTE: Tailwind class strings are referenced in ../toleranceColors.js.
 
-const asNumber = (value) => {
-  const num = typeof value === 'number' ? value : parseFloat(String(value));
-  return Number.isFinite(num) ? num : null;
-};
-
 const asLayoutY = (value) => {
   const num = asNumber(value);
   // Server uses a large sentinel (e.g. 9999) to mean "unplaced".
   // Treat that as null so the editor can auto-place rooms from the top.
   if (num !== null && num >= 9000) return null;
   return num;
-};
-
-const formatTemp = (value) => {
-  const num = asNumber(value);
-  if (num === null) return '—';
-  return `${num.toFixed(1)}°`;
-};
-
-const formatPercent = (value) => {
-  const num = asNumber(value);
-  if (num === null) return '—';
-  return `${Math.round(num)}%`;
-};
-
-const formatLux = (value) => {
-  const num = asNumber(value);
-  if (num === null) return '—';
-  return `${Math.round(num)}`;
-};
-
-const useFitScale = () => {
-  const viewportRef = useRef(null);
-  const contentRef = useRef(null);
-  const [scale, setScale] = useState(1);
-
-  useEffect(() => {
-    const viewportEl = viewportRef.current;
-    const contentEl = contentRef.current;
-    if (!viewportEl || !contentEl) return;
-
-    const compute = () => {
-      const isMdUp = typeof window !== 'undefined'
-        ? window.matchMedia('(min-width: 768px)').matches
-        : true;
-
-      if (!isMdUp) {
-        setScale(1);
-        return;
-      }
-
-    const SAFE_GUTTER_PX = 16;
-      const vw = Math.max((viewportEl.clientWidth || 1) - SAFE_GUTTER_PX, 1);
-      const vh = Math.max((viewportEl.clientHeight || 1) - SAFE_GUTTER_PX, 1);
-      const cw = Math.max(contentEl.scrollWidth, contentEl.clientWidth, 1);
-      const ch = Math.max(contentEl.scrollHeight, contentEl.clientHeight, 1);
-
-      const raw = Math.min(vw / cw, vh / ch) * 0.99;
-      const next = Math.min(raw, 1.15);
-      setScale((prev) => (Math.abs(prev - next) < 0.01 ? prev : next));
-    };
-
-    compute();
-    const ro = new ResizeObserver(compute);
-    ro.observe(viewportEl);
-    ro.observe(contentEl);
-    window.addEventListener('resize', compute);
-
-    return () => {
-      window.removeEventListener('resize', compute);
-      ro.disconnect();
-    };
-  }, []);
-
-  return { viewportRef, contentRef, scale };
-};
-
-const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-
-const useResizeObserver = (ref) => {
-  const [size, setSize] = useState({ width: 0, height: 0 });
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      for (const e of entries) {
-        setSize({ width: e.contentRect.width, height: e.contentRect.height });
-      }
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [ref]);
-
-  return size;
 };
 
 async function saveLayoutPatch(payload) {

@@ -66,6 +66,7 @@ export default function MediaTransport({
         onClick={() => handlePress('previousTrack')}
         disabled={disabled}
         title="Previous"
+        aria-label="Previous track"
         style={{
           width: 38,
           height: 38,
@@ -95,6 +96,7 @@ export default function MediaTransport({
         onClick={() => handlePress('stop')}
         disabled={disabled}
         title="Stop"
+        aria-label="Stop"
         style={{
           width: 38,
           height: 38,
@@ -123,6 +125,7 @@ export default function MediaTransport({
         onClick={() => handlePress(isPlaying && hasPause ? 'pause' : 'play')}
         disabled={disabled}
         title={isPlaying ? 'Pause' : 'Play'}
+        aria-label={isPlaying ? 'Pause' : 'Play'}
         style={{
           width: 54,
           height: 54,
@@ -163,6 +166,7 @@ export default function MediaTransport({
         onClick={() => handlePress('nextTrack')}
         disabled={disabled}
         title="Next"
+        aria-label="Next track"
         style={{
           width: 38,
           height: 38,
