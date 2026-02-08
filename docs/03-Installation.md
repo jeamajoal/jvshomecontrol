@@ -102,6 +102,8 @@ curl -sk https://localhost:3000/api/hubitat/health
 | `HTTPS` | No | — | Set `1` to force HTTPS even without auto-detected certs |
 | `HTTPS_CERT_PATH` | No | Auto | Custom TLS certificate path |
 | `HTTPS_KEY_PATH` | No | Auto | Custom TLS private key path |
+| `HTTPS_CERT_HOSTNAME` | No | `hostname` | Hostname/IP to embed in generated self-signed cert |
+| `HTTPS_SETUP_ASSUME_YES` | No | `false` | Auto-create self-signed cert without prompting (useful in Docker/CI) |
 | `OPEN_METEO_LAT` | No | Auto | Weather latitude (decimal or DMS) |
 | `OPEN_METEO_LON` | No | Auto | Weather longitude (decimal or DMS) |
 | `OPEN_METEO_TIMEZONE` | No | `auto` | Weather timezone (e.g., `America/New_York`) |

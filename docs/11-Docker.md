@@ -175,18 +175,59 @@ environment:
 
 ## HTTPS in Docker
 
-By default, the container runs HTTP. To enable HTTPS:
+By default, the container starts in **HTTP** mode. Here's how that works:
 
-### Option 1: Generate certs inside the container
+1. The Dockerfile's `prestart` script (`https-setup.js`) runs before the server.
+2. If it finds existing certs in `server/data/certs/`, it uses them.
+3. If **no certs exist** and the session is **non-interactive** (which Docker is), it silently skips generation and falls back to HTTP.
+4. The server checks for cert files at startup — if present, it serves HTTPS; otherwise HTTP.
+
+To enable HTTPS, pick one of these options:
+
+### Option 1: Auto-generate certs on first start (easiest)
+
+Set `HTTPS_SETUP_ASSUME_YES=1` so the prestart script creates a self-signed certificate without prompting:
+
+```yaml
+environment:
+  - HTTPS_SETUP_ASSUME_YES=1
+  - HTTPS_CERT_HOSTNAME=192.168.1.100   # Your server's LAN IP or hostname
+```
+
+Or with `docker run`:
 
 ```bash
-docker compose exec jvshomecontrol node scripts/https-setup.js
+docker run -d --name jvshomecontrol \
+  -p 3000:3000 \
+  -e HUBITAT_HOST=https://192.168.1.50 \
+  -e HUBITAT_APP_ID=30 \
+  -e HUBITAT_ACCESS_TOKEN=your-token-here \
+  -e HUBITAT_TLS_INSECURE=1 \
+  -e HTTPS_SETUP_ASSUME_YES=1 \
+  -e HTTPS_CERT_HOSTNAME=192.168.1.100 \
+  -v jvs-data:/app/server/data \
+  --restart unless-stopped \
+  jeamajoal/jvshomecontrol:latest
+```
+
+The cert is written to the `jvs-data` volume and survives container restarts/updates. It only generates once — if certs already exist, the script skips.
+
+> **Note:** Self-signed certs cause browser warnings. Accept the warning once, or install the cert on your device (see [08-HTTPS.md](08-HTTPS.md)).
+
+### Option 2: Generate certs interactively
+
+Run the setup script manually in the running container:
+
+```bash
+docker compose exec -it jvshomecontrol node scripts/https-setup.js
 docker compose restart
 ```
 
-The certificates are stored in the persistent volume and survive restarts.
+The script will prompt for a hostname and generate the cert.
 
-### Option 2: Mount existing certs
+### Option 3: Mount your own certs
+
+If you already have certificates (from Let's Encrypt, your CA, etc.):
 
 ```yaml
 volumes:
@@ -194,9 +235,22 @@ volumes:
   - ./my-certs/localhost.key:/app/server/data/certs/localhost.key:ro
 ```
 
-### Option 3: Use a reverse proxy
+The server auto-detects them at startup.
 
-Put nginx, Caddy, or Traefik in front of the container and let it handle TLS. Set `HTTP_ONLY=1` in the container.
+### Option 4: Use a reverse proxy
+
+Put nginx, Caddy, or Traefik in front of the container and let it handle TLS. Set `HTTP_ONLY=1` in the container so it only serves HTTP internally.
+
+### HTTPS-related environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HTTP_ONLY` | `false` | Force HTTP only — skip HTTPS entirely |
+| `HTTPS` | — | Set `1` to force HTTPS (warns if no certs found) |
+| `HTTPS_SETUP_ASSUME_YES` | `false` | Auto-create self-signed cert without prompting |
+| `HTTPS_CERT_HOSTNAME` | system hostname | Hostname/IP embedded in the generated certificate |
+| `HTTPS_CERT_PATH` | `data/certs/localhost.crt` | Custom path to TLS certificate |
+| `HTTPS_KEY_PATH` | `data/certs/localhost.key` | Custom path to TLS private key |
 
 ---
 
