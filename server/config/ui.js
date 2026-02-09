@@ -78,6 +78,18 @@ const UI_ICON_OPACITY_PCT_DEFAULT = 100;
 const UI_ICON_OPACITY_PCT_MIN = 0;
 const UI_ICON_OPACITY_PCT_MAX = 100;
 
+// Glow opacity (0-100%).
+// Controls the intensity of the motion-triggered card glow effect.
+const UI_GLOW_OPACITY_PCT_DEFAULT = 100;
+const UI_GLOW_OPACITY_PCT_MIN = 0;
+const UI_GLOW_OPACITY_PCT_MAX = 100;
+
+// Glow size scale (50-200%).
+// Controls the spread/radius of the motion-triggered card glow effect.
+const UI_GLOW_SIZE_PCT_DEFAULT = 100;
+const UI_GLOW_SIZE_PCT_MIN = 50;
+const UI_GLOW_SIZE_PCT_MAX = 200;
+
 // Bundled range objects for convenience (backwards compat with existing code).
 const UI_CARD_OPACITY_SCALE_PCT_RANGE = Object.freeze({
     min: UI_CARD_OPACITY_SCALE_PCT_MIN,
@@ -151,6 +163,18 @@ const UI_ICON_OPACITY_PCT_RANGE = Object.freeze({
     def: UI_ICON_OPACITY_PCT_DEFAULT,
 });
 
+const UI_GLOW_OPACITY_PCT_RANGE = Object.freeze({
+    min: UI_GLOW_OPACITY_PCT_MIN,
+    max: UI_GLOW_OPACITY_PCT_MAX,
+    def: UI_GLOW_OPACITY_PCT_DEFAULT,
+});
+
+const UI_GLOW_SIZE_PCT_RANGE = Object.freeze({
+    min: UI_GLOW_SIZE_PCT_MIN,
+    max: UI_GLOW_SIZE_PCT_MAX,
+    def: UI_GLOW_SIZE_PCT_DEFAULT,
+});
+
 module.exports = {
     // Individual defaults
     UI_CARD_OPACITY_SCALE_PCT_DEFAULT,
@@ -189,6 +213,12 @@ module.exports = {
     UI_ICON_OPACITY_PCT_DEFAULT,
     UI_ICON_OPACITY_PCT_MIN,
     UI_ICON_OPACITY_PCT_MAX,
+    UI_GLOW_OPACITY_PCT_DEFAULT,
+    UI_GLOW_OPACITY_PCT_MIN,
+    UI_GLOW_OPACITY_PCT_MAX,
+    UI_GLOW_SIZE_PCT_DEFAULT,
+    UI_GLOW_SIZE_PCT_MIN,
+    UI_GLOW_SIZE_PCT_MAX,
 
     // Range objects (for code that uses .min/.max/.def pattern)
     UI_CARD_OPACITY_SCALE_PCT_RANGE,
@@ -203,4 +233,6 @@ module.exports = {
     UI_SECONDARY_TEXT_OPACITY_PCT_RANGE,
     UI_TERTIARY_TEXT_OPACITY_PCT_RANGE,
     UI_ICON_OPACITY_PCT_RANGE,
+    UI_GLOW_OPACITY_PCT_RANGE,
+    UI_GLOW_SIZE_PCT_RANGE,
 };

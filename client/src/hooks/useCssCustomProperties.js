@@ -90,15 +90,23 @@ export function useCssCustomProperties(ui) {
       const glowId = String(safeUi.glowColorId ?? '').trim();
       if (!glowId || glowId === 'none') {
         document.documentElement.style.setProperty('--jvs-glow-rgb', 'var(--accent-rgb)');
-        return;
+      } else {
+        const triplet = resolveColorIdToTriplet(glowId);
+        document.documentElement.style.setProperty(
+          '--jvs-glow-rgb',
+          triplet || 'var(--accent-rgb)',
+        );
       }
-      const triplet = resolveColorIdToTriplet(glowId);
-      document.documentElement.style.setProperty(
-        '--jvs-glow-rgb',
-        triplet || 'var(--accent-rgb)',
-      );
     } catch { /* ignore */ }
-  }, [safeUi.accentColorId, safeUi.glowColorId]);
+
+    try {
+      const glowOpacity = pct(safeUi.glowOpacityPct, 0, 100, 100) / 100;
+      document.documentElement.style.setProperty('--jvs-glow-opacity', String(glowOpacity));
+
+      const glowSize = pct(safeUi.glowSizePct, 50, 200, 100) / 100;
+      document.documentElement.style.setProperty('--jvs-glow-size-scale', String(glowSize));
+    } catch { /* ignore */ }
+  }, [safeUi.accentColorId, safeUi.glowColorId, safeUi.glowOpacityPct, safeUi.glowSizePct]);
 
   // ── Icon opacity & size ─────────────────────────────────────────────────
   useEffect(() => {

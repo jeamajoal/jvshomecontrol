@@ -9,6 +9,8 @@
 
     /* Accent glow (separate from UI accent); defaults to the UI accent. */
     --jvs-glow-rgb: var(--accent-rgb);
+    --jvs-glow-opacity: 1;
+    --jvs-glow-size-scale: 1;
 
     /* Home icon styling */
     --jvs-icon-opacity: 1;
@@ -66,6 +68,7 @@
   border-radius: inherit;
   pointer-events: none;
   z-index: -1;
+  opacity: var(--jvs-glow-opacity, 1);
 }
 
 .glass-panel.animate-glow-accent::after {
@@ -83,20 +86,20 @@
 
 /* Keyframes for pseudo-element glow (box-shadow only, no border) */
 @keyframes glow-accent {
-  0%, 100% { box-shadow: 0 0 6px rgb(var(--jvs-glow-rgb, var(--accent-rgb)) / 0.30); }
-  50% { box-shadow: 0 0 12px rgb(var(--jvs-glow-rgb, var(--accent-rgb)) / 0.50); }
+  0%, 100% { box-shadow: 0 0 calc(6px * var(--jvs-glow-size-scale, 1)) rgb(var(--jvs-glow-rgb, var(--accent-rgb)) / 0.30); }
+  50% { box-shadow: 0 0 calc(12px * var(--jvs-glow-size-scale, 1)) rgb(var(--jvs-glow-rgb, var(--accent-rgb)) / 0.50); }
 }
 @keyframes glow-blue {
-  0%, 100% { box-shadow: 0 0 6px rgba(59, 130, 246, 0.3); }
-  50% { box-shadow: 0 0 12px rgba(59, 130, 246, 0.5); }
+  0%, 100% { box-shadow: 0 0 calc(6px * var(--jvs-glow-size-scale, 1)) rgba(59, 130, 246, 0.3); }
+  50% { box-shadow: 0 0 calc(12px * var(--jvs-glow-size-scale, 1)) rgba(59, 130, 246, 0.5); }
 }
 @keyframes glow-red {
-  0%, 100% { box-shadow: 0 0 8px rgba(239, 68, 68, 0.4); }
-  50% { box-shadow: 0 0 16px rgba(239, 68, 68, 0.6); }
+  0%, 100% { box-shadow: 0 0 calc(8px * var(--jvs-glow-size-scale, 1)) rgba(239, 68, 68, 0.4); }
+  50% { box-shadow: 0 0 calc(16px * var(--jvs-glow-size-scale, 1)) rgba(239, 68, 68, 0.6); }
 }
 @keyframes glow-orange {
-  0%, 100% { box-shadow: 0 0 6px rgba(245, 158, 11, 0.3); }
-  50% { box-shadow: 0 0 12px rgba(245, 158, 11, 0.5); }
+  0%, 100% { box-shadow: 0 0 calc(6px * var(--jvs-glow-size-scale, 1)) rgba(245, 158, 11, 0.3); }
+  50% { box-shadow: 0 0 calc(12px * var(--jvs-glow-size-scale, 1)) rgba(245, 158, 11, 0.5); }
 }
 
 /* Home: allow controlling the "secondary" (small/gray) text opacity via Settings. */

@@ -44,6 +44,8 @@ const {
     UI_SECONDARY_TEXT_OPACITY_PCT_DEFAULT,
     UI_TERTIARY_TEXT_OPACITY_PCT_DEFAULT,
     UI_ICON_OPACITY_PCT_DEFAULT,
+    UI_GLOW_OPACITY_PCT_RANGE,
+    UI_GLOW_SIZE_PCT_RANGE,
     
     // Home Dashboard
     HOME_TOP_ROW_CARD_IDS,
@@ -1272,6 +1274,19 @@ function normalizePersistedConfig(raw) {
         UI_ICON_SIZE_PCT_RANGE.def,
     );
 
+    const glowOpacityPct = clampInt(
+        uiRaw.glowOpacityPct,
+        UI_GLOW_OPACITY_PCT_RANGE.min,
+        UI_GLOW_OPACITY_PCT_RANGE.max,
+        UI_GLOW_OPACITY_PCT_RANGE.def,
+    );
+    const glowSizePct = clampInt(
+        uiRaw.glowSizePct,
+        UI_GLOW_SIZE_PCT_RANGE.min,
+        UI_GLOW_SIZE_PCT_RANGE.max,
+        UI_GLOW_SIZE_PCT_RANGE.def,
+    );
+
     const rawPanelProfiles = (uiRaw.panelProfiles && typeof uiRaw.panelProfiles === 'object') ? uiRaw.panelProfiles : {};
     // Always include shipped presets, but do not allow persisted config to override them.
     const userPanelProfiles = {};
@@ -1519,6 +1534,13 @@ function normalizePersistedConfig(raw) {
             ? clampInt(p.iconSizePct, UI_ICON_SIZE_PCT_RANGE.min, UI_ICON_SIZE_PCT_RANGE.max, iconSizePct)
             : null;
 
+        const pGlowOpacityPct = Object.prototype.hasOwnProperty.call(p, 'glowOpacityPct')
+            ? clampInt(p.glowOpacityPct, UI_GLOW_OPACITY_PCT_RANGE.min, UI_GLOW_OPACITY_PCT_RANGE.max, glowOpacityPct)
+            : null;
+        const pGlowSizePct = Object.prototype.hasOwnProperty.call(p, 'glowSizePct')
+            ? clampInt(p.glowSizePct, UI_GLOW_SIZE_PCT_RANGE.min, UI_GLOW_SIZE_PCT_RANGE.max, glowSizePct)
+            : null;
+
         const pVisibleRoomIds = Object.prototype.hasOwnProperty.call(p, 'visibleRoomIds')
             ? (Array.isArray(p.visibleRoomIds)
                 ? p.visibleRoomIds.map((v) => String(v || '').trim()).filter(Boolean)
@@ -1669,6 +1691,8 @@ function normalizePersistedConfig(raw) {
             ...(pTopCameraSize !== null ? { topCameraSize: pTopCameraSize } : {}),
             ...(pRoomCameraIds !== null ? { roomCameraIds: pRoomCameraIds } : {}),
             ...(pGlowColorId !== null ? { glowColorId: pGlowColorId } : {}),
+            ...(pGlowOpacityPct !== null ? { glowOpacityPct: pGlowOpacityPct } : {}),
+            ...(pGlowSizePct !== null ? { glowSizePct: pGlowSizePct } : {}),
             ...(pIconColorId !== null ? { iconColorId: pIconColorId } : {}),
             ...(pIconOpacityPct !== null ? { iconOpacityPct: pIconOpacityPct } : {}),
             ...(pIconSizePct !== null ? { iconSizePct: pIconSizePct } : {}),
@@ -1789,6 +1813,8 @@ function normalizePersistedConfig(raw) {
         topCameraSize,
         // Accent glow + icon styling.
         glowColorId,
+        glowOpacityPct,
+        glowSizePct,
         iconColorId,
         iconOpacityPct,
         iconSizePct,
@@ -6288,6 +6314,144 @@ app.put('/api/ui/glow-color', (req, res) => {
         ui: {
             ...(config?.ui || {}),
             glowColorId: persistedConfig?.ui?.glowColorId,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update glow opacity percentage.
+// Expected payload: { glowOpacityPct: number (0-100), panelName?: string }
+app.put('/api/ui/glow-opacity', (req, res) => {
+    const raw = req.body?.glowOpacityPct;
+    const num = (typeof raw === 'number') ? raw : Number(raw);
+    if (!Number.isFinite(num)) {
+        return res.status(400).json({ error: 'Missing glowOpacityPct (0-100)' });
+    }
+
+    const glowOpacityPct = Math.max(UI_GLOW_OPACITY_PCT_RANGE.min, Math.min(UI_GLOW_OPACITY_PCT_RANGE.max, Math.round(num)));
+
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        glowOpacityPct,
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-glow-opacity-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            glowOpacityPct,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-glow-opacity');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            glowOpacityPct: persistedConfig?.ui?.glowOpacityPct,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update glow size percentage.
+// Expected payload: { glowSizePct: number (50-200), panelName?: string }
+app.put('/api/ui/glow-size', (req, res) => {
+    const raw = req.body?.glowSizePct;
+    const num = (typeof raw === 'number') ? raw : Number(raw);
+    if (!Number.isFinite(num)) {
+        return res.status(400).json({ error: 'Missing glowSizePct (50-200)' });
+    }
+
+    const glowSizePct = Math.max(UI_GLOW_SIZE_PCT_RANGE.min, Math.min(UI_GLOW_SIZE_PCT_RANGE.max, Math.round(num)));
+
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        glowSizePct,
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-glow-size-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            glowSizePct,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-glow-size');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            glowSizePct: persistedConfig?.ui?.glowSizePct,
             panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };

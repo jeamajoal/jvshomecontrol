@@ -495,6 +495,38 @@ async function saveGlowColorId(glowColorId, panelName) {
   return res.json().catch(() => ({}));
 }
 
+async function saveGlowOpacityPct(glowOpacityPct, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/glow-opacity`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      glowOpacityPct,
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Glow opacity save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function saveGlowSizePct(glowSizePct, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/glow-size`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      glowSizePct,
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Glow size save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveIconColorId(iconColorId, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/icon-color`, {
     method: 'PUT',
@@ -1013,6 +1045,8 @@ const ConfigPanel = ({
   const tertiaryTextSizeSave = useAsyncSave((tertiaryTextSizePct) => saveTertiaryTextSizePct(tertiaryTextSizePct, selectedPanelName || null));
   const tertiaryTextColorSave = useAsyncSave((tertiaryTextColorId) => saveTertiaryTextColorId(tertiaryTextColorId, selectedPanelName || null));
   const glowColorSave = useAsyncSave((glowColorId) => saveGlowColorId(glowColorId, selectedPanelName || null));
+  const glowOpacitySave = useAsyncSave((glowOpacityPct) => saveGlowOpacityPct(glowOpacityPct, selectedPanelName || null));
+  const glowSizeSave = useAsyncSave((glowSizePct) => saveGlowSizePct(glowSizePct, selectedPanelName || null));
   const iconColorSave = useAsyncSave((iconColorId) => saveIconColorId(iconColorId, selectedPanelName || null));
   const iconOpacitySave = useAsyncSave((iconOpacityPct) => saveIconOpacityPct(iconOpacityPct, selectedPanelName || null));
   const iconSizeSave = useAsyncSave((iconSizePct) => saveIconSizePct(iconSizePct, selectedPanelName || null));
@@ -1277,6 +1311,18 @@ const ConfigPanel = ({
     return '';
   }, [config?.ui?.glowColorId]);
 
+  const glowOpacityFromConfig = useMemo(() => {
+    const raw = Number(config?.ui?.glowOpacityPct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(0, Math.min(100, Math.round(raw)));
+  }, [config?.ui?.glowOpacityPct]);
+
+  const glowSizeFromConfig = useMemo(() => {
+    const raw = Number(config?.ui?.glowSizePct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(50, Math.min(200, Math.round(raw)));
+  }, [config?.ui?.glowSizePct]);
+
   const iconColorFromConfig = useMemo(() => {
     const raw = String(config?.ui?.iconColorId ?? '').trim();
     if (!raw) return '';
@@ -1492,6 +1538,12 @@ const ConfigPanel = ({
   const [glowColorDraft, setGlowColorDraft] = useState(() => '');
   const [glowColorDirty, setGlowColorDirty] = useState(false);
   const [glowColorError, setGlowColorError] = useState(null);
+  const [glowOpacityDraft, setGlowOpacityDraft] = useState(() => 100);
+  const [glowOpacityDirty, setGlowOpacityDirty] = useState(false);
+  const [glowOpacityError, setGlowOpacityError] = useState(null);
+  const [glowSizeDraft, setGlowSizeDraft] = useState(() => 100);
+  const [glowSizeDirty, setGlowSizeDirty] = useState(false);
+  const [glowSizeError, setGlowSizeError] = useState(null);
 
   const [iconColorDraft, setIconColorDraft] = useState(() => '');
   const [iconColorDirty, setIconColorDirty] = useState(false);
@@ -1714,6 +1766,16 @@ const ConfigPanel = ({
     if (glowColorDirty) return;
     setGlowColorDraft(glowColorFromConfig);
   }, [glowColorDirty, glowColorFromConfig]);
+
+  useEffect(() => {
+    if (glowOpacityDirty) return;
+    setGlowOpacityDraft(glowOpacityFromConfig);
+  }, [glowOpacityDirty, glowOpacityFromConfig]);
+
+  useEffect(() => {
+    if (glowSizeDirty) return;
+    setGlowSizeDraft(glowSizeFromConfig);
+  }, [glowSizeDirty, glowSizeFromConfig]);
 
   useEffect(() => {
     if (iconColorDirty) return;
@@ -2209,6 +2271,42 @@ const ConfigPanel = ({
 
     return () => clearTimeout(t);
   }, [connected, glowColorDirty, glowColorDraft]);
+
+  // Autosave: Glow opacity.
+  useEffect(() => {
+    if (!connected) return;
+    if (!glowOpacityDirty) return;
+
+    const t = setTimeout(async () => {
+      setGlowOpacityError(null);
+      try {
+        await glowOpacitySave.run(glowOpacityDraft);
+        setGlowOpacityDirty(false);
+      } catch (err) {
+        setGlowOpacityError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, glowOpacityDirty, glowOpacityDraft]);
+
+  // Autosave: Glow size.
+  useEffect(() => {
+    if (!connected) return;
+    if (!glowSizeDirty) return;
+
+    const t = setTimeout(async () => {
+      setGlowSizeError(null);
+      try {
+        await glowSizeSave.run(glowSizeDraft);
+        setGlowSizeDirty(false);
+      } catch (err) {
+        setGlowSizeError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, glowSizeDirty, glowSizeDraft]);
 
   // Autosave: Icon color.
   useEffect(() => {
@@ -5576,7 +5674,7 @@ const ConfigPanel = ({
                     Glow
                   </div>
                   <div className="mt-1 text-xs text-white/45">
-                    Optional override for the animated accent glow.
+                    Motion-triggered accent glow on Home room cards.
                   </div>
                 </div>
 
@@ -5598,17 +5696,127 @@ const ConfigPanel = ({
                 </select>
               </div>
 
+              <div className="mt-4 pt-4 border-t border-white/10">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                      Opacity
+                    </div>
+                    <div className="mt-1 text-xs text-white/45">
+                      100% = default. 0% = invisible.
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={glowOpacityDraft}
+                      disabled={!connected || busy}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 100;
+                        setGlowOpacityError(null);
+                        setGlowOpacityDirty(true);
+                        setGlowOpacityDraft(next);
+                      }}
+                      className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    />
+                    <div className="text-xs text-white/45">%</div>
+                  </div>
+                </div>
+
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={glowOpacityDraft}
+                  disabled={!connected || busy}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 100;
+                    setGlowOpacityError(null);
+                    setGlowOpacityDirty(true);
+                    setGlowOpacityDraft(next);
+                  }}
+                  className="mt-3 w-full"
+                />
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-white/10">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                      Size
+                    </div>
+                    <div className="mt-1 text-xs text-white/45">
+                      100% = default. Higher = larger glow spread.
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={50}
+                      max={200}
+                      step={1}
+                      value={glowSizeDraft}
+                      disabled={!connected || busy}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        const next = Number.isFinite(n) ? Math.max(50, Math.min(200, Math.round(n))) : 100;
+                        setGlowSizeError(null);
+                        setGlowSizeDirty(true);
+                        setGlowSizeDraft(next);
+                      }}
+                      className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    />
+                    <div className="text-xs text-white/45">%</div>
+                  </div>
+                </div>
+
+                <input
+                  type="range"
+                  min={50}
+                  max={200}
+                  step={1}
+                  value={glowSizeDraft}
+                  disabled={!connected || busy}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    const next = Number.isFinite(n) ? Math.max(50, Math.min(200, Math.round(n))) : 100;
+                    setGlowSizeError(null);
+                    setGlowSizeDirty(true);
+                    setGlowSizeDraft(next);
+                  }}
+                  className="mt-3 w-full"
+                />
+              </div>
+
               <div className="mt-3 flex items-center justify-between gap-3">
                 <div className="text-xs text-white/45">
-                  {glowColorDirty ? 'Pending changes…' : 'Saved'}
+                  {(glowColorDirty || glowOpacityDirty || glowSizeDirty) ? 'Pending changes…' : 'Saved'}
                 </div>
                 <div className="text-xs text-white/45">
-                  {statusText(glowColorSave.status)}
+                  {[
+                    statusText(glowColorSave.status),
+                    statusText(glowOpacitySave.status),
+                    statusText(glowSizeSave.status),
+                  ].filter(Boolean).join(' · ')}
                 </div>
               </div>
 
               {glowColorError ? (
                 <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {glowColorError}</div>
+              ) : null}
+              {glowOpacityError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {glowOpacityError}</div>
+              ) : null}
+              {glowSizeError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {glowSizeError}</div>
               ) : null}
             </div>
 

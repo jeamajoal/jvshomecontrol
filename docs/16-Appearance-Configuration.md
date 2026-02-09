@@ -260,16 +260,29 @@ Each tier has its own opacity slider, size slider, and color dropdown. The color
 
 <!-- 📸 SCREENSHOT: Home page comparing default text colors vs. custom text colors (e.g. cyan primary, teal secondary) -->
 
-### Glow & Icons
+### Glow
+
+The animated glow appears around Home room cards when motion is detected. It pulses gently to draw your eye. All three settings work together:
 
 | Setting | Controls | Options |
 |---------|----------|---------|
-| **Glow color** | The animated accent glow on Home room cards (triggered by motion) | "Inherit (UI accent)" or any of the 30 colors |
+| **Glow color** | The color of the pulsing border glow | "Inherit (UI accent)" or any of the 30 colors |
+| **Glow opacity** | How intense/visible the glow effect is | 0–100% slider (100% = full intensity, 0% = invisible) |
+| **Glow size** | How far the glow spreads from the card edge | 50–200% slider (100% = default, 200% = dramatic halo) |
+
+Set opacity to 0% to effectively disable the glow entirely. Crank it to 100% and bump size to 150–200% for an eye-catching presence indicator.
+
+<!-- 📸 SCREENSHOT: Room card with an active motion glow in emerald green around the border -->
+
+<!-- 📸 SCREENSHOT: Glow section in Panel Options showing color dropdown, opacity slider at 80%, and size slider at 150% -->
+
+### Icons
+
+| Setting | Controls | Options |
+|---------|----------|---------|
 | **Icon color** | Metric icons in room cards (temperature, humidity, etc.) | "Default (scheme)" or any color |
 | **Icon opacity** | How bold the icons appear | 0–100% slider |
 | **Icon size** | Scale of metric icons | 50–200% slider |
-
-<!-- 📸 SCREENSHOT: Room card with an active motion glow in emerald green around the border -->
 
 <!-- 📸 SCREENSHOT: Room card showing custom icon colors (amber icons instead of default) -->
 
@@ -589,7 +602,7 @@ Switch to the new panel and work through:
 | **Card Transparency** | 0–200% slider |
 | **Blur** | 0–200% slider |
 | **Text** | Primary/Secondary/Tertiary opacity, size, and color |
-| **Glow & Icons** | Glow color, icon color/opacity/size |
+| **Glow & Icons** | Glow color/opacity/size, icon color/opacity/size |
 | **Card Spacing** | 50–200% slider |
 | **Home Top Row** | Show/hide, scale, card selection |
 | **Home Columns** | 1–6 columns for wide screens |
@@ -653,7 +666,8 @@ For easy reference, here are all the screenshots needed for this document:
 | 23 | §5 | Primary text settings — opacity, size, color |
 | 24 | §5 | Home page — default vs. custom text colors |
 | 25 | §5 | Room card — motion glow in custom color |
-| 26 | §5 | Room card — custom icon colors |
+| 26 | §5 | Glow section — color dropdown, opacity slider, size slider |
+| 27 | §5 | Room card — custom icon colors |
 | 27 | §5 | Card spacing comparison — 60% vs. 150% |
 | 28 | §5 | Home Top Row — all four summary cards |
 | 29 | §5 | Home page — top row hidden |
