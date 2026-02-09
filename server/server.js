@@ -293,6 +293,22 @@ function corsOriginAllowed(origin, callback) {
             return callback(null, true);
         }
 
+        // Allow requests from the server's own IP / hostname.
+        // When the built client is served by this Express instance, the browser
+        // sends the server's address as the Origin header on fetch/XHR calls.
+        if (host === require('os').hostname().toLowerCase()) {
+            return callback(null, true);
+        }
+        // Also match any local network IP assigned to this machine.
+        const nets = require('os').networkInterfaces();
+        for (const ifaces of Object.values(nets)) {
+            for (const iface of ifaces) {
+                if (iface.address && host === iface.address.toLowerCase()) {
+                    return callback(null, true);
+                }
+            }
+        }
+
         // Allow the configured Hubitat host
         if (hubitat.host) {
             try {
