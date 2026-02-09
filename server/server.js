@@ -7876,9 +7876,49 @@ app.put('/api/server-settings', (req, res) => {
 
 // --- Certificate Management API ---
 
+/**
+ * Pre-flight check: ensure the certificate directory exists and is writable
+ * by the current process.  Returns null on success, or a JSON-safe error
+ * object that the endpoint can return directly with a 500 status.
+ */
+function ensureCertDirWritable() {
+    const certDir = path.dirname(HTTPS_CERT_PATH);
+    const dataDir = path.dirname(certDir);
+    let user;
+    try { user = require('os').userInfo().username; } catch { user = 'jvshome'; }
+    const fixCmd = `sudo chown -R ${user}:${user} ${dataDir}`;
+
+    try {
+        fs.mkdirSync(certDir, { recursive: true, mode: 0o755 });
+    } catch (err) {
+        if (err.code === 'EACCES') {
+            return {
+                error: 'Permission denied — cannot create the certificate directory.',
+                details: `The server process (user "${user}") does not have write access. `
+                    + `Run on the server: ${fixCmd}`,
+            };
+        }
+        throw err;
+    }
+
+    try {
+        fs.accessSync(certDir, fs.constants.W_OK);
+    } catch {
+        return {
+            error: 'Permission denied — the certificate directory is not writable.',
+            details: `The server process (user "${user}") does not have write access. `
+                + `Run on the server: ${fixCmd}`,
+        };
+    }
+    return null;
+}
+
 // Generate a self-signed certificate.
 app.post('/api/server/generate-cert', (req, res) => {
     try {
+        const dirErr = ensureCertDirWritable();
+        if (dirErr) return res.status(500).json(dirErr);
+
         const selfsigned = require('selfsigned');
         const body = (req.body && typeof req.body === 'object') ? req.body : {};
         const rawHostname = String(body.hostname || '').trim();
@@ -7903,8 +7943,6 @@ app.post('/api/server/generate-cert', (req, res) => {
             extensions: [{ name: 'subjectAltName', altNames }],
         });
 
-        const certDir = path.dirname(HTTPS_CERT_PATH);
-        fs.mkdirSync(certDir, { recursive: true });
         fs.writeFileSync(HTTPS_KEY_PATH, pems.private, { encoding: 'utf8', mode: 0o600 });
         fs.writeFileSync(HTTPS_CERT_PATH, pems.cert, { encoding: 'utf8' });
 
@@ -7921,6 +7959,10 @@ app.post('/api/server/generate-cert', (req, res) => {
         });
     } catch (err) {
         console.error('Certificate generation failed:', err);
+        if (err.code === 'EACCES') {
+            const dirErr = ensureCertDirWritable();
+            return res.status(500).json(dirErr || { error: 'Permission denied writing certificate files.', details: String(err.message || err) });
+        }
         return res.status(500).json({ error: 'Certificate generation failed', details: String(err.message || err) });
     }
 });
@@ -7948,8 +7990,9 @@ app.post('/api/server/upload-cert', (req, res) => {
             return res.status(400).json({ error: 'Invalid private key PEM.', details: String(e.message || e) });
         }
 
-        const certDir = path.dirname(HTTPS_CERT_PATH);
-        fs.mkdirSync(certDir, { recursive: true });
+        const dirErr = ensureCertDirWritable();
+        if (dirErr) return res.status(500).json(dirErr);
+
         fs.writeFileSync(HTTPS_KEY_PATH, keyPem, { encoding: 'utf8', mode: 0o600 });
         fs.writeFileSync(HTTPS_CERT_PATH, certPem, { encoding: 'utf8' });
 
@@ -7966,6 +8009,10 @@ app.post('/api/server/upload-cert', (req, res) => {
         });
     } catch (err) {
         console.error('Certificate upload failed:', err);
+        if (err.code === 'EACCES') {
+            const dirWriteErr = ensureCertDirWritable();
+            return res.status(500).json(dirWriteErr || { error: 'Permission denied writing certificate files.', details: String(err.message || err) });
+        }
         return res.status(500).json({ error: 'Certificate upload failed', details: String(err.message || err) });
     }
 });
@@ -7985,6 +8032,10 @@ app.delete('/api/server/cert', (req, res) => {
         return res.json({ ok: true, message: deleted ? 'Certificates deleted. Restart the server to revert to HTTP.' : 'No certificates found.' });
     } catch (err) {
         console.error('Certificate deletion failed:', err);
+        if (err.code === 'EACCES') {
+            const dirWriteErr = ensureCertDirWritable();
+            return res.status(500).json(dirWriteErr || { error: 'Permission denied deleting certificate files.', details: String(err.message || err) });
+        }
         return res.status(500).json({ error: 'Certificate deletion failed', details: String(err.message || err) });
     }
 });

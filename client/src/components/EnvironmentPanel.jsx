@@ -810,13 +810,12 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
       : [];
     const selected = new Set(selectedKeys);
 
-    if (selected.has('temperature')) {
+    if (selected.has('temperature') && metrics.temperature !== null) {
       cards.push(
         <MetricCard
           key="temperature"
           title="Temperature"
-          value={metrics.temperature === null ? '—' : formatTemp(metrics.temperature)}
-          sub={metrics.temperature === null ? 'No reading' : null}
+          value={formatTemp(metrics.temperature)}
           icon={Thermometer}
           accentClassName="border-white/10"
           valueClassName={getColorizedValueClass('temperature', metrics.temperature, climateTolerances, climateToleranceColors, colorizeHomeValues)}
@@ -832,13 +831,12 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
       );
     }
 
-    if (selected.has('humidity')) {
+    if (selected.has('humidity') && metrics.humidity !== null) {
       cards.push(
         <MetricCard
           key="humidity"
           title="Humidity"
-          value={metrics.humidity === null ? '—' : formatPercent(metrics.humidity)}
-          sub={metrics.humidity === null ? 'No reading' : null}
+          value={formatPercent(metrics.humidity)}
           icon={Droplets}
           accentClassName="border-white/10"
           valueClassName={
@@ -858,13 +856,12 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
       );
     }
 
-    if (selected.has('illuminance')) {
+    if (selected.has('illuminance') && metrics.illuminance !== null) {
       cards.push(
         <MetricCard
           key="illuminance"
           title="Illuminance"
-          value={metrics.illuminance === null ? '—' : formatLux(metrics.illuminance)}
-          sub={metrics.illuminance === null ? 'No reading' : null}
+          value={formatLux(metrics.illuminance)}
           icon={Sun}
           accentClassName="border-white/10"
           valueClassName={
@@ -1010,7 +1007,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
         </div>
       </div>
 
-      {hasEnv ? (
+      {metricCards.length > 0 ? (
         <div className={`mt-4 grid ${metricGridClassName} gap-3`}>
           {metricCards}
         </div>

@@ -225,6 +225,14 @@ NODE
   log "Pre-merge backup: ${backup}"
 }
 
+ensure_data_ownership() {
+  local data_dir="${APP_DIR}/server/data"
+  if [[ -d "${data_dir}" ]]; then
+    log "Ensuring ${data_dir} is owned by ${APP_USER}:${APP_GROUP}…"
+    /usr/bin/chown -R "${APP_USER}:${APP_GROUP}" "${data_dir}" || true
+  fi
+}
+
 install_and_build() {
   log "Installing server dependencies…"
   sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}/server' && npm ci --omit=dev"
@@ -279,6 +287,7 @@ main() {
   install_prereqs
   ensure_user
   ensure_config_json
+  ensure_data_ownership
   install_and_build
   ensure_service
 
