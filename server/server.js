@@ -1645,10 +1645,16 @@ function normalizePersistedConfig(raw) {
         })();
 
         const pHomeBgRaw = (p.homeBackground && typeof p.homeBackground === 'object') ? p.homeBackground : null;
+        // Preset profiles are trusted code-level constants (e.g. Unsplash URLs);
+        // user-created profiles must go through sanitizeBackgroundUrl.
+        const isPreset = PRESET_PANEL_PROFILE_NAMES.has(name);
+        const pHomeBgUrl = isPreset
+            ? (pHomeBgRaw?.url ? String(pHomeBgRaw.url).trim() : null)
+            : sanitizeBackgroundUrl(pHomeBgRaw?.url);
         const pHomeBackground = pHomeBgRaw
             ? {
                 enabled: pHomeBgRaw.enabled === true,
-                url: sanitizeBackgroundUrl(pHomeBgRaw.url),
+                url: pHomeBgUrl,
                 opacityPct: clampInt(pHomeBgRaw.opacityPct, 0, 100, homeBackground.opacityPct),
             }
             : null;

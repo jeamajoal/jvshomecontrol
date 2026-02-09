@@ -1459,8 +1459,17 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
       ? Math.max(0, Math.min(100, Math.round(opacityRaw)))
       : 35;
 
-    // Client-side defense: only allow server-hosted background paths.
-    const url = (rawUrl && rawUrl.startsWith('/backgrounds/')) ? rawUrl : null;
+    // Client-side defense: allow server-hosted paths and https images (presets
+    // use Unsplash URLs).  Block dangerous schemes (javascript:, data:, file:).
+    const url = (() => {
+      if (!rawUrl) return null;
+      if (rawUrl.startsWith('/backgrounds/')) return rawUrl;
+      try {
+        const parsed = new URL(rawUrl);
+        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') return rawUrl;
+      } catch { /* invalid URL */ }
+      return null;
+    })();
 
     if (!enabled || !url) return { enabled: false, url: null, opacityPct };
     return { enabled: true, url, opacityPct };
