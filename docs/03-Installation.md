@@ -171,4 +171,12 @@ sudo systemctl start jvshomecontrol
 
 The server starts with a clean configuration. Open `http://your-server-ip` and configure from scratch.
 
-> **Note:** This does not remove custom backgrounds, sounds, or HTTPS certificates. To remove those as well, delete the entire `server/data/` directory contents and re-run the installer.
+To also remove HTTPS certificates and installer backups:
+
+```bash
+sudo rm -rf /opt/jvshomecontrol/server/data/certs /opt/jvshomecontrol/server/data/backups
+```
+
+> **Warning:** Do **not** delete the entire `server/data/` directory — it contains
+> repo-provided assets (backgrounds, control-icons, device-icons, sounds) that the
+> application requires. Only remove the specific files listed above.
