@@ -2591,14 +2591,33 @@ async function syncHubitatDataInner() {
 
             const hasAnyAllowlist = mainArr.length > 0 || ctrlArr.length > 0 || legacyArr.length > 0;
             if (!availabilityInitialized && !hasAnyAllowlist) {
-                const allIds = (Array.isArray(discoveredDevicesCatalog) ? discoveredDevicesCatalog : []).map((d) => String(d.id));
+                const catalog = Array.isArray(discoveredDevicesCatalog) ? discoveredDevicesCatalog : [];
+                const allIds = catalog.map((d) => String(d.id));
+
+                // Build default command allowlists: only on/off for devices
+                // that support those commands. Devices without on/off get an
+                // empty array (no commands enabled).
+                const DEFAULT_COMMANDS = ['on', 'off'];
+                const deviceCommandAllowlist = {};
+                for (const dev of catalog) {
+                    const cmds = Array.isArray(dev.commands) ? dev.commands : [];
+                    const allowed = cmds.filter((c) => DEFAULT_COMMANDS.includes(c));
+                    deviceCommandAllowlist[String(dev.id)] = allowed;
+                }
+
                 persistedConfig = normalizePersistedConfig({
                     ...persistedConfig,
                     ui: {
                         ...(ui || {}),
                         availabilityInitialized: true,
+                        visibilityInitialized: true,
                         mainAllowedDeviceIds: allIds,
                         ctrlAllowedDeviceIds: allIds,
+                        // New devices start hidden; user enables them in Settings.
+                        homeVisibleDeviceIds: [],
+                        ctrlVisibleDeviceIds: [],
+                        // Only on/off by default; other commands enabled in Settings.
+                        deviceCommandAllowlist,
                     },
                 });
                 persistConfigToDiskIfChanged('init-availability-all');
