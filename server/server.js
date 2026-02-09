@@ -2256,10 +2256,37 @@ function persistConfigToDiskIfChanged(label, { force = false } = {}) {
 
 loadPersistedConfig();
 
+// Build an authoritative serverSettings snapshot from the mutable runtime
+// variables.  Called by getClientSafeConfig() (the single exit-point for
+// client payloads) so the client always receives current settings even when
+// other code paths rebuild `config` without including serverSettings.
+function buildServerSettingsSnapshot() {
+    const openMeteo = settings?.weather?.openMeteo || {};
+    return {
+        pollIntervalMs: runtimePollIntervalMs,
+        eventsMax: runtimeEventsMax,
+        eventsPersistJsonl: runtimeEventsPersistJsonl,
+        backupMaxFiles: runtimeBackupMaxFiles,
+        temperatureUnit: openMeteo.temperatureUnit || 'fahrenheit',
+        windSpeedUnit: openMeteo.windSpeedUnit || 'mph',
+        precipitationUnit: openMeteo.precipitationUnit || 'inch',
+        // Hubitat connection state (token is NEVER sent — write-only from UI)
+        hubitatHost: hubitat.host || '',
+        hubitatAppId: hubitat.appId || '',
+        hubitatConfigured: hubitat.configured,
+        hubitatHasAccessToken: Boolean(hubitat.accessToken),
+        hubitatTlsInsecure: hubitat.tlsInsecure,
+        // Network & Security
+        port: runtimePort,
+        httpsActive: USE_HTTPS,
+        certInfo: getCertificateInfo(),
+        certExists: fs.existsSync(HTTPS_CERT_PATH) && fs.existsSync(HTTPS_KEY_PATH),
+    };
+}
+
 function rebuildRuntimeConfigFromPersisted() {
     // Ensure the UI has something meaningful immediately on startup even if
     // Hubitat polling is disabled or temporarily failing.
-    const openMeteo = settings?.weather?.openMeteo || {};
     config = {
         rooms: Array.isArray(persistedConfig?.rooms) ? persistedConfig.rooms : [],
         sensors: Array.isArray(persistedConfig?.sensors) ? persistedConfig.sensors : [],
@@ -2271,26 +2298,7 @@ function rebuildRuntimeConfigFromPersisted() {
             // Back-compat
             allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
         },
-        serverSettings: {
-            pollIntervalMs: runtimePollIntervalMs,
-            eventsMax: runtimeEventsMax,
-            eventsPersistJsonl: runtimeEventsPersistJsonl,
-            backupMaxFiles: runtimeBackupMaxFiles,
-            temperatureUnit: openMeteo.temperatureUnit || 'fahrenheit',
-            windSpeedUnit: openMeteo.windSpeedUnit || 'mph',
-            precipitationUnit: openMeteo.precipitationUnit || 'inch',
-            // Hubitat connection state (token is NEVER sent — write-only from UI)
-            hubitatHost: hubitat.host || '',
-            hubitatAppId: hubitat.appId || '',
-            hubitatConfigured: hubitat.configured,
-            hubitatHasAccessToken: Boolean(hubitat.accessToken),
-            hubitatTlsInsecure: hubitat.tlsInsecure,
-            // Network & Security
-            port: runtimePort,
-            httpsActive: USE_HTTPS,
-            certInfo: getCertificateInfo(),
-            certExists: fs.existsSync(HTTPS_CERT_PATH) && fs.existsSync(HTTPS_KEY_PATH),
-        },
+        serverSettings: buildServerSettingsSnapshot(),
     };
 }
 
@@ -3038,6 +3046,11 @@ function getClientSafeConfig() {
     return {
         ...config,
         sensors,
+        // Always build serverSettings from the authoritative runtime variables.
+        // Many code paths reassign `config` without including serverSettings
+        // (e.g. Hubitat polls, room updates) which would cause the Settings UI
+        // to see empty values.
+        serverSettings: buildServerSettingsSnapshot(),
         ui: {
             ...(config?.ui || {}),
             // Do not leak snapshot URLs or credentials to the browser.
