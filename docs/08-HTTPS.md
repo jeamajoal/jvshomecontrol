@@ -14,7 +14,7 @@ The server starts on HTTP by default. After installation, generate an HTTPS cert
 
 ## Generate a Certificate (Settings UI)
 
-1. Open `http://your-server-ip:3000` in a browser
+1. Open `http://your-server-ip` in a browser
 2. Go to **Settings → Server → Network & Security**
 3. Click **Generate Certificate** and enter your server's hostname or IP
 4. Restart the service:
@@ -23,7 +23,8 @@ The server starts on HTTP by default. After installation, generate an HTTPS cert
 sudo systemctl restart jvshomecontrol
 ```
 
-5. Access the dashboard at `https://your-server-ip:3000`
+5. For a clean HTTPS URL, change the **Port** to **443** in Settings → Server
+6. Restart the service and access at `https://your-server-ip`
 
 ---
 
@@ -51,7 +52,7 @@ sudo systemctl restart jvshomecontrol
 Self-signed certificates show browser warnings. To avoid them:
 
 ### Desktop Browsers
-1. Open `https://your-server:3000`
+1. Open `https://your-server`
 2. Click "Advanced" > "Proceed anyway"
 3. Some browsers let you install the cert permanently
 
@@ -71,7 +72,7 @@ Self-signed certificates show browser warnings. To avoid them:
 
 If your dashboard uses HTTPS, configure Maker API to post to:
 ```
-https://your-server:3000/api/events
+https://your-server/api/events
 ```
 
 **Note:** Hubitat may not trust self-signed certs. You may need to fall back to HTTP for the postURL.

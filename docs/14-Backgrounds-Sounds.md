@@ -107,10 +107,10 @@ The server provides endpoints to list available files:
 
 ```bash
 # List background images
-curl -sk https://localhost:3000/api/backgrounds
+curl -sk https://localhost/api/backgrounds
 
 # List sound files
-curl -sk https://localhost:3000/api/sounds
+curl -sk https://localhost/api/sounds
 ```
 
 The Settings page uses these endpoints to populate dropdown selectors.

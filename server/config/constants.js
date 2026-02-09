@@ -20,8 +20,8 @@ const CERT_DIR_DEFAULT = path.join(DATA_DIR, 'certs');
 // --- Server Configuration ---
 const PORT = (() => {
     const raw = process.env.PORT;
-    const parsed = raw ? Number(raw) : 3000;
-    return Number.isFinite(parsed) && parsed > 0 && parsed <= 65535 ? Math.floor(parsed) : 3000;
+    const parsed = raw ? Number(raw) : 80;
+    return Number.isFinite(parsed) && parsed > 0 && parsed <= 65535 ? Math.floor(parsed) : 80;
 })();
 
 const MAX_BACKUP_FILES = (() => {

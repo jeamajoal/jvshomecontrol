@@ -29,7 +29,7 @@ Your access token is sent with every request. Without encryption, anyone on your
 | `HUBITAT_ACCESS_TOKEN` | `abc123...` | Maker API token |
 | `HUBITAT_TLS_INSECURE` | `1` | Required for self-signed Hubitat certs |
 | `HUBITAT_POLL_INTERVAL_MS` | `60000` | Poll interval (default: 2000) |
-| `PORT` | `8443` | Server port (default: 3000) |
+| `PORT` | `8443` | Server port (default: 80) |
 
 ---
 
@@ -47,7 +47,7 @@ HUBITAT_TLS_INSECURE=1
 
 ## Token Security
 
-- Store in `/etc/jvshomecontrol.env`, not in config.json
+- Store in `/etc/jvshomecontrol.env` or enter via the Settings UI — env file is more secure (never written to config.json)
 - Never commit tokens to git
 - If you leak a token, rotate it in Hubitat immediately
 
@@ -83,12 +83,12 @@ GET <HOST>/apps/api/<APP_ID>/devices/<DEVICE_ID>/<COMMAND>/<VALUE>?access_token=
 
 Configure Maker API to post events to:
 ```
-https://your-server:3000/api/events
+https://your-server/api/events
 ```
 
 With token protection:
 ```
-https://your-server:3000/api/events?token=your-secret
+https://your-server/api/events?token=your-secret
 ```
 
 ---

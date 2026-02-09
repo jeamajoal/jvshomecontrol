@@ -10,13 +10,14 @@ This means the UI loaded successfully but didn't receive device data.
 
 **Step 1: Check Hubitat connection**
 ```bash
-curl -sk https://localhost:3000/api/hubitat/health
+curl -sk https://localhost/api/hubitat/health
 ```
 
 If `configured` is `false`, your credentials aren't set. See Step 2.
 
-**Step 2: Verify environment variables**
+**Step 2: Verify Settings or environment variables**
 ```bash
+# If using the env file:
 sudo cat /etc/jvshomecontrol.env | grep HUBITAT
 ```
 
@@ -54,8 +55,7 @@ sudo journalctl -u jvshomecontrol -f
 ```
 
 **Common causes:**
-- **Port already in use** — another service is on port 3000. Change with `PORT=8443` in the env file.
-- **Missing environment file** — ensure `/etc/jvshomecontrol.env` exists.
+- **Port already in use** — another service is on port 80. Change the port in Settings → Server, or set `PORT=8443` in the env file.
 - **Permission issues** — the `jvshome` user needs write access to `/opt/jvshomecontrol/server/data/`.
 - **Node.js not found** — run `node --version`. Needs v20 or later.
 
@@ -69,7 +69,7 @@ Self-signed certificates always trigger browser warnings. To suppress them:
 Click "Advanced" → "Proceed" (or "Accept the Risk"). Most browsers remember this.
 
 ### iOS
-1. Open `https://your-server:3000` in **Safari** (not Chrome)
+1. Open `https://your-server` in **Safari** (not Chrome)
 2. Accept the warning
 3. Go to **Settings → General → About → Certificate Trust Settings**
 4. Toggle trust for the certificate
@@ -97,7 +97,7 @@ ffmpeg -version
 
 **Check HLS health:**
 ```bash
-curl -sk https://localhost:3000/api/hls/health | python3 -m json.tool
+curl -sk https://localhost/api/hls/health | python3 -m json.tool
 ```
 
 **Test the RTSP URL directly:**
@@ -160,5 +160,5 @@ The server will recreate `config.json` from the example template on next start.
 ## Getting Help
 
 1. Check the logs: `sudo journalctl -u jvshomecontrol -f`
-2. Test the API: `curl -sk https://localhost:3000/api/hubitat/health`
+2. Test the API: `curl -sk https://localhost/api/hubitat/health`
 3. Open an issue on [GitHub](https://github.com/jeamajoal/JVSHomeControl/issues)

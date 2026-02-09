@@ -32,14 +32,14 @@ COPY --from=client-build /build/client/dist ./client/dist/
 # Default data directory — mount a volume here to persist config, backgrounds, certs
 RUN mkdir -p /app/server/data
 
-EXPOSE 3000
+EXPOSE 80
 
 ENV NODE_ENV=production
 
 # Health check so orchestrators (Docker Compose, Portainer, K8s) can monitor.
 # Uses PORT env var so the check follows any custom port setting.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD wget -qO- http://localhost:${PORT:-3000}/api/status || exit 1
+    CMD wget -qO- http://localhost:${PORT:-80}/api/status || exit 1
 
 # The server looks for data in server/data/ by default.
 # Hubitat configuration is passed via environment variables:

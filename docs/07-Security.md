@@ -30,7 +30,7 @@ Your Hubitat Maker API access token is sent with **every request** from the serv
 - That token grants full control of every device in Maker API
 - Smart locks, garage doors, and alarms could be compromised
 
-**Always use HTTPS**, even on your home network. The installer creates certificates automatically.
+**Always use HTTPS**, even on your home network. See [08-HTTPS.md](08-HTTPS.md) for setup.
 
 ---
 
@@ -38,8 +38,8 @@ Your Hubitat Maker API access token is sent with **every request** from the serv
 
 | Secret | Where to Store | Never Put In |
 |--------|---------------|-------------|
-| `HUBITAT_ACCESS_TOKEN` | `/etc/jvshomecontrol.env` | `config.json`, code, git |
-| `EVENTS_INGEST_TOKEN` | `/etc/jvshomecontrol.env` | URLs shared publicly |
+| `HUBITAT_ACCESS_TOKEN` | `/etc/jvshomecontrol.env` or Settings UI | `config.json` is fine but env file is more secure |
+| `EVENTS_INGEST_TOKEN` | `/etc/jvshomecontrol.env` or Settings UI | URLs shared publicly |
 | Camera credentials | RTSP URL in config | Plain text files |
 
 **File permissions:**
@@ -56,8 +56,10 @@ sudo chown root:root /etc/jvshomecontrol.env
 
 ```bash
 # Allow only your local network (using ufw)
-sudo ufw allow from 192.168.1.0/24 to any port 3000
-sudo ufw deny 3000
+sudo ufw allow from 192.168.1.0/24 to any port 80
+sudo ufw allow from 192.168.1.0/24 to any port 443
+sudo ufw deny 80
+sudo ufw deny 443
 ```
 
 ### Remote Access
@@ -91,10 +93,10 @@ EVENTS_INGEST_TOKEN=your-random-secret-here
 
 Then set your Maker API `postURL` to:
 ```
-https://your-server:3000/api/events?token=your-random-secret-here
+https://your-server/api/events?token=your-random-secret-here
 ```
 
-Without this, anyone who can reach port 3000 can inject fake events.
+Without this, anyone who can reach the server can inject fake events.
 
 ---
 

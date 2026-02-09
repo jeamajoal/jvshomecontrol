@@ -4,7 +4,7 @@ services:
     container_name: jvshomecontrol
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "80:80"
     volumes:
       # Persist config, backgrounds, certs, and sounds across container restarts
       - jvs-data:/app/server/data
@@ -18,7 +18,7 @@ services:
       # - HUBITAT_TLS_INSECURE=1          # Required for self-signed Hubitat certs
 
       # ── Optional ─────────────────────────────────────────────────────────
-      # - PORT=3000
+      # - PORT=80
       # - HTTP_ONLY=1                     # Disable HTTPS (default: auto-detect certs)
       # - HUBITAT_POLL_INTERVAL_MS=2000   # How often to poll Hubitat
       # - OPEN_METEO_LAT=

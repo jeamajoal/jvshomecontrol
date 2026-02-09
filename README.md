@@ -21,16 +21,10 @@ curl -fsSL https://raw.githubusercontent.com/jeamajoal/JVSHomeControl/main/scrip
 That's it. The script handles everything:
 - Installs Node.js, git, ffmpeg
 - Downloads and builds the app
-- Creates HTTPS certificates
 - Sets up a systemd service (auto-starts on boot)
 - Preserves your settings on updates
 
-**After install:** [Enable Maker API on your Hubitat](docs/04-Hubitat.md), then edit `/etc/jvshomecontrol.env` with your Maker API credentials and restart:
-```bash
-sudo systemctl restart jvshomecontrol
-```
-
-Open `https://your-server-ip:3000` in your browser (or your [custom port](docs/07-Security.md#changing-the-server-port) if configured).
+**After install:** Open `http://your-server-ip` in your browser and configure your Hubitat connection in **Settings → Server**. See [Installation Guide](docs/03-Installation.md) for details.
 
 ---
 
@@ -157,12 +151,7 @@ cd client && npm run dev
 ```
 
 ### Environment Variables
-See `/etc/jvshomecontrol.env` (Debian) or set before running:
-- `HUBITAT_HOST` - e.g., `https://192.168.1.50`
-- `HUBITAT_APP_ID` - from Maker API
-- `HUBITAT_ACCESS_TOKEN` - from Maker API
-
-Full list: [docs/03-Installation.md](docs/03-Installation.md)
+See [docs/03-Installation.md](docs/03-Installation.md) for the full list. Configure from the browser or set env vars for headless/automated deployments.
 
 </details>
 

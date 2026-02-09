@@ -57,7 +57,7 @@ By default, JVSHomeControl polls Hubitat every 2 seconds. For instant updates:
 
 1. In Hubitat Maker API settings, set **postURL** to:
    ```
-   https://your-server-ip:3000/api/events
+   https://your-server-ip/api/events
    ```
 
 2. Now device changes appear instantly on the dashboard
@@ -82,7 +82,7 @@ HUBITAT_POLL_INTERVAL_MS=60000  # Once per minute
 **Dashboard loads but no devices appear:**
 ```bash
 # Check Hubitat connection
-curl -sk https://localhost:3000/api/hubitat/health
+curl -sk https://localhost/api/hubitat/health
 ```
 
 **Connection refused or timeout:**

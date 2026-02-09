@@ -10,7 +10,7 @@ JVSHomeControl includes a web app manifest that lets you "install" the dashboard
 
 ### iOS (iPad / iPhone)
 
-1. Open `https://your-server:3000` in **Safari** (required — Chrome on iOS can't install PWAs)
+1. Open `https://your-server` in **Safari** (required — Chrome on iOS can't install PWAs)
 2. Tap the **Share** button (box with arrow)
 3. Scroll down and tap **Add to Home Screen**
 4. Name it (e.g., "Home Control") and tap **Add**
@@ -18,7 +18,7 @@ JVSHomeControl includes a web app manifest that lets you "install" the dashboard
 
 ### Android
 
-1. Open `https://your-server:3000` in **Chrome**
+1. Open `https://your-server` in **Chrome**
 2. Tap the three-dot menu → **Add to Home screen** (or **Install app**)
 3. Confirm the name and tap **Add**
 4. Open from the home screen — it launches as a standalone app
@@ -49,7 +49,7 @@ For a permanently mounted tablet, you want the dashboard to stay on screen 24/7 
 - Motion-based wake (front camera)
 - Remote admin panel
 
-Set the URL to `https://your-server:3000` and enable kiosk mode.
+Set the URL to `https://your-server` and enable kiosk mode.
 
 **Option 2: Android Kiosk Mode (Free)**
 
@@ -61,7 +61,7 @@ Set the URL to `https://your-server:3000` and enable kiosk mode.
 **Option 3: Chrome Kiosk Flag**
 
 ```
-chrome --kiosk --app=https://your-server:3000
+chrome --kiosk --app=https://your-server
 ```
 
 ### iOS Kiosk Options

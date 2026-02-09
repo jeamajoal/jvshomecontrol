@@ -299,8 +299,8 @@ HUBITAT_ACCESS_TOKEN=REPLACE_ME
 # Required if Hubitat uses a self-signed certificate (recommended setup)
 HUBITAT_TLS_INSECURE=1
 
-# Optional: Server port (default: 3000)
-# PORT=3000
+# Optional: Server port (default: 80)
+# PORT=80
 
 # Optional: Poll interval for Maker API full refresh (milliseconds)
 # Default is 2000. Example: poll once per minute:
@@ -384,7 +384,7 @@ main() {
   install_and_build
   ensure_service
 
-  log "Done! Open http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'your-server-ip'):3000 in a browser."
+  log "Done! Open http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'your-server-ip') in a browser."
   log "Configure Hubitat and HTTPS from Settings."
   log "View logs: journalctl -u jvshomecontrol -f"
   log ""

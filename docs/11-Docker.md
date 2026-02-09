@@ -12,13 +12,13 @@ The fastest way to get running. No cloning or building required.
 
 ```bash
 docker run -d --name jvshomecontrol \
-  -p 3000:3000 \
+  -p 80:80 \
   -v jvs-data:/app/server/data \
   --restart unless-stopped \
   jeamajoal/jvshomecontrol:latest
 ```
 
-Open `http://localhost:3000` — **all configuration happens in the browser**, including Hubitat connection credentials.
+Open `http://localhost` — **all configuration happens in the browser**, including Hubitat connection credentials.
 
 > **Prefer environment variables?** You can still pass `HUBITAT_HOST`, `HUBITAT_APP_ID`, `HUBITAT_ACCESS_TOKEN`, and `HUBITAT_TLS_INSECURE` as `-e` flags if you'd rather configure them outside the UI. Env vars take priority over UI settings and lock those fields in the Settings page.
 
@@ -33,7 +33,7 @@ services:
     container_name: jvshomecontrol
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "80:80"
     volumes:
       - jvs-data:/app/server/data
     # environment:                         # Optional — configure in browser instead
@@ -52,7 +52,7 @@ Then start:
 docker compose up -d
 ```
 
-Open `http://localhost:3000` and configure your Hubitat connection in **Settings → Server**.
+Open `http://localhost` and configure your Hubitat connection in **Settings → Server**.
 
 > **Prefer a `.env` file?** Create one next to `docker-compose.yml` with `HUBITAT_HOST`, `HUBITAT_APP_ID`, `HUBITAT_ACCESS_TOKEN` and uncomment the `environment` block above. Env vars take priority and lock those fields in the Settings UI. Never commit your `.env` file to source control.
 
@@ -81,7 +81,7 @@ docker push your-user/jvshomecontrol:latest
 
 ## First-Run Configuration
 
-Once the container starts, **all setup happens in the browser** at `http://<host>:3000`:
+Once the container starts, **all setup happens in the browser** at `http://<host>`:
 
 1. Open **Settings** (gear icon) → **Server** tab.
 2. Enter your **Hubitat Host**, **Maker API App ID**, and **Access Token**. Toggle **TLS Insecure** if your Hubitat uses a self-signed certificate.
@@ -128,7 +128,7 @@ Pass them via the `environment` key in `docker-compose.yml`, a `.env` file, or `
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | `3000` | Server listen port |
+| `PORT` | `80` | Server listen port |
 | `HTTP_ONLY` | `false` | Force HTTP (skip HTTPS) |
 | `HUBITAT_POLL_INTERVAL_MS` | `2000` | How often to poll Hubitat (ms) |
 | `EVENTS_INGEST_TOKEN` | — | Token to protect the events endpoint |
@@ -192,7 +192,7 @@ Or with `docker run`:
 
 ```bash
 docker run -d --name jvshomecontrol \
-  -p 3000:3000 \
+  -p 80:80 \
   -e HTTPS_SETUP_ASSUME_YES=1 \
   -e HTTPS_CERT_HOSTNAME=192.168.1.100 \
   -v jvs-data:/app/server/data \
@@ -301,9 +301,9 @@ Additional diagnostic endpoints:
 
 ```yaml
 ports:
-  - "8443:3000"    # Host port : Container port
+  - "8443:80"    # Host port : Container port
 environment:
-  - PORT=3000      # Keep internal port at 3000
+  - PORT=80      # Keep internal port at 80
 ```
 
 ---

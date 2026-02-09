@@ -1,11 +1,11 @@
 // Central API base URL.
-// - In production (served by the backend), this resolves to https://<host>:3000 or http://<host>:3000.
-// - In dev (vite on :5173), this points at the backend on :3000.
+// - In production (served by the backend), this resolves to the same origin (same host + port).
+// - In dev (vite on :5173), this points at the backend on :80 (or VITE_API_PORT).
 
 const stripTrailingSlash = (s) => String(s || '').replace(/\/+$/, '');
 
 const envHost = stripTrailingSlash(import.meta.env.VITE_API_HOST);
-const envPort = String(import.meta.env.VITE_API_PORT || '3000').trim();
+const envPort = String(import.meta.env.VITE_API_PORT || '80').trim();
 
 const origin = window.location.origin;
 

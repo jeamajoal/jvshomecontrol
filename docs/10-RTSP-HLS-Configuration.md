@@ -107,7 +107,7 @@ The server automatically monitors all active streams:
 
 Check health via API:
 ```bash
-curl -sk https://localhost:3000/api/hls/health | python3 -m json.tool
+curl -sk https://localhost/api/hls/health | python3 -m json.tool
 ```
 
 ### Advanced Health Settings
