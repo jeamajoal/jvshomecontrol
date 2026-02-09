@@ -235,16 +235,6 @@ install_and_build() {
 
 ensure_service() {
   # Always write the service file so installs can move directories safely.
-  # Back up any existing service file first.
-  if [[ -f "${SERVICE_FILE}" ]]; then
-    local stamp
-    stamp="$(/usr/bin/date -u +%Y%m%dT%H%M%SZ)"
-    local backup
-    backup="${SERVICE_FILE}.${stamp}.bak"
-    log "Backing up existing service file to: ${backup}"
-    /usr/bin/cp -a "${SERVICE_FILE}" "${backup}"
-  fi
-
   log "Writing systemd service: ${SERVICE_FILE}"
   cat >"${SERVICE_FILE}" <<EOF
 [Unit]
