@@ -71,6 +71,8 @@ Scroll down to the **Display Settings** section. These are baseline values that 
 
 Set these to sensible defaults for your main display. Individual panels can override any of them later.
 
+> **Pro tip:** Configure these Global Display Defaults *before* creating your first panel or changing any panel-level settings. Every new panel — whether created from a preset or copied from your master — inherits these values as its starting point. Get them right once here and you won't have to repeat yourself on every panel you create.
+
 <!-- 📸 SCREENSHOT: Global Display Settings section showing the sliders for card transparency, blur, and text settings -->
 
 ### Other Global Settings
