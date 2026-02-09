@@ -404,32 +404,63 @@ const RestartBanner = () => {
   const [busy, setBusy] = React.useState(false);
   const [msg, setMsg] = React.useState('');
   const pollRef = React.useRef(null);
+  const abortedRef = React.useRef(false);
 
   // Clean up polling on unmount
-  React.useEffect(() => () => clearInterval(pollRef.current), []);
+  React.useEffect(() => () => {
+    clearInterval(pollRef.current);
+    abortedRef.current = true;
+  }, []);
 
   const handleRestart = async () => {
     setBusy(true);
     setMsg('');
+    abortedRef.current = false;
     try {
       const res = await fetch(`${API_HOST}/api/server/restart`, { method: 'POST' });
       if (!res.ok) {
         const text = await res.text().catch(() => '');
         throw new Error(text || `Restart failed (${res.status})`);
       }
+      setMsg('Waiting for server to shut down\u2026');
+
+      // Phase 1: Wait for the server to actually go down (up to 10 s).
+      // The server delays exit by 500 ms so the response reaches us, but we
+      // need to confirm it really died before we start waiting for it to come back.
+      let sawDown = false;
+      const downStart = Date.now();
+      while (!sawDown && Date.now() - downStart < 10000) {
+        if (abortedRef.current) return;
+        await new Promise((r) => setTimeout(r, 500));
+        try {
+          const probe = await fetch(`${API_HOST}/api/config`, {
+            cache: 'no-store',
+            signal: AbortSignal.timeout(2000),
+          });
+          if (!probe.ok) sawDown = true;
+        } catch {
+          sawDown = true;
+        }
+      }
+
+      if (abortedRef.current) return;
       setMsg('Server is restarting\u2026');
 
-      // Poll until the server comes back, then reload the page.
+      // Phase 2: Poll until the server comes back, then reload the page.
       let attempts = 0;
       pollRef.current = setInterval(async () => {
+        if (abortedRef.current) { clearInterval(pollRef.current); return; }
         attempts++;
         try {
-          const probe = await fetch(`${API_HOST}/api/config`, { cache: 'no-store' });
+          const probe = await fetch(`${API_HOST}/api/config`, {
+            cache: 'no-store',
+            signal: AbortSignal.timeout(2000),
+          });
           if (probe.ok) {
             clearInterval(pollRef.current);
             pollRef.current = null;
             setMsg('Server is back \u2014 reloading\u2026');
-            setTimeout(() => window.location.reload(), 400);
+            setTimeout(() => window.location.reload(), 600);
           }
         } catch {
           // still down — keep polling

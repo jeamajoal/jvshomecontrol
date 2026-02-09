@@ -169,6 +169,33 @@ async function fetchSoundFiles() {
   return files.map((v) => String(v)).filter(Boolean);
 }
 
+async function fetchBackgroundFiles() {
+  const res = await fetch(`${API_HOST}/api/backgrounds`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Backgrounds fetch failed (${res.status})`);
+  }
+  const data = await res.json().catch(() => ({}));
+  const files = Array.isArray(data?.files) ? data.files : [];
+  return files.map((v) => String(v)).filter(Boolean);
+}
+
+async function saveHomeBackground(homeBackground, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/home-background`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      homeBackground,
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Background save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function fetchDeviceIconsIndex() {
   const res = await fetch(`${API_HOST}/api/device-icons`);
   if (!res.ok) {
@@ -837,6 +864,8 @@ const ConfigPanel = ({
 
   const [soundFiles, setSoundFiles] = useState([]);
   const [soundFilesError, setSoundFilesError] = useState(null);
+  const [backgroundFiles, setBackgroundFiles] = useState([]);
+  const [backgroundFilesError, setBackgroundFilesError] = useState(null);
   const [deviceIconsIndex, setDeviceIconsIndex] = useState(() => ({ rootUrl: '/device-icons', byType: {} }));
   const [deviceIconsError, setDeviceIconsError] = useState(null);
   const [controlIconsIndex, setControlIconsIndex] = useState(() => ({ rootUrl: '/control-icons', icons: [] }));
@@ -1000,6 +1029,7 @@ const ConfigPanel = ({
   const sensorColorsSave = useAsyncSave(saveSensorIndicatorColors);
   const climateTolSave = useAsyncSave(saveClimateTolerances);
   const climateColorsSave = useAsyncSave(saveClimateToleranceColors);
+  const homeBackgroundSave = useAsyncSave((bg) => saveHomeBackground(bg, selectedPanelName || null));
 
   // Global display defaults (always saved without panelName)
   const globalCardOpacitySave = useAsyncSave((cardOpacityScalePct) => saveCardOpacityScalePct(cardOpacityScalePct, null));
@@ -3033,6 +3063,23 @@ const ConfigPanel = ({
     let cancelled = false;
     const run = async () => {
       try {
+        setBackgroundFilesError(null);
+        const files = await fetchBackgroundFiles();
+        if (!cancelled) setBackgroundFiles(files);
+      } catch (e) {
+        if (!cancelled) setBackgroundFilesError(e?.message || String(e));
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
         setDeviceIconsError(null);
         const idx = await fetchDeviceIconsIndex();
         if (!cancelled) setDeviceIconsIndex(idx);
@@ -4763,6 +4810,134 @@ const ConfigPanel = ({
                       })}
                     </div>
                 </div>
+              </div>
+
+              <div className="utility-group p-4 lg:col-span-2">
+                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                  Background Image
+                </div>
+                <div className="mt-1 text-xs text-white/45">
+                  Set a background image for the Home view. Place images in <code className="text-white/55">server/data/backgrounds/</code>.
+                </div>
+
+                {homeBackgroundSave.error ? (
+                  <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {homeBackgroundSave.error}</div>
+                ) : null}
+
+                {backgroundFilesError ? (
+                  <div className="mt-2 text-[11px] text-amber-400/70">Could not load backgrounds: {backgroundFilesError}</div>
+                ) : null}
+
+                {(() => {
+                  const bgObj = config?.ui?.homeBackground;
+                  const bgEnabled = bgObj?.enabled === true;
+                  const bgUrl = bgObj?.url || '';
+                  const bgOpacity = Number.isFinite(Number(bgObj?.opacityPct)) ? Math.max(0, Math.min(100, Math.round(Number(bgObj?.opacityPct)))) : 35;
+                  // Extract filename from /backgrounds/filename for matching
+                  const bgFile = bgUrl.startsWith('/backgrounds/') ? decodeURIComponent(bgUrl.slice('/backgrounds/'.length)) : '';
+
+                  return (
+                    <div className="mt-3 space-y-3">
+                      {/* Current background preview */}
+                      {bgEnabled && bgUrl ? (
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="h-12 w-20 rounded-lg border border-white/10 bg-cover bg-center"
+                            style={{ backgroundImage: `url(${API_HOST}${bgUrl})` }}
+                          />
+                          <div className="min-w-0">
+                            <div className="text-xs text-white/70 truncate">{bgFile || bgUrl}</div>
+                            <div className="text-[10px] text-white/40">Opacity: {bgOpacity}%</div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={!connected || busy || homeBackgroundSave.status === 'saving'}
+                            onClick={async () => {
+                              try {
+                                await homeBackgroundSave.run({ enabled: false, url: null });
+                              } catch { /* handled */ }
+                            }}
+                            className="shrink-0 text-[10px] font-bold uppercase tracking-widest text-red-400/70 hover:text-red-300"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-white/35">No background image set.</div>
+                      )}
+
+                      {/* Opacity slider (only when a background is active) */}
+                      {bgEnabled && bgUrl ? (
+                        <div className="flex items-center gap-3">
+                          <span className="text-[10px] text-white/40 shrink-0">Opacity</span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={bgOpacity}
+                            disabled={!connected || busy || homeBackgroundSave.status === 'saving'}
+                            onChange={async (e) => {
+                              const next = Math.max(0, Math.min(100, Math.round(Number(e.target.value))));
+                              try {
+                                await homeBackgroundSave.run({ enabled: true, url: bgUrl, opacityPct: next });
+                              } catch { /* handled */ }
+                            }}
+                            className="flex-1"
+                          />
+                          <span className="text-xs text-white/50 w-8 text-right">{bgOpacity}%</span>
+                        </div>
+                      ) : null}
+
+                      {/* File grid */}
+                      {backgroundFiles.length > 0 ? (
+                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                          {backgroundFiles.map((file) => {
+                            const fileUrl = `/backgrounds/${encodeURIComponent(file)}`;
+                            const isActive = bgEnabled && bgFile === file;
+                            return (
+                              <button
+                                key={file}
+                                type="button"
+                                disabled={!connected || busy || homeBackgroundSave.status === 'saving'}
+                                onClick={async () => {
+                                  try {
+                                    if (isActive) {
+                                      await homeBackgroundSave.run({ enabled: false, url: null });
+                                    } else {
+                                      await homeBackgroundSave.run({ enabled: true, url: fileUrl, opacityPct: bgOpacity });
+                                    }
+                                  } catch { /* handled */ }
+                                }}
+                                className={`relative rounded-lg border overflow-hidden aspect-video bg-black/30 transition-colors ${
+                                  isActive ? 'border-emerald-400/60 ring-1 ring-emerald-400/30' : 'border-white/10 hover:border-white/25'
+                                }`}
+                              >
+                                <img
+                                  src={`${API_HOST}${fileUrl}`}
+                                  alt={file}
+                                  className="w-full h-full object-cover"
+                                  loading="lazy"
+                                />
+                                {isActive ? (
+                                  <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                                    <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-300">Active</span>
+                                  </div>
+                                ) : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : !backgroundFilesError ? (
+                        <div className="text-xs text-white/35">No background images found. Add images to <code className="text-white/55">server/data/backgrounds/</code>.</div>
+                      ) : null}
+
+                      <div className="text-xs text-white/45">
+                        {statusText(homeBackgroundSave.status)}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="utility-group p-4">
