@@ -15,6 +15,8 @@ This document covers the security measures you should take.
 | **Critical** | Store secrets in env file, not config | 🔧 Use `/etc/jvshomecontrol.env` |
 | **High** | Don't expose to the internet | 🔧 Firewall rules below |
 | **High** | Protect the events endpoint | 🔧 Set `EVENTS_INGEST_TOKEN` |
+| **Medium** | CORS restricted to localhost + Hubitat | ✅ Built-in |
+| **Medium** | Input sanitization on all user inputs | ✅ Built-in |
 | **Medium** | Restrict device access with allowlists | 🔧 See below |
 | **Medium** | Use VPN for remote access | 🔧 WireGuard or Tailscale |
 
@@ -107,6 +109,45 @@ ProtectSystem=strict      # Read-only filesystem (except data dir)
 ProtectHome=true          # No access to home directories
 ReadWritePaths=/opt/jvshomecontrol/server/data
 ```
+
+---
+
+## CORS Policy
+
+The server restricts cross-origin requests to a small allowlist:
+
+| Origin | Allowed | Reason |
+|--------|---------|--------|
+| *(same-origin)* | ✅ | Dashboard served by the same Express server |
+| `localhost` / `127.0.0.1` / `[::1]` | ✅ | Development (Vite on :5173) and local tools |
+| Configured Hubitat IP | ✅ | Hub-hosted iframes or dashboard links |
+| Everything else | ❌ | External websites cannot call the API |
+
+This applies to both the REST API and the Socket.IO WebSocket connection. Requests without an `Origin` header (same-origin, curl, Hubitat `postURL` webhooks) are always allowed.
+
+The Hubitat origin updates automatically when you change the Hubitat IP in Settings — no restart required.
+
+---
+
+## Input Sanitization
+
+All user-supplied inputs are validated server-side before storage or use:
+
+| Input | Validation |
+|-------|------------|
+| Panel name | Allowlist regex: letters, digits, space, `_`, `-` (max 48 chars) |
+| Hubitat App ID | Digits only — prevents path traversal in API URLs |
+| Hubitat Access Token | Alphanumeric + `-` `_` `.` only |
+| Snapshot / Embed URLs | `http://` or `https://` only, no embedded credentials |
+| RTSP URLs | `rtsp://` or `rtsps://` only |
+| Certificate hostname | Hostname-safe characters only (no shell metacharacters) |
+| Room names | Max 128 characters, no control characters |
+| Label text | Max 256 characters, no control characters |
+| Device override fields | Per-field allowlist regexes |
+
+Additionally, ffmpeg (used for RTSP → HLS camera streaming) is restricted to a protocol whitelist (`rtsp`, `rtp`, `udp`, `tcp`, `tls`, `crypto`, `file`) to prevent abuse of ffmpeg's powerful protocol handling.
+
+The sanitization utilities live in `server/utils/sanitize.js` and are re-exported from `server/utils/index.js`.
 
 ---
 
