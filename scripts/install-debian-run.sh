@@ -360,6 +360,10 @@ ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=${APP_DIR}/server/data
 
+# Allow binding to privileged ports (< 1024) such as 443 without running as root
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
 [Install]
 WantedBy=multi-user.target
 EOF

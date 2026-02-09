@@ -98,7 +98,7 @@ curl -sk https://localhost:3000/api/hubitat/health
 | `HUBITAT_APP_ID` | No | — | Maker API app ID number. Can also be set in Settings UI. |
 | `HUBITAT_ACCESS_TOKEN` | No | — | Maker API access token. Can also be set in Settings UI. |
 | `HUBITAT_TLS_INSECURE` | No | `false` | Set `1` for self-signed Hubitat HTTPS certs. Can also be set in Settings UI. |
-| `PORT` | No | `3000` | Server listen port |
+| `PORT` | No | `3000` | Server listen port (ports < 1024 like 443 require the installer's systemd service) |
 | `HUBITAT_POLL_INTERVAL_MS` | No | `2000` | How often to poll Hubitat (milliseconds) |
 | `EVENTS_INGEST_TOKEN` | No | — | Token to protect the events endpoint |
 | `EVENTS_MAX` | No | `500` | Max events kept in memory |
@@ -148,6 +148,31 @@ PORT=8443
 ```
 
 Then: `sudo systemctl restart jvshomecontrol`
+
+### Using Port 443 (Standard HTTPS)
+
+To run on port 443 so browsers don't need `:3000` in the URL:
+
+```bash
+# In /etc/jvshomecontrol.env:
+PORT=443
+```
+
+The installer's systemd service includes `AmbientCapabilities=CAP_NET_BIND_SERVICE`, which lets the non-root `jvshome` user bind to privileged ports (< 1024). If you wrote your own service file, add these lines to the `[Service]` section:
+
+```ini
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+```
+
+Then reload and restart:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart jvshomecontrol
+```
+
+> **Already installed?** If you installed before this update, re-run the installer to pick up the new service file, or manually add the two lines above to `/etc/systemd/system/jvshomecontrol.service`.
 
 ---
 
