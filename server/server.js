@@ -88,7 +88,8 @@ const {
 // to a sibling file like server/config.json.
 
 // --- Import utility functions ---
-const {\n    parseCommaList,
+const {
+    parseCommaList,
     stableStringify,
     clampInt,
     normalizeAccentColorId,
