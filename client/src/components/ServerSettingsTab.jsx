@@ -22,6 +22,7 @@ async function saveServerSettings(payload) {
 const NumericField = ({ label, value, min, max, step, unit, field }) => {
   const [draft, setDraft] = React.useState(String(value ?? ''));
   const focusRef = React.useRef(false);
+  const [error, setError] = React.useState(false);
 
   React.useEffect(() => {
     if (!focusRef.current) setDraft(String(value ?? ''));
@@ -47,60 +48,103 @@ const NumericField = ({ label, value, min, max, step, unit, field }) => {
             if (!Number.isFinite(num)) { setDraft(String(value ?? '')); return; }
             const clamped = Math.max(min, Math.min(max, Math.floor(num)));
             setDraft(String(clamped));
-            if (clamped !== value) saveServerSettings({ [field]: clamped }).catch(() => {});
+            if (clamped !== value) {
+              saveServerSettings({ [field]: clamped }).catch(() => {
+                setError(true);
+                setTimeout(() => setError(false), 3000);
+              });
+            }
           }}
           onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-          className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white/85"
+          className={`w-full rounded-xl border bg-black/20 px-3 py-2 text-sm font-semibold text-white/85 ${error ? 'border-red-500/60' : 'border-white/10'}`}
         />
         {unit ? <span className="text-[11px] text-white/40 shrink-0">{unit}</span> : null}
+        {error ? <span className="text-[10px] text-red-400/80 shrink-0">Save failed</span> : null}
       </div>
     </div>
   );
 };
 
-const SelectField = ({ label, value, options, field }) => (
-  <div>
-    <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
-      {label}
-    </label>
-    <select
-      value={value || ''}
-      onChange={(e) => {
-        const next = e.target.value;
-        if (next && next !== value) saveServerSettings({ [field]: next }).catch(() => {});
-      }}
-      className="mt-1 menu-select w-full rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 jvs-menu-select"
-    >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>{o.label}</option>
-      ))}
-    </select>
-  </div>
-);
-
-const ToggleField = ({ label, value, field, description }) => (
-  <div>
-    <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
-      {label}
-    </label>
-    <div className="mt-1 flex items-center gap-3">
-      <button
-        type="button"
-        onClick={() => saveServerSettings({ [field]: !value }).catch(() => {})}
-        className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none cursor-pointer ${value ? 'bg-emerald-500/70' : 'bg-white/15'}`}
-        role="switch"
-        aria-checked={!!value}
+const SelectField = ({ label, value, options, field }) => {
+  const [error, setError] = React.useState(false);
+  return (
+    <div>
+      <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
+        {label}
+      </label>
+      <select
+        value={value || ''}
+        onChange={(e) => {
+          const next = e.target.value;
+          if (next && next !== value) {
+            saveServerSettings({ [field]: next }).catch(() => {
+              setError(true);
+              setTimeout(() => setError(false), 3000);
+            });
+          }
+        }}
+        className={`mt-1 menu-select w-full rounded-xl border px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 jvs-menu-select ${error ? 'border-red-500/60' : 'border-white/10'}`}
       >
-        <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition duration-200 ease-in-out ${value ? 'translate-x-5' : 'translate-x-0'}`} />
-      </button>
-      {description ? <span className="text-[11px] text-white/45">{description}</span> : null}
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+      {error ? <div className="mt-1 text-[10px] text-red-400/80">Save failed</div> : null}
     </div>
-  </div>
-);
+  );
+};
+
+const ToggleField = ({ label, value, field, description }) => {
+  const [optimistic, setOptimistic] = React.useState(null); // null = follow prop
+  const [error, setError] = React.useState(false);
+  const timerRef = React.useRef(null);
+
+  // Sync optimistic back to null once the prop catches up
+  React.useEffect(() => {
+    if (optimistic !== null && !!value === !!optimistic) setOptimistic(null);
+  }, [value, optimistic]);
+
+  const displayed = optimistic !== null ? optimistic : value;
+
+  const handleClick = () => {
+    const next = !displayed;
+    setOptimistic(next);
+    setError(false);
+    clearTimeout(timerRef.current);
+    saveServerSettings({ [field]: next })
+      .catch(() => {
+        setOptimistic(null); // revert
+        setError(true);
+        timerRef.current = setTimeout(() => setError(false), 3000);
+      });
+  };
+
+  return (
+    <div>
+      <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
+        {label}
+      </label>
+      <div className="mt-1 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={handleClick}
+          className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none cursor-pointer ${displayed ? 'bg-emerald-500/70' : 'bg-white/15'} ${error ? 'ring-2 ring-red-500/60' : ''}`}
+          role="switch"
+          aria-checked={!!displayed}
+        >
+          <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition duration-200 ease-in-out ${displayed ? 'translate-x-5' : 'translate-x-0'}`} />
+        </button>
+        {error ? <span className="text-[10px] text-red-400/80">Save failed</span>
+          : description ? <span className="text-[11px] text-white/45">{description}</span> : null}
+      </div>
+    </div>
+  );
+};
 
 const TextField = ({ label, value, field, placeholder, type = 'text' }) => {
   const [draft, setDraft] = React.useState(value || '');
   const focusRef = React.useRef(false);
+  const [error, setError] = React.useState(false);
 
   React.useEffect(() => {
     if (!focusRef.current) setDraft(value || '');
@@ -120,11 +164,17 @@ const TextField = ({ label, value, field, placeholder, type = 'text' }) => {
         onBlur={() => {
           focusRef.current = false;
           const trimmed = draft.trim();
-          if (trimmed !== (value || '')) saveServerSettings({ [field]: trimmed }).catch(() => {});
+          if (trimmed !== (value || '')) {
+            saveServerSettings({ [field]: trimmed }).catch(() => {
+              setError(true);
+              setTimeout(() => setError(false), 3000);
+            });
+          }
         }}
         onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-        className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white/85 placeholder-white/25"
+        className={`mt-1 w-full rounded-xl border bg-black/20 px-3 py-2 text-sm font-semibold text-white/85 placeholder-white/25 ${error ? 'border-red-500/60' : 'border-white/10'}`}
       />
+      {error ? <div className="mt-1 text-[10px] text-red-400/80">Save failed</div> : null}
     </div>
   );
 };
@@ -132,6 +182,7 @@ const TextField = ({ label, value, field, placeholder, type = 'text' }) => {
 const PasswordField = ({ label, field, hasValue }) => {
   const [draft, setDraft] = React.useState('');
   const [editing, setEditing] = React.useState(false);
+  const [error, setError] = React.useState(false);
   return (
     <div>
       <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
@@ -145,12 +196,13 @@ const PasswordField = ({ label, field, hasValue }) => {
             </span>
             <button
               type="button"
-              onClick={() => { setDraft(''); setEditing(true); }}
+              onClick={() => { setDraft(''); setEditing(true); setError(false); }}
               className="text-[10px] font-bold uppercase tracking-widest text-sky-400/70 hover:text-sky-300/90"
             >
               {hasValue ? 'Change' : 'Set'}
             </button>
           </div>
+          {error ? <div className="mt-1 text-[10px] text-red-400/80">Save failed</div> : null}
         </div>
       ) : (
         <div className="mt-1 flex items-center gap-2">
@@ -166,7 +218,12 @@ const PasswordField = ({ label, field, hasValue }) => {
             }}
             onBlur={() => {
               const trimmed = draft.trim();
-              if (trimmed) saveServerSettings({ [field]: trimmed }).catch(() => {});
+              if (trimmed) {
+                saveServerSettings({ [field]: trimmed }).catch(() => {
+                  setError(true);
+                  setTimeout(() => setError(false), 3000);
+                });
+              }
               setEditing(false);
               setDraft('');
             }}
@@ -341,6 +398,49 @@ const CertificateSection = ({ ss: s }) => {
   );
 };
 
+/* ─── Restart Banner ───────────────────────────────────────────────────── */
+
+const RestartBanner = () => {
+  const [busy, setBusy] = React.useState(false);
+  const [msg, setMsg] = React.useState('');
+
+  const handleRestart = async () => {
+    setBusy(true);
+    setMsg('');
+    try {
+      const res = await fetch(`${API_HOST}/api/server/restart`, { method: 'POST' });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || `Restart failed (${res.status})`);
+      }
+      setMsg('Server is restarting\u2026 the page will reconnect automatically.');
+    } catch (err) {
+      setMsg(`Restart failed: ${err.message || err}`);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-6 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+      <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-400/70 mb-2">Restart Required</div>
+      <div className="text-xs text-white/50">
+        Some changes (port, HTTPS certificates) only take effect after a server restart.
+      </div>
+      <div className="mt-3 flex items-center gap-3">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={handleRestart}
+          className={`rounded-xl border border-amber-500/30 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.15em] transition-colors ${busy ? 'opacity-50 cursor-wait text-amber-400/50' : 'text-amber-400/80 hover:bg-amber-500/10 hover:text-amber-300'}`}
+        >
+          {busy ? 'Restarting\u2026' : 'Restart Server'}
+        </button>
+        {msg && <span className="text-[11px] text-white/50">{msg}</span>}
+      </div>
+    </div>
+  );
+};
+
 /* ─── Main Server Settings Tab ─────────────────────────────────────────── */
 
 const ServerSettingsTab = ({ config }) => {
@@ -508,6 +608,8 @@ const ServerSettingsTab = ({ config }) => {
           />
         </div>
       </div>
+      {/* Restart */}
+      <RestartBanner />
     </div>
   );
 };

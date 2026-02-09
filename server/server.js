@@ -8077,6 +8077,14 @@ server.listen(runtimePort, '0.0.0.0', () => {
     hlsService.startHlsHealthMonitoring();
 });
 
+// Restart the server (systemd or similar process manager will restart it).
+app.post('/api/server/restart', (_req, res) => {
+    console.log('Restart requested via Settings UI');
+    res.json({ ok: true, message: 'Server is restarting…' });
+    // Flush the response, then exit after a brief delay so the HTTP response reaches the client.
+    setTimeout(() => gracefulShutdown('API-RESTART'), 500);
+});
+
 // Graceful shutdown handling
 function gracefulShutdown(signal) {
     console.log(`\nReceived ${signal}, shutting down gracefully...`);
