@@ -111,7 +111,6 @@ const {
 
 // --- Mutable runtime server settings ---
 // These shadow the imported constants and can be updated at runtime via the Settings UI.
-// Env vars still override config.json values at startup.
 let runtimePollIntervalMs = HUBITAT_POLL_INTERVAL_MS;
 let runtimeEventsMax = MAX_INGESTED_EVENTS;
 let runtimeEventsPersistJsonl = EVENTS_PERSIST_JSONL;
@@ -120,7 +119,7 @@ let runtimePort = PORT;
 let hubitatPollIntervalId = null;
 
 // --- Mutable Hubitat connection state ---
-// Seeded from the imported constants (which read env vars at startup).
+// Seeded from the imported constants.
 // Updated at runtime via /api/server-settings and persisted to config.json.
 const { normalizeHubitatHost } = require('./config/hubitat');
 const hubitat = {
@@ -184,7 +183,7 @@ const HAS_BUILT_CLIENT = fs.existsSync(CLIENT_INDEX_HTML);
 
 // --- HTTPS (optional) ---
 // Defaults: server/data/certs/localhost.key + server/data/certs/localhost.crt
-// All HTTPS settings come from config.json; no env var overrides.
+// All HTTPS settings come from config.json.
 const HTTPS_KEY_PATH = path.join(CERT_DIR_DEFAULT, 'localhost.key');
 const HTTPS_CERT_PATH = path.join(CERT_DIR_DEFAULT, 'localhost.crt');
 
@@ -258,7 +257,7 @@ function hubitatFetch(url, options) {
 }
 
 // Open-Meteo (free) weather
-// Config priority: env vars > server/data/config.json > defaults
+// Config: server/data/config.json > defaults
 // DMS example: 35°29'44.9"N 86°04'53.8"W
 let settings = {
     weather: {
@@ -1797,7 +1796,7 @@ function normalizePersistedConfig(raw) {
             eventsMax: safeInt(raw.eventsMax, 50, 10000),
             eventsPersistJsonl: typeof raw.eventsPersistJsonl === 'boolean' ? raw.eventsPersistJsonl : null,
             backupMaxFiles: safeInt(raw.backupMaxFiles, 10, 1000),
-            // Hubitat connection (persisted so the UI can configure without env vars)
+            // Hubitat connection
             hubitatHost: safeStr(raw.hubitatHost),
             hubitatAppId: sanitizeNumericId(raw.hubitatAppId) || safeStr(raw.hubitatAppId),
             hubitatAccessToken: sanitizeToken(raw.hubitatAccessToken) || safeStr(raw.hubitatAccessToken),
@@ -2166,7 +2165,7 @@ function loadPersistedConfig() {
 }
 
 // Apply persisted serverSettings to the mutable runtime variables.
-// config.json is the single source of truth — no env var overrides.
+// config.json is the single source of truth.
 function applyServerSettings() {
     const ss = persistedConfig?.serverSettings || {};
 
@@ -2860,7 +2859,7 @@ async function syncHubitatData() {
 
 async function fetchHubitatAllDevices() {
     if (!hubitat.configured) {
-        throw new Error('Hubitat not configured. Set Hubitat Host, App ID, and Access Token in Settings (or via environment variables).');
+        throw new Error('Hubitat not configured. Set Hubitat Host, App ID, and Access Token in Settings.');
     }
     let res;
     const apiUrl = hubitatApiUrl();
@@ -2907,7 +2906,7 @@ if (hubitat.configured) {
     restartHubitatPollInterval();
     syncHubitatData();
 } else {
-    lastHubitatError = 'Hubitat not configured. Set Hubitat Host, App ID, and Access Token in Settings (or via environment variables).';
+    lastHubitatError = 'Hubitat not configured. Set Hubitat Host, App ID, and Access Token in Settings.';
     console.warn(lastHubitatError);
 }
 
@@ -7501,7 +7500,6 @@ app.get('/api/weather/open-meteo-config', (req, res) => {
 });
 
 // Update Open-Meteo location in server/data/config.json.
-// Note: OPEN_METEO_* env vars still override these values.
 app.put('/api/weather/open-meteo-config', (req, res) => {
     const raw = req.body && typeof req.body === 'object' ? req.body : {};
     const incoming = raw.openMeteo && typeof raw.openMeteo === 'object' ? raw.openMeteo : raw;
