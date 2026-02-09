@@ -1,6 +1,6 @@
 # Appearance Configuration
 
-Welcome to the fun part. You've installed the server, wired up Hubitat, and your devices are flowing in — now it's time to make this dashboard **yours**. Every colour, every card size, every pixel of transparency is configurable. This guide walks you through the entire process from a blank slate to a fully polished multi-panel setup.
+Welcome to the fun part. You've installed the server, wired up Hubitat, and your devices are flowing in — now it's time to make this dashboard **yours**. Every color, every card size, every pixel of transparency is configurable. This guide walks you through the entire process from a blank slate to a fully polished multi-panel setup.
 
 > **Tip:** Open Settings by tapping the gear icon in the bottom navigation bar, or by navigating to the Settings page.
 
@@ -8,10 +8,10 @@ Welcome to the fun part. You've installed the server, wired up Hubitat, and your
 
 ## Table of Contents
 
-1. [The Strategy: Start Big, Then Specialise](#1-the-strategy-start-big-then-specialise)
+1. [The Strategy: Start Big, Then Specialize](#1-the-strategy-start-big-then-specialize)
 2. [Step 1 — Trim the Device List (Global Options)](#2-step-1--trim-the-device-list-global-options)
 3. [Step 2 — Create Your First Panel](#3-step-2--create-your-first-panel)
-4. [Step 3 — Configure Device Visibility & Behaviour (Device Options)](#4-step-3--configure-device-visibility--behaviour-device-options)
+4. [Step 3 — Configure Device Visibility & Behavior (Device Options)](#4-step-3--configure-device-visibility--behavior-device-options)
 5. [Step 4 — Style Your Panel (Panel Options)](#5-step-4--style-your-panel-panel-options)
 6. [Step 5 — Set Up Climate Tolerances](#6-step-5--set-up-climate-tolerances)
 7. [Step 6 — Build Your Climate Floor Plan](#7-step-6--build-your-climate-floor-plan)
@@ -20,7 +20,7 @@ Welcome to the fun part. You've installed the server, wired up Hubitat, and your
 
 ---
 
-## 1. The Strategy: Start Big, Then Specialise
+## 1. The Strategy: Start Big, Then Specialize
 
 Before diving into individual settings, understand the workflow:
 
@@ -94,7 +94,7 @@ Navigate to any panel-profile-aware tab (**Device Options**, **Panel Options**, 
 
 ### Browse the Presets
 
-JVS ships with **22 built-in preset themes**, each with a curated background image, accent colour, icon style, and text colour:
+JVS ships with **22 built-in preset themes**, each with a curated background image, accent color, icon style, and text color:
 
 | Category | Presets |
 |----------|---------|
@@ -121,7 +121,7 @@ Select each preset from the dropdown to preview its look on the Home page. Prese
 2. Type a name in the **New Panel Name** field (e.g. "Living Room", "Master Control", "Kitchen Tablet").
 3. Click **Create**. Your new panel is seeded with all the settings from the selected preset.
 
-Now you have a fully editable copy. All your customisations on the Device Options, Panel Options, and Climate tabs will apply to this panel.
+Now you have a fully editable copy. All your customizations on the Device Options, Panel Options, and Climate tabs will apply to this panel.
 
 <!-- 📸 SCREENSHOT: Panel creation form with "Master Control" typed in the name field and the Create button highlighted -->
 
@@ -129,7 +129,7 @@ Now you have a fully editable copy. All your customisations on the Device Option
 
 ---
 
-## 4. Step 3 — Configure Device Visibility & Behaviour (Device Options)
+## 4. Step 3 — Configure Device Visibility & Behavior (Device Options)
 
 Switch to the **Device Options** tab. Make sure your new panel is selected in the profile dropdown.
 
@@ -191,7 +191,7 @@ For your master panel, you'll typically leave all commands enabled. For a wall-m
 
 ### Control Icons
 
-The **Control Icons** section shows available interactive SVG icons for this device. These are the visual controls users tap on the Controls page — toggles, sliders, colour wheels, media transports, etc.
+The **Control Icons** section shows available interactive SVG icons for this device. These are the visual controls users tap on the Controls page — toggles, sliders, color wheels, media transports, etc.
 
 Icons are matched to devices by their required commands. If a device supports `on`/`off`, the light toggle icon appears. If it supports `setLevel`, the brightness slider appears. Multiple icons can be stacked on a single device.
 
@@ -205,13 +205,13 @@ Icons are matched to devices by their required commands. If a device supports `o
 
 Switch to **Panel Options**. This is where the visual magic happens. Every setting here is per-panel, so each tablet or display can have its own distinct look.
 
-### UI Accent Colour
+### UI Accent Color
 
-The accent colour drives the overall personality of your panel — it tints active states, glows, buttons, and highlights across the entire UI.
+The accent color drives the overall personality of your panel — it tints active states, glows, buttons, and highlights across the entire UI.
 
-Choose from **30 colour options** including neons (blue, green, red), warm tones (amber, orange, rose), cool tones (sky, cyan, teal, indigo), and neutrals (slate, zinc, stone).
+Choose from **30 color options** including neons (blue, green, red), warm tones (amber, orange, rose), cool tones (sky, cyan, teal, indigo), and neutrals (slate, zinc, stone).
 
-<!-- 📸 SCREENSHOT: UI Accent colour picker grid showing all 30 colour swatches with "Neon Blue" selected -->
+<!-- 📸 SCREENSHOT: UI Accent color picker grid showing all 30 color swatches with "Neon Blue" selected -->
 
 ### Background Image
 
@@ -242,34 +242,34 @@ These two sliders work together to create the "frosted glass" effect:
 
 <!-- 📸 SCREENSHOT: Side-by-side comparison — left: high transparency + high blur (elegant glass); right: low transparency + no blur (solid dark cards) -->
 
-### Text Customisation
+### Text Customization
 
 Fine-tune three tiers of text independently:
 
 | Tier | Where It Appears | Controls |
 |------|-----------------|----------|
-| **Primary** | Room titles, big metric values | Opacity (0–100%), Size (50–200%), Colour |
-| **Secondary** | Subtle labels, subtitles, timestamps | Opacity (0–100%), Size (50–200%), Colour |
-| **Tertiary** | Info card values | Opacity (0–100%), Size (50–200%), Colour |
+| **Primary** | Room titles, big metric values | Opacity (0–100%), Size (50–200%), Color |
+| **Secondary** | Subtle labels, subtitles, timestamps | Opacity (0–100%), Size (50–200%), Color |
+| **Tertiary** | Info card values | Opacity (0–100%), Size (50–200%), Color |
 
-Each tier has its own opacity slider, size slider, and colour dropdown. The colour dropdown offers all 30 colour choices plus "Default" (inherits from the theme).
+Each tier has its own opacity slider, size slider, and color dropdown. The color dropdown offers all 30 color choices plus "Default" (inherits from the theme).
 
-<!-- 📸 SCREENSHOT: Primary text settings showing opacity at 100%, size at 100%, and colour set to "White" -->
+<!-- 📸 SCREENSHOT: Primary text settings showing opacity at 100%, size at 100%, and color set to "White" -->
 
-<!-- 📸 SCREENSHOT: Home page comparing default text colours vs. custom text colours (e.g. cyan primary, teal secondary) -->
+<!-- 📸 SCREENSHOT: Home page comparing default text colors vs. custom text colors (e.g. cyan primary, teal secondary) -->
 
 ### Glow & Icons
 
 | Setting | Controls | Options |
 |---------|----------|---------|
-| **Glow colour** | The animated accent glow on Home room cards (triggered by motion) | "Inherit (UI accent)" or any of the 30 colours |
-| **Icon colour** | Metric icons in room cards (temperature, humidity, etc.) | "Default (scheme)" or any colour |
+| **Glow color** | The animated accent glow on Home room cards (triggered by motion) | "Inherit (UI accent)" or any of the 30 colors |
+| **Icon color** | Metric icons in room cards (temperature, humidity, etc.) | "Default (scheme)" or any color |
 | **Icon opacity** | How bold the icons appear | 0–100% slider |
 | **Icon size** | Scale of metric icons | 50–200% slider |
 
 <!-- 📸 SCREENSHOT: Room card with an active motion glow in emerald green around the border -->
 
-<!-- 📸 SCREENSHOT: Room card showing custom icon colours (amber icons instead of default) -->
+<!-- 📸 SCREENSHOT: Room card showing custom icon colors (amber icons instead of default) -->
 
 ### Card Spacing
 
@@ -379,11 +379,11 @@ Use this when you want a clean, temperature-only dashboard (uncheck humidity and
 
 <!-- 📸 SCREENSHOT: Home page with camera preview tiles embedded among room cards -->
 
-#### Sensor Badge Colours
+#### Sensor Badge Colors
 
-Customise the indicator colours for different sensor types on Home room cards:
+Customize the indicator colors for different sensor types on Home room cards:
 
-| Sensor | Default Colour | Purpose |
+| Sensor | Default Color | Purpose |
 |--------|---------------|---------|
 | Motion | Amber | Active motion glow/badge |
 | Door | Neon Red | Open door indicator |
@@ -392,7 +392,7 @@ Customise the indicator colours for different sensor types on Home room cards:
 | Water/Leak | Neon Blue | Water leak detected |
 | Presence | Neon Green | Person present |
 
-<!-- 📸 SCREENSHOT: Sensor Badge Colours dropdown selections showing custom colours for motion (cyan) and door (amber) -->
+<!-- 📸 SCREENSHOT: Sensor Badge Colors dropdown selections showing custom colors for motion (cyan) and door (amber) -->
 
 #### Visible Rooms (Per-Panel)
 
@@ -404,16 +404,16 @@ Override which rooms appear on this specific panel. If none are selected, all ro
 
 ## 6. Step 5 — Set Up Climate Tolerances
 
-Switch to the **Climate** tab. These settings are **global** — they apply to the Climate heatmap and optionally colourize the Home page too.
+Switch to the **Climate** tab. These settings are **global** — they apply to the Climate heatmap and optionally colorize the Home page too.
 
 ### Colorize Home Values
 
-Before configuring tolerances, decide whether you want the colour coding to bleed into the Home page:
+Before configuring tolerances, decide whether you want the color coding to bleed into the Home page:
 
 | Setting | Description |
 |---------|-------------|
-| **Colorize Home values** | When enabled, the big metric numbers on Home room cards glow with your tolerance colours (blue for cold, green for comfy, red for hot, etc.) |
-| **Color opacity** | Intensity of the colourisation (0–100%). Lower = more subtle. |
+| **Colorize Home values** | When enabled, the big metric numbers on Home room cards glow with your tolerance colors (blue for cold, green for comfy, red for hot, etc.) |
+| **Color opacity** | Intensity of the colorization (0–100%). Lower = more subtle. |
 
 <!-- 📸 SCREENSHOT: Home page with Colorize Home Values ON — temperature numbers glowing blue (cold), green (comfy), and red (hot) -->
 
@@ -428,16 +428,16 @@ Cold → Comfy → Warm → Hot
   68°F    72°F    74°F
 ```
 
-| Zone | Default Threshold | Default Colour | Meaning |
+| Zone | Default Threshold | Default Color | Meaning |
 |------|------------------|----------------|---------|
 | Cold | Below 68°F | 🔵 Neon Blue | Uncomfortably cold |
 | Comfy | 68–72°F | 🟢 Neon Green | Just right |
 | Warm | 72–74°F | 🟡 Amber | Getting warm |
 | Hot | Above 74°F | 🔴 Neon Red | Too hot |
 
-Adjust these to match your climate and comfort preferences. Each zone's colour is independently configurable.
+Adjust these to match your climate and comfort preferences. Each zone's color is independently configurable.
 
-<!-- 📸 SCREENSHOT: Temperature tolerance configuration showing threshold inputs and colour dropdowns -->
+<!-- 📸 SCREENSHOT: Temperature tolerance configuration showing threshold inputs and color dropdowns -->
 
 ### Humidity Tolerances
 
@@ -446,7 +446,7 @@ Dry → Comfy → Humid → Very Humid
  35%    55%     65%
 ```
 
-| Zone | Default Threshold | Default Colour |
+| Zone | Default Threshold | Default Color |
 |------|------------------|----------------|
 | Dry | Below 35% | 🔵 Neon Blue |
 | Comfy | 35–55% | 🟢 Neon Green |
@@ -462,7 +462,7 @@ Dark → Dim → Bright → Very Bright
  50 lux  250 lux  600 lux
 ```
 
-| Zone | Default Threshold | Default Colour |
+| Zone | Default Threshold | Default Color |
 |------|------------------|----------------|
 | Dark | Below 50 lux | 🔵 Neon Blue |
 | Dim | 50–250 lux | 🟢 Neon Green |
@@ -475,18 +475,18 @@ Dark → Dim → Bright → Very Bright
 
 ## 7. Step 6 — Build Your Climate Floor Plan
 
-The **Climate** page is a colour-coded heatmap of your home. Rooms colourize based on the temperature (and humidity/lux) tolerances you just configured.
+The **Climate** page is a color-coded heatmap of your home. Rooms colorize based on the temperature (and humidity/lux) tolerances you just configured.
 
 ### How It Works
 
-1. Every room that has a temperature sensor colourizes automatically.
-2. The colour transitions smoothly between zones (e.g. a room at 71°F shows between green and amber).
+1. Every room that has a temperature sensor colorizes automatically.
+2. The color transitions smoothly between zones (e.g. a room at 71°F shows between green and amber).
 3. Open a window in winter? Watch that room shift from green to blue in real-time.
 4. A fireplace roaring? See the warm glow spread through adjacent rooms.
 
 ### Adding Rooms
 
-If Hubitat doesn't provide a room for every space you want to visualise:
+If Hubitat doesn't provide a room for every space you want to visualize:
 
 1. Go to **Settings → Global Options → Rooms & Labels**.
 2. Type a room name and click **Add**.
@@ -502,7 +502,7 @@ On the Climate page itself, use **Edit mode** (pencil icon) to:
 
 The goal is a rough floor plan that lets you see temperature flow at a glance — it doesn't need to be architecturally precise.
 
-<!-- 📸 SCREENSHOT: Climate page showing a floor plan layout with colourized rooms — some blue (cold), some green (comfy), one red (hot near fireplace) -->
+<!-- 📸 SCREENSHOT: Climate page showing a floor plan layout with colorized rooms — some blue (cold), some green (comfy), one red (hot near fireplace) -->
 
 <!-- 📸 SCREENSHOT: Climate page in Edit mode with rooms being dragged and resized -->
 
@@ -512,7 +512,7 @@ The goal is a rough floor plan that lets you see temperature flow at a glance �
 
 ## 8. Step 7 — Create Room-Specific Panels
 
-Now that your master panel is fully configured, it's time to create specialised panels for individual rooms, tablets, or use cases.
+Now that your master panel is fully configured, it's time to create specialized panels for individual rooms, tablets, or use cases.
 
 ### The Copy Strategy
 
@@ -521,7 +521,7 @@ Now that your master panel is fully configured, it's time to create specialised 
 3. Type a new name (e.g. "Kitchen Tablet") in the **New Panel Name** field.
 4. Click **Create**.
 
-The new panel is an exact copy of your master — all device visibility, commands, colours, and layout settings are duplicated. Now you only need to **subtract**:
+The new panel is an exact copy of your master — all device visibility, commands, colors, and layout settings are duplicated. Now you only need to **subtract**:
 
 <!-- 📸 SCREENSHOT: Creating a "Kitchen Tablet" panel by copying from "Master Control" -->
 
@@ -533,16 +533,16 @@ Switch to the new panel and work through:
 
 2. **Panel Options** — Adjust the look for the room's display:
    - Fewer **Home columns** (maybe 1–2 for a small tablet).
-   - Different **accent colour** to visually distinguish panels.
+   - Different **accent color** to visually distinguish panels.
    - Smaller **card spacing** if the screen is small.
-   - Customise the **Home Top Row** — maybe hide the weather card to save space.
+   - Customize the **Home Top Row** — maybe hide the weather card to save space.
    - Set a different **background image** to match the room's vibe.
 
 3. **Visible Rooms** (in Panel Options → Cameras & Sensors) — Show only the rooms relevant to this space.
 
 <!-- 📸 SCREENSHOT: Device Options for "Kitchen Tablet" panel with only kitchen-relevant devices checked -->
 
-<!-- 📸 SCREENSHOT: Panel Options for "Kitchen Tablet" with 2 columns, compact spacing, and a warm accent colour -->
+<!-- 📸 SCREENSHOT: Panel Options for "Kitchen Tablet" with 2 columns, compact spacing, and a warm accent color -->
 
 ### Panel Profile Ideas
 
@@ -552,7 +552,7 @@ Switch to the new panel and work through:
 | **Living Room** | Wall-mounted tablet by the couch | Living room devices only, 1–2 columns, large cards |
 | **Kitchen** | Counter-top tablet | Kitchen devices + dining room, compact spacing, warm accent |
 | **Bedroom** | Nightstand tablet | Bedroom devices, low opacity (dark mode), minimal metrics |
-| **Security** | Dedicated monitoring display | Only locks, doors, motion sensors; bold alert colours |
+| **Security** | Dedicated monitoring display | Only locks, doors, motion sensors; bold alert colors |
 | **Guest** | Simplified guest access | Limited devices, no locks, friendly display names |
 
 <!-- 📸 SCREENSHOT: Two tablets side by side showing different panels — "Living Room" (warm, spacious, 2 columns) vs. "Kitchen" (compact, cool tones, 1 column) -->
@@ -582,12 +582,12 @@ Switch to the new panel and work through:
 
 | Section | Key Settings |
 |---------|-------------|
-| **UI Accent** | Accent colour (30 choices) |
+| **UI Accent** | Accent color (30 choices) |
 | **Background Image** | Image file selection, opacity slider |
 | **Card Transparency** | 0–200% slider |
 | **Blur** | 0–200% slider |
-| **Text** | Primary/Secondary/Tertiary opacity, size, and colour |
-| **Glow & Icons** | Glow colour, icon colour/opacity/size |
+| **Text** | Primary/Secondary/Tertiary opacity, size, and color |
+| **Glow & Icons** | Glow color, icon color/opacity/size |
 | **Card Spacing** | 50–200% slider |
 | **Home Top Row** | Show/hide, scale, card selection |
 | **Home Columns** | 1–6 columns for wide screens |
@@ -595,7 +595,7 @@ Switch to the new panel and work through:
 | **Sub-card Columns** | Auto / 1 / 2 / 3 metric columns per room card |
 | **Room Metric Cards** | Panel-wide Temperature/Humidity/Illuminance toggles |
 | **Camera Previews** | Home/Controls preview toggles, refresh interval |
-| **Sensor Badge Colours** | Motion/Door/Smoke/CO/Water/Presence colours |
+| **Sensor Badge Colors** | Motion/Door/Smoke/CO/Water/Presence colors |
 | **Visible Rooms** | Per-panel room visibility override |
 
 ### Climate (global)
@@ -603,9 +603,9 @@ Switch to the new panel and work through:
 | Section | Key Settings |
 |---------|-------------|
 | **Colorize Home Values** | Enable/disable + opacity |
-| **Temperature** | Cold/Comfy/Warm thresholds + zone colours |
-| **Humidity** | Dry/Comfy/Humid thresholds + zone colours |
-| **Illuminance** | Dark/Dim/Bright thresholds + zone colours |
+| **Temperature** | Cold/Comfy/Warm thresholds + zone colors |
+| **Humidity** | Dry/Comfy/Humid thresholds + zone colors |
+| **Illuminance** | Dark/Dim/Bright thresholds + zone colors |
 
 ### Server (global)
 
@@ -643,15 +643,15 @@ For easy reference, here are all the screenshots needed for this document:
 | 15 | §4 | Info Cards checkboxes |
 | 16 | §4 | Commands allowlist checkboxes |
 | 17 | §4 | Control Icons assignment for a dimmer device |
-| 18 | §5 | UI Accent colour picker grid |
+| 18 | §5 | UI Accent color picker grid |
 | 19 | §5 | Background Image selector — thumbnail grid with active badge |
 | 20 | §5 | Home page — background at 35% opacity |
 | 21 | §5 | Home page — background at 75% opacity |
 | 22 | §5 | Card transparency/blur comparison — glass vs. solid |
-| 23 | §5 | Primary text settings — opacity, size, colour |
-| 24 | §5 | Home page — default vs. custom text colours |
-| 25 | §5 | Room card — motion glow in custom colour |
-| 26 | §5 | Room card — custom icon colours |
+| 23 | §5 | Primary text settings — opacity, size, color |
+| 24 | §5 | Home page — default vs. custom text colors |
+| 25 | §5 | Room card — motion glow in custom color |
+| 26 | §5 | Room card — custom icon colors |
 | 27 | §5 | Card spacing comparison — 60% vs. 150% |
 | 28 | §5 | Home Top Row — all four summary cards |
 | 29 | §5 | Home page — top row hidden |
@@ -663,14 +663,14 @@ For easy reference, here are all the screenshots needed for this document:
 | 35 | §5 | Room Metric Cards toggles |
 | 36 | §5 | Home page — temperature only (humidity/lux hidden) |
 | 37 | §5 | Camera preview tiles on Home page |
-| 38 | §5 | Sensor Badge Colours dropdown selections |
+| 38 | §5 | Sensor Badge Colors dropdown selections |
 | 39 | §5 | Visible Rooms per-panel checkboxes |
 | 40 | §6 | Home page — Colorize Home Values ON |
 | 41 | §6 | Home page — Colorize Home Values OFF |
 | 42 | §6 | Temperature tolerance configuration |
 | 43 | §6 | Humidity tolerance configuration |
 | 44 | §6 | Illuminance tolerance configuration |
-| 45 | §7 | Climate floor plan — colourized rooms |
+| 45 | §7 | Climate floor plan — colorized rooms |
 | 46 | §7 | Climate page — Edit mode with dragging/resizing |
 | 47 | §7 | Climate page — freeform text labels |
 | 48 | §8 | Creating "Kitchen Tablet" panel from "Master Control" |
