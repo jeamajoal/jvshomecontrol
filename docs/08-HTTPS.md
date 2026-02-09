@@ -1,13 +1,39 @@
 # HTTPS Setup
 
-The installer creates HTTPS certificates automatically. This doc covers manual setup and troubleshooting.
+The server starts on HTTP by default. After installation, generate an HTTPS certificate from the Settings UI or the command line.
 
 ---
 
 ## How It Works
 
-- If certificates exist in `server/data/certs/`, the server uses HTTPS
+- If certificates exist in `server/data/certs/`, the server uses HTTPS automatically
 - If no certificates exist, it falls back to HTTP
+- Set `HTTP_ONLY=1` to force HTTP even when certificates are present
+
+---
+
+## Generate a Certificate (Settings UI)
+
+1. Open `http://your-server-ip:3000` in a browser
+2. Go to **Settings → Server → Network & Security**
+3. Click **Generate Certificate** and enter your server's hostname or IP
+4. Restart the service:
+
+```bash
+sudo systemctl restart jvshomecontrol
+```
+
+5. Access the dashboard at `https://your-server-ip:3000`
+
+---
+
+## Generate a Certificate (Command Line)
+
+```bash
+cd /opt/jvshomecontrol/server
+sudo -u jvshome HTTPS=1 HTTPS_SETUP_ASSUME_YES=1 HTTPS_CERT_HOSTNAME=your-hostname node scripts/https-setup.js
+sudo systemctl restart jvshomecontrol
+```
 
 ---
 
@@ -17,23 +43,6 @@ The installer creates HTTPS certificates automatically. This doc covers manual s
 |------|------|
 | Certificate | `/opt/jvshomecontrol/server/data/certs/localhost.crt` |
 | Private Key | `/opt/jvshomecontrol/server/data/certs/localhost.key` |
-
----
-
-## Create/Recreate Certificates
-
-Run the installer again - it will prompt you:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/jeamajoal/JVSHomeControl/main/scripts/install-debian.sh | sudo bash
-```
-
-Or manually:
-
-```bash
-cd /opt/jvshomecontrol/server
-sudo -u jvshome node scripts/https-setup.js
-```
 
 ---
 
@@ -71,7 +80,7 @@ https://your-server:3000/api/events
 
 ## Hubitat HTTPS
 
-If your Hubitat uses HTTPS with a self-signed cert:
+If your Hubitat uses HTTPS with a self-signed cert, enable **Allow self-signed certs** in **Settings → Server**, or set via environment:
 
 ```bash
 # In /etc/jvshomecontrol.env:
@@ -93,6 +102,8 @@ HTTPS_KEY_PATH=/path/to/cert.key
 ---
 
 ## Force HTTP Only
+
+Disable HTTPS in **Settings → Server**, or via environment:
 
 ```bash
 # In /etc/jvshomecontrol.env:

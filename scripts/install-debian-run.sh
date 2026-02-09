@@ -348,7 +348,7 @@ Type=simple
 User=${APP_USER}
 Group=${APP_GROUP}
 WorkingDirectory=${APP_DIR}/server
-EnvironmentFile=${ENV_FILE}
+EnvironmentFile=-${ENV_FILE}
 ExecStart=/usr/bin/node ${APP_DIR}/server/server.js
 Restart=on-failure
 RestartSec=5
@@ -382,14 +382,13 @@ main() {
   ensure_user
   ensure_config_json
   install_and_build
-  ensure_https_setup
-  ensure_env_file
   ensure_service
 
-  log "Done."
-  log "Edit secrets/settings: ${ENV_FILE}"
+  log "Done! Open http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'your-server-ip'):3000 in a browser."
+  log "Configure Hubitat and HTTPS from Settings."
   log "View logs: journalctl -u jvshomecontrol -f"
-  log "Health: curl -s http://localhost:3000/api/hubitat/health | cat"
+  log ""
+  log "Advanced: create ${ENV_FILE} to set env-var overrides (optional)."
 }
 
 main "$@"

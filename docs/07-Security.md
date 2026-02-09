@@ -10,9 +10,9 @@ This document covers the security measures you should take.
 
 | Priority | Action | Status |
 |----------|--------|--------|
-| **Critical** | Use HTTPS for the dashboard | ✅ Auto-configured by installer |
+| **Critical** | Use HTTPS for the dashboard | 🔧 See [08-HTTPS.md](08-HTTPS.md) |
 | **Critical** | Use HTTPS for Hubitat Maker API | 🔧 See [04-Hubitat.md](04-Hubitat.md) |
-| **Critical** | Store secrets in env file, not config | 🔧 Use `/etc/jvshomecontrol.env` |
+| **Critical** | Store secrets in env file, not config | 🔧 See [03-Installation.md](03-Installation.md#environment-variables-advanced) |
 | **High** | Don't expose to the internet | 🔧 Firewall rules below |
 | **High** | Protect the events endpoint | 🔧 Set `EVENTS_INGEST_TOKEN` |
 | **Medium** | CORS restricted to localhost + Hubitat | ✅ Built-in |

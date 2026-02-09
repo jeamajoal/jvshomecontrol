@@ -14,48 +14,43 @@ curl -fsSL https://raw.githubusercontent.com/jeamajoal/JVSHomeControl/main/scrip
 2. Creates a `jvshome` system user
 3. Clones the repo to `/opt/jvshomecontrol`
 4. Builds the React UI
-5. Generates self-signed HTTPS certificates (interactive prompt)
-6. Creates a systemd service that auto-starts on boot
-7. Preserves your config and certs on future updates
+5. Creates a systemd service that auto-starts on boot
+6. Preserves your config and certs on future updates
+
+The server starts on **HTTP port 3000** with no credentials required. All configuration happens from the browser.
 
 ---
 
 ## After Installation
 
-### 1. Add your Hubitat credentials
+### 1. Open the dashboard
 
-**Option A — Configure in the browser (easiest):**
+Navigate to `http://your-server-ip:3000` in any browser.
 
-Open `https://your-server-ip:3000`, go to **Settings → Server**, and enter your Hubitat Host, Maker API App ID, and Access Token. The dashboard connects immediately.
+The dashboard loads immediately. Without Hubitat configured, you'll see the UI with no devices — that's expected.
 
-**Option B — Use the environment file:**
+### 2. Connect your Hubitat
 
-```bash
-sudo nano /etc/jvshomecontrol.env
-```
+Go to **Settings → Server** and enter:
 
-Set these values (find them in Hubitat → Apps → Maker API):
+- **Hubitat Host** — your hub's IP (e.g., `https://192.168.1.50`)
+- **Maker API App ID** — the numeric ID from Hubitat → Apps → Maker API
+- **Access Token** — your Maker API access token
+- **Allow self-signed certs** — enable this if your Hubitat uses HTTPS (most do)
 
-```bash
-HUBITAT_HOST=https://192.168.1.50
-HUBITAT_APP_ID=30
-HUBITAT_ACCESS_TOKEN=your-token-here
-HUBITAT_TLS_INSECURE=1
-```
+Click **Save**. The dashboard connects and populates immediately — no restart needed.
 
-Then restart the service:
+### 3. Enable HTTPS (recommended)
+
+Go to **Settings → Server → Network & Security** and click **Generate Certificate**. Enter your server's hostname or IP, then restart the service:
 
 ```bash
 sudo systemctl restart jvshomecontrol
 ```
 
-> **Why HTTPS?** Your Maker API access token is sent with every poll request. Even on a local network, use HTTPS to protect it. Set `HUBITAT_TLS_INSECURE=1` because Hubitat uses a self-signed certificate. Env vars take priority over UI settings and lock those fields in the Settings page.
+After restart, access the dashboard at `https://your-server-ip:3000`. Your browser will warn about the self-signed certificate — accept it once. See [08-HTTPS.md](08-HTTPS.md) for details on trusting the cert on tablets and phones.
 
-### 2. Open the dashboard
-
-Navigate to `https://your-server-ip:3000` in any browser.
-
-Your browser will warn about the self-signed certificate — accept it once. On tablets, you can install the certificate permanently (see [08-HTTPS.md](08-HTTPS.md)).
+> **Why HTTPS?** Your Maker API access token is sent with every poll request. Even on a local network, HTTPS prevents anyone on your WiFi from capturing it.
 
 ---
 
@@ -85,50 +80,60 @@ sudo systemctl status jvshomecontrol
 sudo journalctl -u jvshomecontrol -f
 
 # Test the API
-curl -sk https://localhost:3000/api/hubitat/health
+curl -s http://localhost:3000/api/status
 ```
 
 ---
 
-## All Environment Variables
+## Environment Variables (Advanced)
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `HUBITAT_HOST` | No | — | Hubitat URL (e.g., `https://192.168.1.50`). Can also be set in Settings UI. |
-| `HUBITAT_APP_ID` | No | — | Maker API app ID number. Can also be set in Settings UI. |
-| `HUBITAT_ACCESS_TOKEN` | No | — | Maker API access token. Can also be set in Settings UI. |
-| `HUBITAT_TLS_INSECURE` | No | `false` | Set `1` for self-signed Hubitat HTTPS certs. Can also be set in Settings UI. |
-| `PORT` | No | `3000` | Server listen port (ports < 1024 like 443 require the installer's systemd service) |
-| `HUBITAT_POLL_INTERVAL_MS` | No | `2000` | How often to poll Hubitat (milliseconds) |
-| `EVENTS_INGEST_TOKEN` | No | — | Token to protect the events endpoint |
-| `EVENTS_MAX` | No | `500` | Max events kept in memory |
-| `EVENTS_PERSIST_JSONL` | No | `false` | Persist events to disk |
-| `BACKUP_MAX_FILES` | No | `200` | Config backup retention |
-| `HTTP_ONLY` | No | `false` | Force HTTP (skip HTTPS) |
-| `HTTPS` | No | — | Set `1` to force HTTPS even without auto-detected certs |
-| `HTTPS_CERT_PATH` | No | Auto | Custom TLS certificate path |
-| `HTTPS_KEY_PATH` | No | Auto | Custom TLS private key path |
-| `HTTPS_CERT_HOSTNAME` | No | `hostname` | Hostname/IP to embed in generated self-signed cert |
-| `HTTPS_SETUP_ASSUME_YES` | No | `false` | Auto-create self-signed cert without prompting (useful in Docker/CI) |
-| `OPEN_METEO_LAT` | No | Auto | Weather latitude (decimal or DMS) |
-| `OPEN_METEO_LON` | No | Auto | Weather longitude (decimal or DMS) |
-| `OPEN_METEO_TIMEZONE` | No | `auto` | Weather timezone (e.g., `America/New_York`) |
-| `OPEN_METEO_TEMPERATURE_UNIT` | No | `fahrenheit` | `fahrenheit` or `celsius` |
-| `OPEN_METEO_WIND_SPEED_UNIT` | No | `mph` | `mph`, `kmh`, `ms`, or `kn` |
-| `OPEN_METEO_PRECIPITATION_UNIT` | No | `inch` | `inch` or `mm` |
-| `FFMPEG_PATH` | No | Auto | Custom path to ffmpeg binary |
-| `UI_ALLOWED_DEVICE_IDS` | No | — | Comma-separated device IDs for global allowlist |
-| `UI_ALLOWED_MAIN_DEVICE_IDS` | No | — | Comma-separated device IDs for Home page |
-| `UI_ALLOWED_CTRL_DEVICE_IDS` | No | — | Comma-separated device IDs for Controls page |
-| `UI_ALLOWED_MAIN_DEVICE_IDS_LOCKED` | No | `false` | Prevent UI from changing Home allowlist |
-| `UI_ALLOWED_CTRL_DEVICE_IDS_LOCKED` | No | `false` | Prevent UI from changing Controls allowlist |
-| `UI_EXTRA_ALLOWED_PANEL_DEVICE_COMMANDS` | No | — | Extra commands allowed on control panels |
+Most settings are configured from the Settings UI. Environment variables are optional overrides for advanced use cases (Docker, CI, locked deployments). When set, env vars take priority and lock the corresponding Settings UI fields.
+
+Create the file only if you need overrides:
+
+```bash
+sudo nano /etc/jvshomecontrol.env
+sudo chmod 600 /etc/jvshomecontrol.env
+sudo systemctl restart jvshomecontrol
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HUBITAT_HOST` | — | Hubitat URL (e.g., `https://192.168.1.50`) |
+| `HUBITAT_APP_ID` | — | Maker API app ID number |
+| `HUBITAT_ACCESS_TOKEN` | — | Maker API access token |
+| `HUBITAT_TLS_INSECURE` | `false` | Set `1` for self-signed Hubitat HTTPS certs |
+| `PORT` | `3000` | Server listen port (ports < 1024 like 443 require the installer's systemd service) |
+| `HUBITAT_POLL_INTERVAL_MS` | `2000` | How often to poll Hubitat (milliseconds) |
+| `EVENTS_INGEST_TOKEN` | — | Token to protect the events endpoint |
+| `EVENTS_MAX` | `500` | Max events kept in memory |
+| `EVENTS_PERSIST_JSONL` | `false` | Persist events to disk |
+| `BACKUP_MAX_FILES` | `200` | Config backup retention |
+| `HTTP_ONLY` | `false` | Force HTTP (skip HTTPS) |
+| `HTTPS` | — | Set `1` to force HTTPS even without auto-detected certs |
+| `HTTPS_CERT_PATH` | Auto | Custom TLS certificate path |
+| `HTTPS_KEY_PATH` | Auto | Custom TLS private key path |
+| `HTTPS_CERT_HOSTNAME` | `hostname` | Hostname/IP to embed in generated self-signed cert |
+| `HTTPS_SETUP_ASSUME_YES` | `false` | Auto-create self-signed cert without prompting (useful in Docker/CI) |
+| `OPEN_METEO_LAT` | Auto | Weather latitude (decimal or DMS) |
+| `OPEN_METEO_LON` | Auto | Weather longitude (decimal or DMS) |
+| `OPEN_METEO_TIMEZONE` | `auto` | Weather timezone (e.g., `America/New_York`) |
+| `OPEN_METEO_TEMPERATURE_UNIT` | `fahrenheit` | `fahrenheit` or `celsius` |
+| `OPEN_METEO_WIND_SPEED_UNIT` | `mph` | `mph`, `kmh`, `ms`, or `kn` |
+| `OPEN_METEO_PRECIPITATION_UNIT` | `inch` | `inch` or `mm` |
+| `FFMPEG_PATH` | Auto | Custom path to ffmpeg binary |
+| `UI_ALLOWED_DEVICE_IDS` | — | Comma-separated device IDs for global allowlist |
+| `UI_ALLOWED_MAIN_DEVICE_IDS` | — | Comma-separated device IDs for Home page |
+| `UI_ALLOWED_CTRL_DEVICE_IDS` | — | Comma-separated device IDs for Controls page |
+| `UI_ALLOWED_MAIN_DEVICE_IDS_LOCKED` | `false` | Prevent UI from changing Home allowlist |
+| `UI_ALLOWED_CTRL_DEVICE_IDS_LOCKED` | `false` | Prevent UI from changing Controls allowlist |
+| `UI_EXTRA_ALLOWED_PANEL_DEVICE_COMMANDS` | — | Extra commands allowed on control panels |
 
 ---
 
 ## Weather Location
 
-Weather uses [Open-Meteo](https://open-meteo.com/) — a free API with no key required. By default, location is auto-detected. To set manually:
+Weather uses [Open-Meteo](https://open-meteo.com/) — a free API with no key required. Location can be set in the Settings UI or via environment variables:
 
 ```bash
 # In /etc/jvshomecontrol.env:
@@ -136,11 +141,13 @@ OPEN_METEO_LAT=35.2271
 OPEN_METEO_LON=-80.8431
 ```
 
-Restart after changes: `sudo systemctl restart jvshomecontrol`
+Restart after env changes: `sudo systemctl restart jvshomecontrol`
 
 ---
 
 ## Changing the Port
+
+Set the port in **Settings → Server**, or via the environment file:
 
 ```bash
 # In /etc/jvshomecontrol.env:
@@ -201,7 +208,7 @@ cd client && npm ci && npm run build && cd ..
 cd server && npm ci && node server.js
 ```
 
-Set environment variables before running, or create `/etc/jvshomecontrol.env`.
+Configure from the browser at `http://localhost:3000`, or set environment variables before running.
 
 ---
 
@@ -210,8 +217,8 @@ Set environment variables before running, or create `/etc/jvshomecontrol.env`.
 | Path | Purpose |
 |------|---------|
 | `/opt/jvshomecontrol/` | Application root |
-| `/etc/jvshomecontrol.env` | Environment variables (credentials, settings) |
-| `/opt/jvshomecontrol/server/data/config.json` | UI configuration (themes, device lists, layout) |
+| `/etc/jvshomecontrol.env` | Environment variable overrides (optional, advanced) |
+| `/opt/jvshomecontrol/server/data/config.json` | All configuration (persisted by the Settings UI) |
 | `/opt/jvshomecontrol/server/data/certs/` | HTTPS certificates |
 | `/opt/jvshomecontrol/server/data/backups/` | Automatic config backups |
 | `/opt/jvshomecontrol/server/data/backgrounds/` | Custom background images |
