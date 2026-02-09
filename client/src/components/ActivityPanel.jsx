@@ -15,9 +15,11 @@ const getAlertSoundUrls = (config) => {
   const normalize = (s) => {
     const v = asText(s);
     if (!v) return null;
-    // Allow bare filenames like "dooropen.mp3" by treating them as "/sounds/<file>".
-    if (/^(https?:)?\//i.test(v)) return v;
-    return `/sounds/${v.replace(/^\.\/?/, '')}`;
+    // Only allow bare filenames — these map to /sounds/<file>.
+    // Reject any value that looks like a URL or path traversal.
+    if (/[/\\]/.test(v) || v.includes('..')) return null;
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*\.(mp3|wav|ogg)$/i.test(v)) return null;
+    return `/sounds/${encodeURIComponent(v)}`;
   };
 
   return {

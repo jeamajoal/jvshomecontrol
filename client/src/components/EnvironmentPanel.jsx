@@ -1453,11 +1453,14 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
       : {};
 
     const enabled = raw.enabled === true;
-    const url = (raw.url === null || raw.url === undefined) ? null : String(raw.url).trim();
+    const rawUrl = (raw.url === null || raw.url === undefined) ? null : String(raw.url).trim();
     const opacityRaw = Number(raw.opacityPct);
     const opacityPct = Number.isFinite(opacityRaw)
       ? Math.max(0, Math.min(100, Math.round(opacityRaw)))
       : 35;
+
+    // Client-side defense: only allow server-hosted background paths.
+    const url = (rawUrl && rawUrl.startsWith('/backgrounds/')) ? rawUrl : null;
 
     if (!enabled || !url) return { enabled: false, url: null, opacityPct };
     return { enabled: true, url, opacityPct };

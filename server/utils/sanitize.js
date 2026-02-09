@@ -130,9 +130,56 @@ function sanitizeToken(raw, maxLength = 256) {
 
 // ─────────────────────────────────── Export ───────────────────────────────────
 
+/**
+ * Validate an alert-sound filename.
+ * Only bare filenames with common audio extensions are accepted.
+ * Paths, URLs, and traversal patterns are rejected.
+ *
+ * @param {*} raw  Raw input value
+ * @returns {string|null}
+ */
+function sanitizeSoundFilename(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return null;
+    // Must be a bare filename (no path separators, no traversal).
+    if (s.includes('/') || s.includes('\\') || s.includes('..')) return null;
+    const safeRe = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\.(mp3|wav|ogg)$/i;
+    if (!safeRe.test(s)) return null;
+    return s;
+}
+
+/**
+ * Validate a background image URL.
+ * Only server-hosted backgrounds are allowed: /backgrounds/<safeFilename>
+ * External (http/https) URLs are rejected to prevent tracking pixels,
+ * CSS injection, and data exfiltration via user-edited config.json.
+ *
+ * @param {*} raw  Raw input value
+ * @returns {string|null}  Canonical encoded URL or null
+ */
+function sanitizeBackgroundUrl(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return null;
+    if (!s.startsWith('/backgrounds/')) return null;
+
+    const rawFile = s.slice('/backgrounds/'.length);
+    let decoded;
+    try { decoded = decodeURIComponent(rawFile); } catch { return null; }
+
+    // Strict filename: alphanumeric start, common image extensions only.
+    const safeFileRe = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\.(jpg|jpeg|png|webp|gif)$/i;
+    if (!safeFileRe.test(decoded)) return null;
+    if (decoded.includes('..') || decoded.includes('/') || decoded.includes('\\')) return null;
+
+    // Return canonical encoded form.
+    return `/backgrounds/${encodeURIComponent(decoded)}`;
+}
+
 module.exports = {
     sanitizeUrl,
     sanitizeRtspUrl,
+    sanitizeBackgroundUrl,
+    sanitizeSoundFilename,
     sanitizeHostname,
     sanitizeNumericId,
     sanitizeString,

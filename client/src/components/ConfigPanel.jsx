@@ -5015,7 +5015,6 @@ const ConfigPanel = ({
                                   src={`${API_HOST}${fileUrl}`}
                                   alt={file}
                                   className="w-full h-full object-cover"
-                                  loading="lazy"
                                 />
                                 {isActive ? (
                                   <div className="absolute inset-0 flex items-center justify-center bg-black/40">

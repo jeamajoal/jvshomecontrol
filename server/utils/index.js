@@ -12,6 +12,8 @@ const {
 const {
     sanitizeUrl,
     sanitizeRtspUrl,
+    sanitizeBackgroundUrl,
+    sanitizeSoundFilename,
     sanitizeHostname,
     sanitizeNumericId,
     sanitizeString,
@@ -225,6 +227,8 @@ module.exports = {
     // Input sanitization
     sanitizeUrl,
     sanitizeRtspUrl,
+    sanitizeBackgroundUrl,
+    sanitizeSoundFilename,
     sanitizeHostname,
     sanitizeNumericId,
     sanitizeString,

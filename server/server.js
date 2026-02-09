@@ -105,6 +105,8 @@ const {
     tryParseJsonFromText,
     sanitizeUrl,
     sanitizeRtspUrl,
+    sanitizeBackgroundUrl,
+    sanitizeSoundFilename,
     sanitizeHostname,
     sanitizeNumericId,
     sanitizeString,
@@ -902,10 +904,6 @@ function normalizePersistedConfig(raw) {
 
     const soundsRaw = (uiRaw.alertSounds && typeof uiRaw.alertSounds === 'object') ? uiRaw.alertSounds : {};
     const climateRaw = (uiRaw.climateTolerances && typeof uiRaw.climateTolerances === 'object') ? uiRaw.climateTolerances : {};
-    const asFile = (v) => {
-        const s = String(v ?? '').trim();
-        return s.length ? s : null;
-    };
 
     const asFinite = (v) => {
         const num = (typeof v === 'number') ? v : Number(v);
@@ -971,7 +969,7 @@ function normalizePersistedConfig(raw) {
 
     const homeBackground = {
         enabled: homeBgRaw.enabled === true,
-        url: asFile(homeBgRaw.url),
+        url: sanitizeBackgroundUrl(homeBgRaw.url),
         opacityPct: clampInt(homeBgRaw.opacityPct, 0, 100, 35),
     };
 
@@ -1166,7 +1164,7 @@ function normalizePersistedConfig(raw) {
             const defaultRoomId = String(rawCam.defaultRoomId || rawCam.roomId || '').trim();
 
             const snapRaw = (rawCam.snapshot && typeof rawCam.snapshot === 'object') ? rawCam.snapshot : {};
-            const snapshotUrl = asFile(snapRaw.url);
+            const snapshotUrl = sanitizeUrl(snapRaw.url, ['http:', 'https:']);
 
             const authRaw = (snapRaw.basicAuth && typeof snapRaw.basicAuth === 'object') ? snapRaw.basicAuth : null;
             const basicAuth = authRaw
@@ -1177,10 +1175,10 @@ function normalizePersistedConfig(raw) {
                 : null;
 
             const embedRaw = (rawCam.embed && typeof rawCam.embed === 'object') ? rawCam.embed : {};
-            const embedUrl = asFile(embedRaw.url);
+            const embedUrl = sanitizeUrl(embedRaw.url, ['http:', 'https:']);
 
             const rtspRaw = (rawCam.rtsp && typeof rawCam.rtsp === 'object') ? rawCam.rtsp : {};
-            const rtspUrl = String(rtspRaw.url || '').trim();
+            const rtspUrl = sanitizeRtspUrl(rtspRaw.url) || '';
 
             outList.push({
                 id,
@@ -1650,7 +1648,7 @@ function normalizePersistedConfig(raw) {
         const pHomeBackground = pHomeBgRaw
             ? {
                 enabled: pHomeBgRaw.enabled === true,
-                url: asFile(pHomeBgRaw.url),
+                url: sanitizeBackgroundUrl(pHomeBgRaw.url),
                 opacityPct: clampInt(pHomeBgRaw.opacityPct, 0, 100, homeBackground.opacityPct),
             }
             : null;
@@ -1752,9 +1750,9 @@ function normalizePersistedConfig(raw) {
         colorizeHomeValuesOpacityPct,
         // Back-compat: always include alertSounds, even if unset.
         alertSounds: {
-            motion: asFile(soundsRaw.motion),
-            doorOpen: asFile(soundsRaw.doorOpen),
-            doorClose: asFile(soundsRaw.doorClose),
+            motion: sanitizeSoundFilename(soundsRaw.motion),
+            doorOpen: sanitizeSoundFilename(soundsRaw.doorOpen),
+            doorClose: sanitizeSoundFilename(soundsRaw.doorClose),
         },
         // Back-compat: always include climate tolerances so clients can rely on them.
         climateTolerances,
@@ -1838,10 +1836,18 @@ function normalizePersistedConfig(raw) {
             eventsMax: safeInt(raw.eventsMax, 50, 10000),
             eventsPersistJsonl: typeof raw.eventsPersistJsonl === 'boolean' ? raw.eventsPersistJsonl : null,
             backupMaxFiles: safeInt(raw.backupMaxFiles, 10, 1000),
-            // Hubitat connection
-            hubitatHost: safeStr(raw.hubitatHost),
-            hubitatAppId: sanitizeNumericId(raw.hubitatAppId) || safeStr(raw.hubitatAppId),
-            hubitatAccessToken: sanitizeToken(raw.hubitatAccessToken) || safeStr(raw.hubitatAccessToken),
+            // Hubitat connection — all values are strictly validated.
+            // hubitatHost must normalize to a valid http(s) URL.
+            // hubitatAppId must be numeric (Hubitat always uses numeric IDs).
+            // hubitatAccessToken must match [a-zA-Z0-9._-]+ (UUID / hex format).
+            hubitatHost: (() => {
+                const s = safeStr(raw.hubitatHost);
+                if (!s) return null;
+                const normalized = normalizeHubitatHost(s);
+                return sanitizeUrl(normalized, ['http:', 'https:']) ? s : null;
+            })(),
+            hubitatAppId: sanitizeNumericId(raw.hubitatAppId) || null,
+            hubitatAccessToken: sanitizeToken(raw.hubitatAccessToken) || null,
             hubitatTlsInsecure: typeof raw.hubitatTlsInsecure === 'boolean' ? raw.hubitatTlsInsecure : null,
             // Network (port requires restart to take effect; min 80 prevents accidental low-port saves)
             port: safeInt(raw.port, 80, 65535),
@@ -2224,9 +2230,13 @@ function applyServerSettings() {
     // --- Hubitat connection settings ---
     let tlsChanged = false;
 
-    if (ss.hubitatHost != null) hubitat.host = normalizeHubitatHost(ss.hubitatHost);
-    if (ss.hubitatAppId != null) hubitat.appId = ss.hubitatAppId;
-    if (ss.hubitatAccessToken != null) hubitat.accessToken = ss.hubitatAccessToken;
+    if (ss.hubitatHost != null) {
+        const normalized = normalizeHubitatHost(ss.hubitatHost);
+        // Only accept hosts that produce valid http(s) URLs.
+        hubitat.host = sanitizeUrl(normalized, ['http:', 'https:']) ? normalized : '';
+    }
+    if (ss.hubitatAppId != null) hubitat.appId = sanitizeNumericId(ss.hubitatAppId) || '';
+    if (ss.hubitatAccessToken != null) hubitat.accessToken = sanitizeToken(ss.hubitatAccessToken) || '';
 
     if (ss.hubitatTlsInsecure != null) {
         const newVal = ss.hubitatTlsInsecure === true;
@@ -5237,10 +5247,9 @@ app.put('/api/ui/home-background', (req, res) => {
         ? null
         : String(rawUrl).trim();
 
-    // Restrict to either:
-    // - Server-managed backgrounds: /backgrounds/<file>
-    // - Remote http(s) URLs
-    // This avoids scheme injection (javascript:, data:, file:) and reduces the attack surface.
+    // Only allow server-managed backgrounds: /backgrounds/<file>
+    // External URLs are blocked to prevent tracking pixels, CSS injection, and data
+    // exfiltration.  Users must place images in server/data/backgrounds/.
     let normalizedUrl = url;
     if (normalizedUrl) {
         if (normalizedUrl.startsWith('/backgrounds/')) {
@@ -5260,24 +5269,7 @@ app.put('/api/ui/home-background', (req, res) => {
             // Canonicalize to a safely-encoded URL segment.
             normalizedUrl = `/backgrounds/${encodeURIComponent(decodedFile)}`;
         } else {
-            let parsed;
-            try {
-                parsed = new URL(normalizedUrl);
-            } catch {
-                return res.status(400).json({ error: 'Invalid homeBackground.url (expected http(s) or /backgrounds/<file>)' });
-            }
-
-            if (!(parsed.protocol === 'http:' || parsed.protocol === 'https:')) {
-                return res.status(400).json({ error: 'Invalid homeBackground.url (only http/https allowed)' });
-            }
-
-            if (parsed.username || parsed.password) {
-                return res.status(400).json({ error: 'Invalid homeBackground.url (credentials not allowed)' });
-            }
-
-            if (normalizedUrl.length > 2048) {
-                return res.status(400).json({ error: 'Invalid homeBackground.url (too long)' });
-            }
+            return res.status(400).json({ error: 'Invalid homeBackground.url (only /backgrounds/<file> allowed)' });
         }
     }
 
