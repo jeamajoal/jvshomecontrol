@@ -21,7 +21,9 @@ APP_DIR="${APP_DIR:-${ROOT_DIR}}"
 
 REPO_URL="${REPO_URL:-https://github.com/jeamajoal/JVSHomeControl.git}"
 SERVICE_FILE="${SERVICE_FILE:-/etc/systemd/system/jvshomecontrol.service}"
-CONFIG_FILE_REL="${CONFIG_FILE_REL:-server/data/config.json}"\n\nlog() { echo \"[install] $*\"; }
+CONFIG_FILE_REL="${CONFIG_FILE_REL:-server/data/config.json}"
+
+log() { echo "[install] $*"; }
 warn() { echo "[install][WARN] $*"; }
 
 die() {
