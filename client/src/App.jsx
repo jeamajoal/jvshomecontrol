@@ -310,7 +310,7 @@ function App() {
           </div>
         ) : (
           <>
-            {roomsEmpty ? (
+            {roomsEmpty && page !== PAGE.SETTINGS ? (
               <div className="flex items-center justify-center h-full p-8">
                 <div className="glass-panel border border-white/10 p-6 max-w-xl w-full text-center">
                   <div className="text-[11px] uppercase tracking-[0.2em] text-white/55 font-semibold">No Data</div>
@@ -321,26 +321,25 @@ function App() {
                   {loadError ? (
                     <div className="mt-2 text-xs text-neon-red break-words">{loadError}</div>
                   ) : null}
-                  <div className="mt-3 text-xs text-white/45">
-                    Check <span className="text-white/70">{API_HOST}/api/config</span>
-                  </div>
-
                   {hubitatConfigured === false ? (
-                    <div className="mt-4 text-left text-sm text-white/55">
+                    <div className="mt-4 text-sm text-white/55">
                       <div className="text-[11px] uppercase tracking-[0.2em] text-white/55 font-semibold">First install</div>
                       <div className="mt-2">
-                        Hubitat isn’t configured. Set these environment variables for the server and restart it:
+                        Hubitat isn't configured yet. Open <strong className="text-white/80">Settings → Server</strong> to
+                        enter your Hubitat Host, App ID, and Access Token.
                       </div>
-                      <div className="mt-2 text-xs text-white/70 space-y-1">
-                        <div><span className="text-white/85 font-semibold">HUBITAT_HOST</span> (example: <span className="text-white/85">https://192.168.1.50</span>)</div>
-                        <div><span className="text-white/85 font-semibold">HUBITAT_APP_ID</span></div>
-                        <div><span className="text-white/85 font-semibold">HUBITAT_ACCESS_TOKEN</span></div>
-                      </div>
-                      <div className="mt-3 text-xs text-white/45">
-                        Then verify: <span className="text-white/70">{API_HOST}/api/hubitat/health</span>
-                      </div>
+                      <button
+                        onClick={() => setPage(PAGE.SETTINGS)}
+                        className="mt-4 px-5 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white/80 hover:text-white text-sm font-semibold tracking-wider uppercase transition-colors"
+                      >
+                        Open Settings
+                      </button>
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="mt-3 text-xs text-white/45">
+                      Check <span className="text-white/70">{API_HOST}/api/config</span>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : null}
