@@ -5,7 +5,7 @@ node_modules/
 dist/
 build/
 
-# Environment variables
+# Environment variables (no longer used — kept as a safety net to avoid accidental commits)
 .env
 .env.local
 .env.*.local

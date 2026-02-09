@@ -10,7 +10,7 @@ JVSHomeControl connects to your Hubitat hub via the Maker API.
 2. Select **Maker API**
 3. Select the devices you want to control
 4. Note down:
-   - **App ID** (in the URL after `/apps/api/`)
+   - **App ID** (in the URL after /apps/api/)
    - **Access Token** (shown on the page)
 
 ---
@@ -27,27 +27,16 @@ Even on your local network, I recommend encrypting Maker API traffic:
 
 ## Step 3: Configure JVSHomeControl
 
-Edit your environment file:
-```bash
-sudo nano /etc/jvshomecontrol.env
-```
+Open the dashboard and go to **Settings → Server**. Enter:
 
-Add:
-```bash
-HUBITAT_HOST=https://192.168.1.50
-HUBITAT_APP_ID=30
-HUBITAT_ACCESS_TOKEN=your-token-here
+- **Hubitat Host** — your hub’s URL (e.g., https://192.168.1.50)
+- **Maker API App ID** — the numeric ID from Step 1
+- **Access Token** — your Maker API access token
+- **Allow self-signed certs** — enable this if your Hubitat uses HTTPS (most do)
 
-# Required for self-signed Hubitat certificates
-HUBITAT_TLS_INSECURE=1
-```
+Click **Save**. The dashboard connects and populates immediately — no restart needed.
 
 > **Why HTTPS?** Your Maker API access token is sent with every request. Even on a local network, unencrypted traffic can be intercepted. Always use HTTPS.
-
-Restart:
-```bash
-sudo systemctl restart jvshomecontrol
-```
 
 ---
 
@@ -56,9 +45,9 @@ sudo systemctl restart jvshomecontrol
 By default, JVSHomeControl polls Hubitat every 2 seconds. For instant updates:
 
 1. In Hubitat Maker API settings, set **postURL** to:
-   ```
+   `
    https://your-server-ip/api/events
-   ```
+   `
 
 2. Now device changes appear instantly on the dashboard
 
@@ -68,22 +57,17 @@ By default, JVSHomeControl polls Hubitat every 2 seconds. For instant updates:
 
 ## Adjust Poll Interval
 
-Default is 2000ms (2 seconds). To poll less frequently:
-
-```bash
-# In /etc/jvshomecontrol.env:
-HUBITAT_POLL_INTERVAL_MS=60000  # Once per minute
-```
+Default is 2000ms (2 seconds). To poll less frequently, change the **Poll Interval** in **Settings → Server**.
 
 ---
 
 ## Troubleshooting
 
 **Dashboard loads but no devices appear:**
-```bash
+`ash
 # Check Hubitat connection
 curl -sk https://localhost/api/hubitat/health
-```
+`
 
 **Connection refused or timeout:**
 - Verify the Hubitat IP address is correct
@@ -91,11 +75,11 @@ curl -sk https://localhost/api/hubitat/health
 - Check that your access token is valid
 
 **TLS/SSL errors:**
-- Make sure `HUBITAT_TLS_INSECURE=1` is set for self-signed certs
-- Restart the service after changing env vars
+- Make sure **Allow self-signed certs** is enabled in **Settings → Server**
+- Check logs: sudo journalctl -u jvshomecontrol -f
 
 ---
 
 ## Maker API Reference
 
-For a quick reference of Maker API endpoints, token security, and event callbacks, see [server/MAKER_API.md](../server/MAKER_API.md).
+For a quick reference of Maker API endpoints, token security, and event callbacks, see server/MAKER_API.md.

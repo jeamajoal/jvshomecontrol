@@ -25,6 +25,7 @@ const {
     RTSP_HLS_MAX_RESTART_ATTEMPTS,
     RTSP_HLS_RESTART_BACKOFF_MS,
     RTSP_HLS_CLEANUP_ON_SHUTDOWN,
+    RTSP_HLS_CRF,
     RTSP_REDACTED_PLACEHOLDER,
 } = require('../config/hls');
 
@@ -212,7 +213,7 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
         '-c:v', 'libx264',
         '-tune', 'zerolatency',
         '-preset', 'veryfast',
-        '-crf', String(process.env.RTSP_HLS_CRF || '20'),
+        '-crf', String(RTSP_HLS_CRF || '20'),
         '-pix_fmt', 'yuv420p',
         '-r', String(RTSP_HLS_OUTPUT_FPS),
         '-vsync', 'cfr',

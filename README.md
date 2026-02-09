@@ -151,7 +151,7 @@ cd client && npm run dev
 ```
 
 ### Environment Variables
-See [docs/03-Installation.md](docs/03-Installation.md) for the full list. Configure from the browser or set env vars for headless/automated deployments.
+See [docs/03-Installation.md](docs/03-Installation.md) for the full setup guide. All configuration is managed through the browser UI.
 
 </details>
 

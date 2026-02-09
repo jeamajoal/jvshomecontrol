@@ -12,9 +12,9 @@ This document covers the security measures you should take.
 |----------|--------|--------|
 | **Critical** | Use HTTPS for the dashboard | 🔧 See [08-HTTPS.md](08-HTTPS.md) |
 | **Critical** | Use HTTPS for Hubitat Maker API | 🔧 See [04-Hubitat.md](04-Hubitat.md) |
-| **Critical** | Store secrets in env file, not config | 🔧 See [03-Installation.md](03-Installation.md#environment-variables-advanced) |
+| **Critical** | Keep `config.json` permissions tight (chmod 600) | ✅ Automatic |
 | **High** | Don't expose to the internet | 🔧 Firewall rules below |
-| **High** | Protect the events endpoint | 🔧 Set `EVENTS_INGEST_TOKEN` |
+| **High** | Protect the events endpoint | 🔧 Set Events Ingest Token in Settings → Server |
 | **Medium** | CORS restricted to localhost + Hubitat | ✅ Built-in |
 | **Medium** | Input sanitization on all user inputs | ✅ Built-in |
 | **Medium** | Restrict device access with allowlists | 🔧 See below |
@@ -36,16 +36,18 @@ Your Hubitat Maker API access token is sent with **every request** from the serv
 
 ## Protecting Your Secrets
 
-| Secret | Where to Store | Never Put In |
-|--------|---------------|-------------|
-| `HUBITAT_ACCESS_TOKEN` | `/etc/jvshomecontrol.env` or Settings UI | `config.json` is fine but env file is more secure |
-| `EVENTS_INGEST_TOKEN` | `/etc/jvshomecontrol.env` or Settings UI | URLs shared publicly |
-| Camera credentials | RTSP URL in config | Plain text files |
+All configuration — including credentials — is stored in `config.json`. The server writes this file with restrictive permissions (mode 600) and does the same for automatic backups.
 
-**File permissions:**
+| Secret | Where to Store | Notes |
+|--------|---------------|-------|
+| Hubitat Access Token | Settings → Server | Stored in `config.json` (chmod 600) |
+| Events Ingest Token | Settings → Server | Stored in `config.json` (chmod 600) |
+| Camera credentials | RTSP URL in Settings → Cameras | Part of `config.json` |
+
+**Verify file permissions:**
 ```bash
-sudo chmod 600 /etc/jvshomecontrol.env
-sudo chown root:root /etc/jvshomecontrol.env
+ls -la /opt/jvshomecontrol/server/data/config.json
+# Should show: -rw------- 1 jvshome jvshome ...
 ```
 
 ---
@@ -84,14 +86,9 @@ These are configured in the Settings page or via the config API. You can set sep
 
 ## Event Ingest Protection
 
-If using Hubitat Maker API `postURL` to push events to JVSHomeControl, protect the endpoint with a token:
+If using Hubitat Maker API `postURL` to push events to JVSHomeControl, protect the endpoint with a token.
 
-```bash
-# In /etc/jvshomecontrol.env:
-EVENTS_INGEST_TOKEN=your-random-secret-here
-```
-
-Then set your Maker API `postURL` to:
+Set the **Events Ingest Token** in **Settings → Server**, then configure your Maker API `postURL` to:
 ```
 https://your-server/api/events?token=your-random-secret-here
 ```
@@ -149,7 +146,7 @@ All user-supplied inputs are validated server-side before storage or use:
 
 Additionally, ffmpeg (used for RTSP → HLS camera streaming) is restricted to a protocol whitelist (`rtsp`, `rtp`, `udp`, `tcp`, `tls`, `crypto`, `file`) to prevent abuse of ffmpeg's powerful protocol handling.
 
-The sanitization utilities live in `server/utils/sanitize.js` and are re-exported from `server/utils/index.js`.
+The sanitization utilities live in `server/utils/index.js` and are re-exported from `server/services/index.js`.
 
 ---
 

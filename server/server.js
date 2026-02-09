@@ -88,10 +88,7 @@ const {
 // to a sibling file like server/config.json.
 
 // --- Import utility functions ---
-const {
-    truthy,
-    falsy,
-    parseCommaList,
+const {\n    parseCommaList,
     stableStringify,
     clampInt,
     normalizeAccentColorId,
@@ -186,23 +183,14 @@ const HAS_BUILT_CLIENT = fs.existsSync(CLIENT_INDEX_HTML);
 
 // --- HTTPS (optional) ---
 // Defaults: server/data/certs/localhost.key + server/data/certs/localhost.crt
-// Note: truthy and falsy are now imported from ./utils
-const HTTPS_KEY_PATH = String(process.env.HTTPS_KEY_PATH || '').trim() || path.join(CERT_DIR_DEFAULT, 'localhost.key');
-const HTTPS_CERT_PATH = String(process.env.HTTPS_CERT_PATH || '').trim() || path.join(CERT_DIR_DEFAULT, 'localhost.crt');
+// All HTTPS settings come from config.json; no env var overrides.
+const HTTPS_KEY_PATH = path.join(CERT_DIR_DEFAULT, 'localhost.key');
+const HTTPS_CERT_PATH = path.join(CERT_DIR_DEFAULT, 'localhost.crt');
 
-const HTTPS_FORCED_OFF = truthy(process.env.HTTP_ONLY) || falsy(process.env.HTTPS);
-const HTTPS_FORCED_ON = truthy(process.env.HTTPS);
 const HTTPS_HAS_CERT = fs.existsSync(HTTPS_KEY_PATH) && fs.existsSync(HTTPS_CERT_PATH);
 
-const HTTPS_REQUESTED = !HTTPS_FORCED_OFF && (HTTPS_FORCED_ON || HTTPS_HAS_CERT);
-const USE_HTTPS = HTTPS_REQUESTED && HTTPS_HAS_CERT;
-
-if (HTTPS_REQUESTED && !HTTPS_HAS_CERT) {
-    console.warn('HTTPS: enabled/requested but certificate not found; starting in HTTP mode.');
-    console.warn(`HTTPS_CERT_PATH: ${HTTPS_CERT_PATH}`);
-    console.warn(`HTTPS_KEY_PATH:  ${HTTPS_KEY_PATH}`);
-    console.warn('Run: node server/scripts/https-setup.js (or re-run the install script interactively) to create a self-signed certificate.');
-}
+// HTTPS is enabled automatically when certs are present; disable via Settings → Server.
+const USE_HTTPS = HTTPS_HAS_CERT;
 
 const server = USE_HTTPS
     ? https.createServer(
@@ -283,47 +271,6 @@ let settings = {
         }
     }
 };
-
-function applyWeatherEnvOverrides() {
-    // Env vars override persisted config but are not persisted back to disk.
-    // Supported:
-    // - OPEN_METEO_LAT, OPEN_METEO_LON
-    // - OPEN_METEO_TZ (or OPEN_METEO_TIMEZONE)
-    // - OPEN_METEO_TEMPERATURE_UNIT, OPEN_METEO_WIND_SPEED_UNIT, OPEN_METEO_PRECIPITATION_UNIT
-    try {
-        const weather = (settings.weather && typeof settings.weather === 'object') ? { ...settings.weather } : {};
-        const prevOpen = (weather.openMeteo && typeof weather.openMeteo === 'object') ? { ...weather.openMeteo } : {};
-
-        const nextOpen = { ...prevOpen };
-
-        const latEnv = String(process.env.OPEN_METEO_LAT || '').trim();
-        const lonEnv = String(process.env.OPEN_METEO_LON || '').trim();
-        const tzEnv = String(process.env.OPEN_METEO_TZ || process.env.OPEN_METEO_TIMEZONE || '').trim();
-        const tempUnitEnv = String(process.env.OPEN_METEO_TEMPERATURE_UNIT || '').trim();
-        const windUnitEnv = String(process.env.OPEN_METEO_WIND_SPEED_UNIT || '').trim();
-        const precipUnitEnv = String(process.env.OPEN_METEO_PRECIPITATION_UNIT || '').trim();
-
-        if (latEnv) nextOpen.lat = latEnv;
-        if (lonEnv) nextOpen.lon = lonEnv;
-        if (tzEnv) nextOpen.timezone = tzEnv;
-        if (tempUnitEnv) nextOpen.temperatureUnit = tempUnitEnv;
-        if (windUnitEnv) nextOpen.windSpeedUnit = windUnitEnv;
-        if (precipUnitEnv) nextOpen.precipitationUnit = precipUnitEnv;
-
-        weather.openMeteo = nextOpen;
-        settings.weather = weather;
-
-        const changed = stableStringify(prevOpen) !== stableStringify(nextOpen);
-        if (changed) {
-            // If env overrides changed location/units, the old cache is not valid.
-            lastWeather = null;
-            lastWeatherFetchAt = null;
-            lastWeatherError = null;
-        }
-    } catch {
-        // best-effort only
-    }
-}
 
 /**
  * Dynamic CORS origin check.
@@ -494,35 +441,22 @@ function normalizePostedEventsBody(body) {
 }
 
 // --- UI DEVICE ALLOWLISTS ---
-// Note: parseCommaList is imported from ./utils
-
 function getUiAllowlistsInfo() {
-    const envCtrl = parseCommaList(process.env.UI_ALLOWED_CTRL_DEVICE_IDS);
-    const envMain = parseCommaList(process.env.UI_ALLOWED_MAIN_DEVICE_IDS);
-
-    // Back-compat: old single env var maps to CTRL
-    const envLegacy = parseCommaList(process.env.UI_ALLOWED_DEVICE_IDS);
-    const envCtrlMerged = envCtrl.length ? envCtrl : envLegacy;
-
     const cfg = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
     const cfgCtrl = Array.isArray(cfg.ctrlAllowedDeviceIds) ? cfg.ctrlAllowedDeviceIds : (Array.isArray(cfg.allowedDeviceIds) ? cfg.allowedDeviceIds : []);
     const cfgMain = Array.isArray(cfg.mainAllowedDeviceIds) ? cfg.mainAllowedDeviceIds : [];
 
-    const ctrl = envCtrlMerged.length
-        ? { ids: envCtrlMerged, source: 'env', locked: true }
-        : {
-            ids: cfgCtrl.map((v) => String(v || '').trim()).filter(Boolean),
-            source: cfgCtrl.length ? 'config' : 'empty',
-            locked: false,
-        };
+    const ctrl = {
+        ids: cfgCtrl.map((v) => String(v || '').trim()).filter(Boolean),
+        source: cfgCtrl.length ? 'config' : 'empty',
+        locked: false,
+    };
 
-    const main = envMain.length
-        ? { ids: envMain, source: 'env', locked: true }
-        : {
-            ids: cfgMain.map((v) => String(v || '').trim()).filter(Boolean),
-            source: cfgMain.length ? 'config' : 'empty',
-            locked: false,
-        };
+    const main = {
+        ids: cfgMain.map((v) => String(v || '').trim()).filter(Boolean),
+        source: cfgMain.length ? 'config' : 'empty',
+        locked: false,
+    };
 
     return { ctrl, main };
 }
@@ -546,10 +480,8 @@ function getUiAllowedDeviceIdsUnion() {
 function getAllowedPanelDeviceCommands() {
     const cfg = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
     const cfgExtra = Array.isArray(cfg.extraAllowedPanelDeviceCommands) ? cfg.extraAllowedPanelDeviceCommands : [];
-    const envExtraRaw = parseCommaList(process.env.UI_EXTRA_ALLOWED_PANEL_DEVICE_COMMANDS);
-    const envExtra = envExtraRaw.slice(0, 128);
 
-    const cleanedExtra = [...cfgExtra, ...envExtra]
+    const cleanedExtra = cfgExtra
         .map((v) => String(v || '').trim())
         .filter(Boolean)
         .filter((s) => s.length <= 64 && /^[A-Za-z0-9_]+$/.test(s));
@@ -669,6 +601,7 @@ function backupFileSync(filePath, label) {
         const target = path.join(BACKUP_DIR, backupName);
 
         fs.copyFileSync(filePath, target);
+        try { fs.chmodSync(target, 0o600); } catch (_) { /* Windows or permission issue — non-fatal */ }
         pruneBackupsSync();
         return target;
     } catch (err) {
@@ -2219,7 +2152,6 @@ function loadPersistedConfig() {
 
         // Derive runtime settings from persisted config
         settings.weather = persistedConfig.weather;
-        applyWeatherEnvOverrides();
         applyServerSettings();
 
         lastPersistedSerialized = stableStringify(persistedConfig);
@@ -2228,46 +2160,33 @@ function loadPersistedConfig() {
         console.error('Error loading config.json:', err);
         persistedConfig = normalizePersistedConfig({ weather: settings.weather, rooms: [], sensors: [] });
         lastPersistedSerialized = stableStringify(persistedConfig);
-        applyWeatherEnvOverrides();
         applyServerSettings();
     }
 }
 
 // Apply persisted serverSettings to the mutable runtime variables.
-// Env vars take priority: if an env var is set, the persisted value is ignored.
+// config.json is the single source of truth — no env var overrides.
 function applyServerSettings() {
     const ss = persistedConfig?.serverSettings || {};
-    if (!process.env.HUBITAT_POLL_INTERVAL_MS && ss.pollIntervalMs != null) {
-        runtimePollIntervalMs = ss.pollIntervalMs;
-    }
-    if (!process.env.EVENTS_MAX && ss.eventsMax != null) {
-        runtimeEventsMax = ss.eventsMax;
-    }
-    if (!process.env.EVENTS_PERSIST_JSONL && ss.eventsPersistJsonl != null) {
-        runtimeEventsPersistJsonl = ss.eventsPersistJsonl;
-    }
-    if (!process.env.BACKUP_MAX_FILES && ss.backupMaxFiles != null) {
-        runtimeBackupMaxFiles = ss.backupMaxFiles;
-    }
-    if (!process.env.PORT && ss.port != null) {
+
+    if (ss.pollIntervalMs != null) runtimePollIntervalMs = ss.pollIntervalMs;
+    if (ss.eventsMax != null) runtimeEventsMax = ss.eventsMax;
+    if (ss.eventsPersistJsonl != null) runtimeEventsPersistJsonl = ss.eventsPersistJsonl;
+    if (ss.backupMaxFiles != null) runtimeBackupMaxFiles = ss.backupMaxFiles;
+
+    if (ss.port != null) {
         const p = Number(ss.port);
         runtimePort = (Number.isFinite(p) && p >= 80 && p <= 65535) ? Math.floor(p) : PORT;
     }
 
     // --- Hubitat connection settings ---
-    // Env vars always win over config.json values.
     let tlsChanged = false;
 
-    if (!process.env.HUBITAT_HOST && ss.hubitatHost != null) {
-        hubitat.host = normalizeHubitatHost(ss.hubitatHost);
-    }
-    if (!process.env.HUBITAT_APP_ID && ss.hubitatAppId != null) {
-        hubitat.appId = ss.hubitatAppId;
-    }
-    if (!process.env.HUBITAT_ACCESS_TOKEN && ss.hubitatAccessToken != null) {
-        hubitat.accessToken = ss.hubitatAccessToken;
-    }
-    if (!process.env.HUBITAT_TLS_INSECURE && ss.hubitatTlsInsecure != null) {
+    if (ss.hubitatHost != null) hubitat.host = normalizeHubitatHost(ss.hubitatHost);
+    if (ss.hubitatAppId != null) hubitat.appId = ss.hubitatAppId;
+    if (ss.hubitatAccessToken != null) hubitat.accessToken = ss.hubitatAccessToken;
+
+    if (ss.hubitatTlsInsecure != null) {
         const newVal = ss.hubitatTlsInsecure === true;
         if (newVal !== hubitat.tlsInsecure) tlsChanged = true;
         hubitat.tlsInsecure = newVal;
@@ -2310,7 +2229,7 @@ function persistConfigToDiskIfChanged(label, { force = false } = {}) {
 
         lastConfigWriteAtMs = now;
         backupFileSync(CONFIG_FILE, label || 'write');
-        fs.writeFileSync(CONFIG_FILE, nextSerialized);
+        fs.writeFileSync(CONFIG_FILE, nextSerialized, { mode: 0o600 });
         lastPersistedSerialized = nextSerialized;
         return true;
     } catch (err) {
@@ -2355,20 +2274,6 @@ function rebuildRuntimeConfigFromPersisted() {
             httpsActive: USE_HTTPS,
             certInfo: getCertificateInfo(),
             certExists: fs.existsSync(HTTPS_CERT_PATH) && fs.existsSync(HTTPS_KEY_PATH),
-        },
-        serverSettingsEnvLocked: {
-            pollIntervalMs: Boolean(String(process.env.HUBITAT_POLL_INTERVAL_MS || '').trim()),
-            eventsMax: Boolean(String(process.env.EVENTS_MAX || '').trim()),
-            eventsPersistJsonl: Boolean(String(process.env.EVENTS_PERSIST_JSONL || '').trim()),
-            backupMaxFiles: Boolean(String(process.env.BACKUP_MAX_FILES || '').trim()),
-            temperatureUnit: Boolean(String(process.env.OPEN_METEO_TEMPERATURE_UNIT || '').trim()),
-            windSpeedUnit: Boolean(String(process.env.OPEN_METEO_WIND_SPEED_UNIT || '').trim()),
-            precipitationUnit: Boolean(String(process.env.OPEN_METEO_PRECIPITATION_UNIT || '').trim()),
-            hubitatHost: Boolean(String(process.env.HUBITAT_HOST || '').trim()),
-            hubitatAppId: Boolean(String(process.env.HUBITAT_APP_ID || '').trim()),
-            hubitatAccessToken: Boolean(String(process.env.HUBITAT_ACCESS_TOKEN || '').trim()),
-            hubitatTlsInsecure: Boolean(String(process.env.HUBITAT_TLS_INSECURE || '').trim()),
-            port: Boolean(String(process.env.PORT || '').trim()),
         },
     };
 }
@@ -2468,7 +2373,7 @@ function getOpenMeteoCoords() {
 async function fetchOpenMeteoForecast() {
     const { lat, lon } = getOpenMeteoCoords();
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-        throw new Error('Invalid OPEN_METEO_LAT/OPEN_METEO_LON (must be decimal or DMS)');
+        throw new Error('Invalid weather lat/lon (must be decimal or DMS). Configure in Settings → Server.');
     }
 
     const open = settings?.weather?.openMeteo || {};
@@ -2663,15 +2568,13 @@ async function syncHubitatDataInner() {
         try {
             const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
             const availabilityInitialized = ui.availabilityInitialized === true;
-            const mainLocked = truthy(process.env.UI_ALLOWED_MAIN_DEVICE_IDS_LOCKED);
-            const ctrlLocked = truthy(process.env.UI_ALLOWED_CTRL_DEVICE_IDS_LOCKED);
 
             const mainArr = Array.isArray(ui.mainAllowedDeviceIds) ? ui.mainAllowedDeviceIds : [];
             const ctrlArr = Array.isArray(ui.ctrlAllowedDeviceIds) ? ui.ctrlAllowedDeviceIds : [];
             const legacyArr = Array.isArray(ui.allowedDeviceIds) ? ui.allowedDeviceIds : [];
 
             const hasAnyAllowlist = mainArr.length > 0 || ctrlArr.length > 0 || legacyArr.length > 0;
-            if (!availabilityInitialized && !hasAnyAllowlist && !mainLocked && !ctrlLocked) {
+            if (!availabilityInitialized && !hasAnyAllowlist) {
                 const allIds = (Array.isArray(discoveredDevicesCatalog) ? discoveredDevicesCatalog : []).map((d) => String(d.id));
                 persistedConfig = normalizePersistedConfig({
                     ...persistedConfig,
@@ -3187,8 +3090,8 @@ app.get('/api/cameras/:id/hls/ensure', async (req, res) => {
             return res.status(400).json({ ok: false, error: 'camera_has_no_rtsp_url' });
         }
 
-        // Reuse existing ffmpeg preflight (respects FFMPEG_PATH).
-        const ffmpegPath = String(process.env.FFMPEG_PATH || '').trim() || null;
+        // Reuse existing ffmpeg preflight.
+        const ffmpegPath = null;
         const ffmpegCheck = hlsService.checkFfmpegAvailable(ffmpegPath);
         if (!ffmpegCheck.ok) {
             return res.status(500).json({ ok: false, error: 'ffmpeg_not_available', detail: ffmpegCheck.error || null });
@@ -4166,22 +4069,6 @@ app.put('/api/ui/allowed-device-ids', (req, res) => {
         return res.status(400).json({
             error:
                 'Expected an array (legacy ctrl list) or { ctrlAllowedDeviceIds: [], mainAllowedDeviceIds: [] }',
-        });
-    }
-
-    if (Array.isArray(incomingCtrl) && allowlists.ctrl.locked) {
-        return res.status(409).json({
-            error: 'Ctrl allowlist locked',
-            message:
-                'UI_ALLOWED_CTRL_DEVICE_IDS (or legacy UI_ALLOWED_DEVICE_IDS) is set in the environment, so the kiosk cannot edit the Ctrl allowlist. Remove it to enable UI editing.',
-        });
-    }
-
-    if (Array.isArray(incomingMain) && allowlists.main.locked) {
-        return res.status(409).json({
-            error: 'Main allowlist locked',
-            message:
-                'UI_ALLOWED_MAIN_DEVICE_IDS is set in the environment, so the kiosk cannot edit the Main allowlist. Remove it to enable UI editing.',
         });
     }
 
@@ -7595,17 +7482,9 @@ app.get('/api/weather', async (req, res) => {
     }
 });
 
-// Read the effective Open-Meteo settings (after env overrides).
+// Read the effective Open-Meteo settings.
 app.get('/api/weather/open-meteo-config', (req, res) => {
     const open = settings?.weather?.openMeteo || {};
-    const env = {
-        lat: Boolean(String(process.env.OPEN_METEO_LAT || '').trim()),
-        lon: Boolean(String(process.env.OPEN_METEO_LON || '').trim()),
-        timezone: Boolean(String(process.env.OPEN_METEO_TZ || '').trim()),
-        temperatureUnit: Boolean(String(process.env.OPEN_METEO_TEMPERATURE_UNIT || '').trim()),
-        windSpeedUnit: Boolean(String(process.env.OPEN_METEO_WIND_SPEED_UNIT || '').trim()),
-        precipitationUnit: Boolean(String(process.env.OPEN_METEO_PRECIPITATION_UNIT || '').trim()),
-    };
 
     return res.json({
         ok: true,
@@ -7617,7 +7496,6 @@ app.get('/api/weather/open-meteo-config', (req, res) => {
             windSpeedUnit: String(open.windSpeedUnit ?? 'mph'),
             precipitationUnit: String(open.precipitationUnit ?? 'inch'),
         },
-        overriddenByEnv: env,
     });
 });
 
@@ -7662,7 +7540,6 @@ app.put('/api/weather/open-meteo-config', (req, res) => {
 
     // Apply immediately for subsequent fetches.
     settings.weather = persistedConfig.weather;
-    applyWeatherEnvOverrides();
 
     // Location changed: clear cache so the next /api/weather reflects it.
     lastWeather = null;
@@ -7671,22 +7548,14 @@ app.put('/api/weather/open-meteo-config', (req, res) => {
 
     persistConfigToDiskIfChanged('api-open-meteo-config');
 
-    const env = {
-        lat: Boolean(String(process.env.OPEN_METEO_LAT || '').trim()),
-        lon: Boolean(String(process.env.OPEN_METEO_LON || '').trim()),
-        timezone: Boolean(String(process.env.OPEN_METEO_TZ || '').trim()),
-    };
-
     return res.json({
         ok: true,
         openMeteo: persistedConfig.weather.openMeteo,
-        overriddenByEnv: env,
     });
 });
 
 // --- Server Settings API ---
-// Non-sensitive runtime-tunable server settings.
-// Env vars always take priority — if set, the persisted value is ignored and the UI shows the field as locked.
+// Non-sensitive runtime-tunable server settings stored in config.json.
 app.put('/api/server-settings', (req, res) => {
     const body = (req.body && typeof req.body === 'object') ? req.body : {};
 
@@ -7768,7 +7637,6 @@ app.put('/api/server-settings', (req, res) => {
         });
 
         settings.weather = persistedConfig.weather;
-        applyWeatherEnvOverrides();
         // Weather units changed — clear cache.
         lastWeather = null;
         lastWeatherFetchAt = null;

@@ -85,66 +85,9 @@ curl -s http://localhost/api/status
 
 ---
 
-## Environment Variables (Advanced)
-
-Most settings are configured from the Settings UI. The environment file (`/etc/jvshomecontrol.env`) serves two purposes:
-
-1. **Protect secrets** — credentials stored here are never written to `config.json` and won't appear in config backups
-2. **Lock fields** — env vars take priority over the UI and lock the corresponding Settings fields so they can't be changed from the browser
-
-Create the file only if you need it:
-
-```bash
-sudo nano /etc/jvshomecontrol.env
-sudo chmod 600 /etc/jvshomecontrol.env
-sudo systemctl restart jvshomecontrol
-```
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `HUBITAT_HOST` | — | Hubitat URL (e.g., `https://192.168.1.50`) |
-| `HUBITAT_APP_ID` | — | Maker API app ID number |
-| `HUBITAT_ACCESS_TOKEN` | — | Maker API access token |
-| `HUBITAT_TLS_INSECURE` | `false` | Set `1` for self-signed Hubitat HTTPS certs |
-| `PORT` | `80` | Server listen port (the installer's systemd service supports privileged ports like 80/443) |
-| `HUBITAT_POLL_INTERVAL_MS` | `2000` | How often to poll Hubitat (milliseconds) |
-| `EVENTS_INGEST_TOKEN` | — | Token to protect the events endpoint |
-| `EVENTS_MAX` | `500` | Max events kept in memory |
-| `EVENTS_PERSIST_JSONL` | `false` | Persist events to disk |
-| `BACKUP_MAX_FILES` | `200` | Config backup retention |
-| `HTTP_ONLY` | `false` | Force HTTP (skip HTTPS) |
-| `HTTPS` | — | Set `1` to force HTTPS even without auto-detected certs |
-| `HTTPS_CERT_PATH` | Auto | Custom TLS certificate path |
-| `HTTPS_KEY_PATH` | Auto | Custom TLS private key path |
-| `HTTPS_CERT_HOSTNAME` | `hostname` | Hostname/IP to embed in generated self-signed cert |
-| `HTTPS_SETUP_ASSUME_YES` | `false` | Auto-create self-signed cert without prompting (useful in Docker/CI) |
-| `OPEN_METEO_LAT` | Auto | Weather latitude (decimal or DMS) |
-| `OPEN_METEO_LON` | Auto | Weather longitude (decimal or DMS) |
-| `OPEN_METEO_TIMEZONE` | `auto` | Weather timezone (e.g., `America/New_York`) |
-| `OPEN_METEO_TEMPERATURE_UNIT` | `fahrenheit` | `fahrenheit` or `celsius` |
-| `OPEN_METEO_WIND_SPEED_UNIT` | `mph` | `mph`, `kmh`, `ms`, or `kn` |
-| `OPEN_METEO_PRECIPITATION_UNIT` | `inch` | `inch` or `mm` |
-| `FFMPEG_PATH` | Auto | Custom path to ffmpeg binary |
-| `UI_ALLOWED_DEVICE_IDS` | — | Comma-separated device IDs for global allowlist |
-| `UI_ALLOWED_MAIN_DEVICE_IDS` | — | Comma-separated device IDs for Home page |
-| `UI_ALLOWED_CTRL_DEVICE_IDS` | — | Comma-separated device IDs for Controls page |
-| `UI_ALLOWED_MAIN_DEVICE_IDS_LOCKED` | `false` | Prevent UI from changing Home allowlist |
-| `UI_ALLOWED_CTRL_DEVICE_IDS_LOCKED` | `false` | Prevent UI from changing Controls allowlist |
-| `UI_EXTRA_ALLOWED_PANEL_DEVICE_COMMANDS` | — | Extra commands allowed on control panels |
-
----
-
 ## Weather Location
 
-Weather uses [Open-Meteo](https://open-meteo.com/) — a free API with no key required. Location can be set in the Settings UI or via environment variables:
-
-```bash
-# In /etc/jvshomecontrol.env:
-OPEN_METEO_LAT=35.2271
-OPEN_METEO_LON=-80.8431
-```
-
-Restart after env changes: `sudo systemctl restart jvshomecontrol`
+Weather uses [Open-Meteo](https://open-meteo.com/) — a free API with no key required. Set your location in **Settings → Weather**.
 
 ---
 
@@ -152,12 +95,7 @@ Restart after env changes: `sudo systemctl restart jvshomecontrol`
 
 The default port is **80** (standard HTTP). After enabling HTTPS, the recommended port is **443** (standard HTTPS) — this is covered in step 3 above.
 
-To use a non-standard port, set it in **Settings → Server**, or via the environment file:
-
-```bash
-# In /etc/jvshomecontrol.env:
-PORT=8443
-```
+To use a non-standard port, set it in **Settings → Server**.
 
 Then: `sudo systemctl restart jvshomecontrol`
 
@@ -204,7 +142,7 @@ cd client && npm ci && npm run build && cd ..
 cd server && npm ci && node server.js
 ```
 
-Configure from the browser at `http://localhost`, or set environment variables before running.
+Configure from the browser at `http://localhost`.
 
 ---
 
@@ -213,7 +151,6 @@ Configure from the browser at `http://localhost`, or set environment variables b
 | Path | Purpose |
 |------|---------|
 | `/opt/jvshomecontrol/` | Application root |
-| `/etc/jvshomecontrol.env` | Secrets and field-locking overrides (optional) |
 | `/opt/jvshomecontrol/server/data/config.json` | All configuration (persisted by the Settings UI) |
 | `/opt/jvshomecontrol/server/data/certs/` | HTTPS certificates |
 | `/opt/jvshomecontrol/server/data/backups/` | Automatic config backups |
@@ -229,7 +166,6 @@ To reset all configuration and start from scratch:
 ```bash
 sudo systemctl stop jvshomecontrol
 sudo rm /opt/jvshomecontrol/server/data/config.json
-sudo rm -f /etc/jvshomecontrol.env
 sudo systemctl start jvshomecontrol
 ```
 

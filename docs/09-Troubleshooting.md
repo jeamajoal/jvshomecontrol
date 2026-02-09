@@ -15,18 +15,9 @@ curl -sk https://localhost/api/hubitat/health
 
 If `configured` is `false`, your credentials aren't set. See Step 2.
 
-**Step 2: Verify Settings or environment variables**
-```bash
-# If using the env file:
-sudo cat /etc/jvshomecontrol.env | grep HUBITAT
-```
+**Step 2: Verify Settings**
 
-You need all three:
-```bash
-HUBITAT_HOST=https://192.168.1.50
-HUBITAT_APP_ID=30
-HUBITAT_ACCESS_TOKEN=your-token-here
-```
+Open **Settings → Server** in the dashboard and confirm your Hubitat Host, App ID, and Access Token are correct.
 
 **Step 3: Verify Maker API devices are selected**
 
@@ -55,7 +46,7 @@ sudo journalctl -u jvshomecontrol -f
 ```
 
 **Common causes:**
-- **Port already in use** — another service is on port 80. Change the port in Settings → Server, or set `PORT=8443` in the env file.
+- **Port already in use** — another service is on port 80. Change the port in Settings → Server, then restart.
 - **Permission issues** — the `jvshome` user needs write access to `/opt/jvshomecontrol/server/data/`.
 - **Node.js not found** — run `node --version`. Needs v20 or later.
 
@@ -108,8 +99,8 @@ ffmpeg -i "rtsp://user:pass@camera-ip:554/stream" -t 5 -f null -
 **Common fixes:**
 - Camera RTSP URL is wrong or requires authentication
 - Network firewall blocking RTSP port (usually 554)
-- Try switching transport: set `RTSP_HLS_RTSP_TRANSPORT=udp` in the env file
-- Lower framerate if CPU is high: `RTSP_HLS_OUTPUT_FPS=10`
+- Try switching RTSP transport in Settings → Cameras
+- Lower framerate if CPU is high
 
 ---
 
@@ -117,8 +108,7 @@ ffmpeg -i "rtsp://user:pass@camera-ip:554/stream" -t 5 -f null -
 
 If you see "blocked loading mixed active content" in the browser console:
 - You're accessing via HTTP but some resources use HTTPS (or vice versa)
-- Solution: always access via `https://` — the server defaults to HTTPS
-- Or set `HTTP_ONLY=1` in the env file to disable HTTPS entirely
+- Solution: always access via `https://` — the server defaults to HTTPS when certs are present
 
 ---
 
@@ -145,7 +135,7 @@ If the status indicator frequently flips between ONLINE/OFFLINE:
 
 ## Reset to Factory Defaults
 
-> **Warning:** This erases your UI configuration (themes, device lists, layout). Hubitat credentials in `/etc/jvshomecontrol.env` are preserved.
+> **Warning:** This erases your entire configuration (themes, device lists, layout, credentials).
 
 ```bash
 sudo systemctl stop jvshomecontrol

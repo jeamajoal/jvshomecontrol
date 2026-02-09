@@ -20,12 +20,8 @@ APP_GROUP="${APP_GROUP:-jvshome}"
 APP_DIR="${APP_DIR:-${ROOT_DIR}}"
 
 REPO_URL="${REPO_URL:-https://github.com/jeamajoal/JVSHomeControl.git}"
-ENV_FILE="${ENV_FILE:-/etc/jvshomecontrol.env}"
 SERVICE_FILE="${SERVICE_FILE:-/etc/systemd/system/jvshomecontrol.service}"
-CONFIG_FILE_REL="${CONFIG_FILE_REL:-server/data/config.json}"
-CERT_DIR_REL="${CERT_DIR_REL:-server/data/certs}"
-
-log() { echo "[install] $*"; }
+CONFIG_FILE_REL="${CONFIG_FILE_REL:-server/data/config.json}"\n\nlog() { echo \"[install] $*\"; }
 warn() { echo "[install][WARN] $*"; }
 
 die() {
@@ -142,6 +138,7 @@ ensure_config_json() {
     log "Creating config.json from config.example.json…"
     /usr/bin/cp -a "${example}" "${cfg}"
     /usr/bin/chown "${APP_USER}:${APP_GROUP}" "${cfg}" || true
+    /usr/bin/chmod 600 "${cfg}" || true
     return 0
   fi
 
@@ -208,6 +205,8 @@ fs.writeFileSync(cfg, JSON.stringify(merged, null, 2) + '\n');
 NODE
 
   /usr/bin/chown "${APP_USER}:${APP_GROUP}" "${cfg}" || true
+  /usr/bin/chmod 600 "${cfg}" || true
+  /usr/bin/chmod 600 "${backup}" || true
   warn "Config backup left in place: ${backup}"
 }
 
@@ -217,111 +216,6 @@ install_and_build() {
 
   log "Installing client dependencies and building UI…"
   sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}/client' && npm ci && npm run build && npm prune --omit=dev"
-}
-
-ensure_https_setup() {
-  # Offer to create or recreate a self-signed certificate and place it in server/data/certs.
-  local cert_dir
-  cert_dir="${APP_DIR}/${CERT_DIR_REL}"
-  local cert_path key_path
-  cert_path="${cert_dir}/localhost.crt"
-  key_path="${cert_dir}/localhost.key"
-
-  local should_create
-  should_create=0
-
-  if [[ -f "${cert_path}" && -f "${key_path}" ]]; then
-    if [[ ! -t 0 ]]; then
-      log "HTTPS cert already present: ${cert_path}"
-      return 0
-    fi
-
-    if ! confirm "HTTPS certificate already exists. Recreate it (overwrite)?"; then
-      log "Keeping existing HTTPS certificate: ${cert_path}"
-      return 0
-    fi
-
-    should_create=1
-
-    local stamp
-    stamp="$(/usr/bin/date -u +%Y%m%dT%H%M%SZ)"
-    log "Backing up existing cert/key…"
-    /usr/bin/cp -a "${cert_path}" "${cert_path}.${stamp}.bak" || true
-    /usr/bin/cp -a "${key_path}" "${key_path}.${stamp}.bak" || true
-    /usr/bin/rm -f "${cert_path}" "${key_path}" || true
-  fi
-
-  if [[ ! -t 0 ]]; then
-    warn "Non-interactive session; skipping HTTPS certificate prompt."
-    warn "To create a self-signed cert later: cd '${APP_DIR}/server' && node scripts/https-setup.js"
-    return 0
-  fi
-
-  if (( should_create == 0 )); then
-    if ! confirm "HTTPS certificate not found. Create a self-signed certificate now?"; then
-      log "HTTPS: skipping certificate creation. Server will run HTTP unless you add a cert."
-      return 0
-    fi
-
-    should_create=1
-  fi
-
-  if (( should_create == 0 )); then
-    return 0
-  fi
-
-  local default_host
-  default_host="$(/usr/bin/hostname -f 2>/dev/null || /usr/bin/hostname 2>/dev/null || echo localhost)"
-  local cert_host
-  read -r -p "Hostname (or IP) to include in the HTTPS certificate [${default_host}]: " cert_host
-  cert_host="${cert_host:-${default_host}}"
-
-  log "Creating self-signed HTTPS certificate in ${cert_dir} for '${cert_host}'…"
-  sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}/server' && HTTPS=1 HTTPS_SETUP_ASSUME_YES=1 HTTPS_CERT_HOSTNAME='${cert_host}' node scripts/https-setup.js"
-}
-
-ensure_env_file() {
-  if [[ -f "${ENV_FILE}" ]]; then
-    log "Env file exists: ${ENV_FILE} (will not overwrite)"
-    return 0
-  fi
-
-  log "Creating env file template: ${ENV_FILE}"
-  cat >"${ENV_FILE}" <<'EOF'
-# JVSHomeControl environment
-
-# Hubitat Maker API (required to enable polling/commands)
-# SECURITY: Use HTTPS even on your local network to protect your access token
-HUBITAT_HOST=https://192.168.1.50
-HUBITAT_APP_ID=30
-HUBITAT_ACCESS_TOKEN=REPLACE_ME
-
-# Required if Hubitat uses a self-signed certificate (recommended setup)
-HUBITAT_TLS_INSECURE=1
-
-# Optional: Server port (default: 80)
-# PORT=80
-
-# Optional: Poll interval for Maker API full refresh (milliseconds)
-# Default is 2000. Example: poll once per minute:
-# HUBITAT_POLL_INTERVAL_MS=60000
-
-# Optional: Dashboard device allowlists (comma-separated Hubitat device IDs)
-# UI_ALLOWED_MAIN_DEVICE_IDS=24,25
-# UI_ALLOWED_CTRL_DEVICE_IDS=24,25,26
-
-# Optional: Maker postURL ingest protection
-# EVENTS_INGEST_TOKEN=REPLACE_ME
-
-# Optional: Backup retention
-# BACKUP_MAX_FILES=200
-
-# Optional weather overrides
-# OPEN_METEO_LAT=...
-# OPEN_METEO_LON=...
-EOF
-
-  /usr/bin/chmod 600 "${ENV_FILE}"
 }
 
 ensure_service() {
@@ -348,7 +242,6 @@ Type=simple
 User=${APP_USER}
 Group=${APP_GROUP}
 WorkingDirectory=${APP_DIR}/server
-EnvironmentFile=-${ENV_FILE}
 ExecStart=/usr/bin/node ${APP_DIR}/server/server.js
 Restart=on-failure
 RestartSec=5
@@ -387,8 +280,6 @@ main() {
   log "Done! Open http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'your-server-ip') in a browser."
   log "Configure Hubitat and HTTPS from Settings."
   log "View logs: journalctl -u jvshomecontrol -f"
-  log ""
-  log "Advanced: create ${ENV_FILE} to set env-var overrides (optional)."
 }
 
 main "$@"

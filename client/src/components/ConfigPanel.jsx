@@ -849,7 +849,6 @@ const ConfigPanel = ({
   const [openMeteoDraft, setOpenMeteoDraft] = useState(() => ({ lat: '', lon: '', timezone: 'auto' }));
   const [openMeteoDirty, setOpenMeteoDirty] = useState(false);
   const [openMeteoError, setOpenMeteoError] = useState(null);
-  const [openMeteoEnvOverrides, setOpenMeteoEnvOverrides] = useState(() => ({ lat: false, lon: false, timezone: false }));
 
   const [uiCameras, setUiCameras] = useState([]);
   const [uiCamerasStatus, setUiCamerasStatus] = useState('idle'); // idle | loading
@@ -1014,16 +1013,7 @@ const ConfigPanel = ({
   const globalIconSizeSave = useAsyncSave((iconSizePct) => saveIconSizePct(iconSizePct, null));
   const globalCardScaleSave = useAsyncSave((cardScalePct) => saveCardScalePct(cardScalePct, null));
   const globalHomeRoomColsSave = useAsyncSave((homeRoomColumnsXl) => saveHomeRoomColumnsXl(homeRoomColumnsXl, null));
-  const openMeteoSave = useAsyncSave(async (openMeteo) => {
-    const res = await saveOpenMeteoConfig(openMeteo);
-    const overrides = (res?.overriddenByEnv && typeof res.overriddenByEnv === 'object') ? res.overriddenByEnv : {};
-    setOpenMeteoEnvOverrides({
-      lat: overrides.lat === true,
-      lon: overrides.lon === true,
-      timezone: overrides.timezone === true,
-    });
-    return res;
-  });
+  const openMeteoSave = useAsyncSave((openMeteo) => saveOpenMeteoConfig(openMeteo));
 
   const alertSounds = useMemo(() => {
     const raw = (config?.ui?.alertSounds && typeof config.ui.alertSounds === 'object') ? config.ui.alertSounds : {};
@@ -2755,10 +2745,6 @@ const ConfigPanel = ({
     ].map((v) => String(v)));
   }, [optimisticGlobalAllowedDeviceIds, mainAllowedDeviceIds, ctrlAllowedDeviceIds]);
 
-  const mainAllowlistLocked = Boolean(allowlistConfig?.ui?.mainAllowlistLocked);
-  const ctrlAllowlistLocked = Boolean(allowlistConfig?.ui?.ctrlAllowlistLocked);
-  const globalAvailabilityLocked = Boolean(mainAllowlistLocked || ctrlAllowlistLocked);
-
   const discoveredDevices = useMemo(() => {
     const raw = Array.isArray(config?.ui?.discoveredDevices) ? config.ui.discoveredDevices : null;
     if (!raw) return null;
@@ -3109,12 +3095,6 @@ const ConfigPanel = ({
       .then((data) => {
         if (!mounted) return;
         const open = (data?.openMeteo && typeof data.openMeteo === 'object') ? data.openMeteo : {};
-        const overrides = (data?.overriddenByEnv && typeof data.overriddenByEnv === 'object') ? data.overriddenByEnv : {};
-        setOpenMeteoEnvOverrides({
-          lat: overrides.lat === true,
-          lon: overrides.lon === true,
-          timezone: overrides.timezone === true,
-        });
         if (!openMeteoDirty) {
           setOpenMeteoDraft({
             lat: String(open.lat ?? ''),
@@ -3596,16 +3576,6 @@ const ConfigPanel = ({
                 Server-enforced allowlists. If a device is not allowed here, controls will be blocked everywhere.
               </div>
 
-              {globalAvailabilityLocked ? (
-                <div className="mt-3 rounded-xl border border-warning/20 bg-warning/5 px-3 py-2 text-xs text-warning">
-                  {mainAllowlistLocked && ctrlAllowlistLocked
-                    ? 'Availability is locked by environment variables. Contact your administrator to make changes.'
-                    : mainAllowlistLocked
-                    ? 'Home allowlist is locked by environment variables. Availability edits would need to update Home too, so editing is disabled.'
-                    : 'Controls allowlist is locked by environment variables. Availability edits would need to update Controls too, so editing is disabled.'}
-                </div>
-              ) : null}
-
               <div className="mt-3 text-xs text-white/45">
                 {statusText(allowlistSave.status)}
                 {availabilityDevices.length ? (
@@ -3641,7 +3611,7 @@ const ConfigPanel = ({
                             <input
                               type="checkbox"
                               className={`h-5 w-5 ${scheme.checkboxAccent}`}
-                              disabled={!connected || allowlistSave.status === 'saving' || globalAvailabilityLocked}
+                              disabled={!connected || allowlistSave.status === 'saving'}
                               checked={isAvailable}
                               onChange={(e) => setGlobalAvailable(d.id, e.target.checked)}
                             />
@@ -3727,12 +3697,6 @@ const ConfigPanel = ({
               <div className="mt-1 text-xs text-white/45">
                 Set the location used for the weather card. Accepts decimal or DMS (e.g. 35°29'44.9"N).
               </div>
-
-              {(openMeteoEnvOverrides.lat || openMeteoEnvOverrides.lon || openMeteoEnvOverrides.timezone) ? (
-                <div className="mt-2 text-xs text-warning">
-                  Note: OPEN_METEO_* environment variables are set and will override these fields.
-                </div>
-              ) : null}
 
               <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
                 <label className="block">

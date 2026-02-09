@@ -20,36 +20,26 @@ Your access token is sent with every request. Without encryption, anyone on your
 
 ---
 
-## Environment Variables
+## Configuration
 
-| Variable | Example | Description |
-|----------|---------|-------------|
-| `HUBITAT_HOST` | `https://192.168.1.50` | Hubitat URL (use HTTPS!) |
-| `HUBITAT_APP_ID` | `30` | Maker API app ID |
-| `HUBITAT_ACCESS_TOKEN` | `abc123...` | Maker API token |
-| `HUBITAT_TLS_INSECURE` | `1` | Required for self-signed Hubitat certs |
-| `HUBITAT_POLL_INTERVAL_MS` | `60000` | Poll interval (default: 2000) |
-| `PORT` | `8443` | Server port (default: 80) |
+All Hubitat settings are configured in **Settings → Server**:
 
----
-
-## Recommended Configuration
-
-```bash
-# /etc/jvshomecontrol.env
-HUBITAT_HOST=https://192.168.1.50
-HUBITAT_APP_ID=30
-HUBITAT_ACCESS_TOKEN=your-token-here
-HUBITAT_TLS_INSECURE=1
-```
+| Setting | Example | Description |
+|---------|---------|-------------|
+| Hubitat Host | `https://192.168.1.50` | Hubitat URL (use HTTPS!) |
+| Maker API App ID | `30` | Maker API app ID |
+| Access Token | `abc123...` | Maker API token |
+| Allow self-signed certs | Enabled | Required for self-signed Hubitat certs |
+| Poll Interval | `2000` ms | How often to poll (default: 2000ms) |
 
 ---
 
 ## Token Security
 
-- Store in `/etc/jvshomecontrol.env` or enter via the Settings UI — env file is more secure (never written to config.json)
+- Enter your token in **Settings → Server** — it is stored in `config.json` (chmod 600)
 - Never commit tokens to git
 - If you leak a token, rotate it in Hubitat immediately
+- Config backups also contain credentials — they are written with restrictive permissions
 
 ---
 

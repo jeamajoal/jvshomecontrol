@@ -20,8 +20,6 @@ docker run -d --name jvshomecontrol \
 
 Open `http://localhost` — **all configuration happens in the browser**, including Hubitat connection credentials.
 
-> **Prefer environment variables?** You can still pass `HUBITAT_HOST`, `HUBITAT_APP_ID`, `HUBITAT_ACCESS_TOKEN`, and `HUBITAT_TLS_INSECURE` as `-e` flags if you'd rather configure them outside the UI. Env vars take priority over UI settings and lock those fields in the Settings page.
-
 ### Using Docker Compose (recommended)
 
 Create a `docker-compose.yml` anywhere on your machine:
@@ -36,11 +34,6 @@ services:
       - "80:80"
     volumes:
       - jvs-data:/app/server/data
-    # environment:                         # Optional — configure in browser instead
-    #   - HUBITAT_HOST=https://192.168.1.50
-    #   - HUBITAT_APP_ID=30
-    #   - HUBITAT_ACCESS_TOKEN=your-token
-    #   - HUBITAT_TLS_INSECURE=1
 
 volumes:
   jvs-data:
@@ -53,8 +46,6 @@ docker compose up -d
 ```
 
 Open `http://localhost` and configure your Hubitat connection in **Settings → Server**.
-
-> **Prefer a `.env` file?** Create one next to `docker-compose.yml` with `HUBITAT_HOST`, `HUBITAT_APP_ID`, `HUBITAT_ACCESS_TOKEN` and uncomment the `environment` block above. Env vars take priority and lock those fields in the Settings UI. Never commit your `.env` file to source control.
 
 ---
 
@@ -91,8 +82,6 @@ Once the container starts, **all setup happens in the browser** at `http://<host
 
 You never need to SSH into the container or edit files by hand.
 
-> **Tip:** If you prefer to keep credentials outside the UI (e.g. for automated deployments), pass them as environment variables instead. Env vars take priority over UI settings and lock those fields in the Settings page.
-
 ---
 
 ## Persistent Data
@@ -109,104 +98,13 @@ The `jvs-data` volume stores everything that should survive container restarts:
 
 ---
 
-## Environment Variables
-
-Pass them via the `environment` key in `docker-compose.yml`, a `.env` file, or `docker run -e`.
-
-### Hubitat Connection (optional — can be set in the browser instead)
-
-| Variable | Example | Description |
-|----------|---------|-------------|
-| `HUBITAT_HOST` | `https://192.168.1.50` | Hubitat URL |
-| `HUBITAT_APP_ID` | `30` | Maker API app ID |
-| `HUBITAT_ACCESS_TOKEN` | `abc123...` | Maker API token |
-| `HUBITAT_TLS_INSECURE` | `1` | Skip TLS verification for self-signed Hubitat certs |
-
-> When set as env vars, these values take priority over the UI and the corresponding Settings fields are shown as locked.
-
-### Optional
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `80` | Server listen port |
-| `HTTP_ONLY` | `false` | Force HTTP (skip HTTPS) |
-| `HUBITAT_POLL_INTERVAL_MS` | `2000` | How often to poll Hubitat (ms) |
-| `EVENTS_INGEST_TOKEN` | — | Token to protect the events endpoint |
-| `OPEN_METEO_LAT` | auto | Weather latitude |
-| `OPEN_METEO_LON` | auto | Weather longitude |
-| `OPEN_METEO_TIMEZONE` | `auto` | Weather timezone |
-
-For the full list, see [03-Installation.md](03-Installation.md#all-environment-variables).
-
----
-
-## Using a .env File (optional)
-
-If you prefer to keep Hubitat credentials outside the UI — for example in automated or headless deployments — create a `.env` file next to your `docker-compose.yml`:
-
-```bash
-HUBITAT_HOST=https://192.168.1.50
-HUBITAT_APP_ID=30
-HUBITAT_ACCESS_TOKEN=your-token-here
-HUBITAT_TLS_INSECURE=1
-```
-
-Then reference them in `docker-compose.yml`:
-
-```yaml
-environment:
-  - HUBITAT_HOST=${HUBITAT_HOST}
-  - HUBITAT_APP_ID=${HUBITAT_APP_ID}
-  - HUBITAT_ACCESS_TOKEN=${HUBITAT_ACCESS_TOKEN}
-  - HUBITAT_TLS_INSECURE=${HUBITAT_TLS_INSECURE}
-```
-
-Fields set via env vars will show an **ENV** badge in the Settings UI and cannot be changed from the browser.
-
-> **Security:** Add `.env` to your `.gitignore` so you don't commit secrets.
-
----
-
 ## HTTPS in Docker
 
-By default, the container starts in **HTTP** mode. Here's how that works:
+By default, the container starts in **HTTP** mode. To enable HTTPS:
 
-1. The Dockerfile's `prestart` script (`https-setup.js`) runs before the server.
-2. If it finds existing certs in `server/data/certs/`, it uses them.
-3. If **no certs exist** and the session is **non-interactive** (which Docker is), it silently skips generation and falls back to HTTP.
-4. The server checks for cert files at startup — if present, it serves HTTPS; otherwise HTTP.
+### Option 1: Generate certs interactively
 
-To enable HTTPS, pick one of these options:
-
-### Option 1: Auto-generate certs on first start (easiest)
-
-Set `HTTPS_SETUP_ASSUME_YES=1` so the prestart script creates a self-signed certificate without prompting:
-
-```yaml
-environment:
-  - HTTPS_SETUP_ASSUME_YES=1
-  - HTTPS_CERT_HOSTNAME=192.168.1.100   # Your server's LAN IP or hostname
-```
-
-Or with `docker run`:
-
-```bash
-docker run -d --name jvshomecontrol \
-  -p 80:80 \
-  -e HTTPS_SETUP_ASSUME_YES=1 \
-  -e HTTPS_CERT_HOSTNAME=192.168.1.100 \
-  -v jvs-data:/app/server/data \
-  --restart unless-stopped \
-  jeamajoal/jvshomecontrol:latest
-```
-
-The cert is written to the `jvs-data` volume and survives container restarts/updates. It only generates once — if certs already exist, the script skips.
-
-> **Note:** Self-signed certs cause browser warnings. Accept the warning once, or install the cert on your device (see [08-HTTPS.md](08-HTTPS.md)).
-
-### Option 2: Generate certs interactively
-
-Run the setup script manually in the running container:
+Run the setup script in the running container:
 
 ```bash
 docker compose exec -it jvshomecontrol node scripts/https-setup.js
@@ -214,6 +112,15 @@ docker compose restart
 ```
 
 The script will prompt for a hostname and generate the cert.
+
+### Option 2: Generate certs non-interactively
+
+Pass the hostname and `--yes` flag:
+
+```bash
+docker compose exec jvshomecontrol node scripts/https-setup.js 192.168.1.100 --yes
+docker compose restart
+```
 
 ### Option 3: Mount your own certs
 
@@ -229,18 +136,9 @@ The server auto-detects them at startup.
 
 ### Option 4: Use a reverse proxy
 
-Put nginx, Caddy, or Traefik in front of the container and let it handle TLS. Set `HTTP_ONLY=1` in the container so it only serves HTTP internally.
+Put nginx, Caddy, or Traefik in front of the container and let it handle TLS. The server will serve HTTP on port 80 internally.
 
-### HTTPS-related environment variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `HTTP_ONLY` | `false` | Force HTTP only — skip HTTPS entirely |
-| `HTTPS` | — | Set `1` to force HTTPS (warns if no certs found) |
-| `HTTPS_SETUP_ASSUME_YES` | `false` | Auto-create self-signed cert without prompting |
-| `HTTPS_CERT_HOSTNAME` | system hostname | Hostname/IP embedded in the generated certificate |
-| `HTTPS_CERT_PATH` | `data/certs/localhost.crt` | Custom path to TLS certificate |
-| `HTTPS_KEY_PATH` | `data/certs/localhost.key` | Custom path to TLS private key |
+> **Note:** Self-signed certs cause browser warnings. Accept the warning once, or install the cert on your device (see [08-HTTPS.md](08-HTTPS.md)).
 
 ---
 
@@ -299,11 +197,11 @@ Additional diagnostic endpoints:
 
 ## Custom Port
 
+The container listens on port 80 internally. Map it to any host port:
+
 ```yaml
 ports:
-  - "8443:80"    # Host port : Container port
-environment:
-  - PORT=80      # Keep internal port at 80
+  - "8443:80"    # Host port 8443 → Container port 80
 ```
 
 ---
@@ -312,7 +210,7 @@ environment:
 
 Cameras work the same way as a bare-metal install — ffmpeg is included in the Docker image. Configure cameras through the Settings page in the dashboard.
 
-For RTSP tuning variables, see [10-RTSP-HLS-Configuration.md](10-RTSP-HLS-Configuration.md).
+For RTSP tuning details, see [10-RTSP-HLS-Configuration.md](10-RTSP-HLS-Configuration.md).
 
 ---
 

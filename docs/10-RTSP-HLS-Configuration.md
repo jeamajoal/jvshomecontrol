@@ -10,7 +10,7 @@ Stream RTSP cameras directly in the JVSHomeControl dashboard. The server runs ff
 
 ```
 ┌──────────┐   RTSP    ┌──────────┐   HLS segments   ┌──────────────┐
-│  Camera  │ ────────  │  ffmpeg  │ ────────────────  │  Browser     │
+│  Camera  │ ────────→ │  ffmpeg  │ ────────────────→ │  Browser     │
 │  (RTSP)  │           │  (server)│                   │  (hls.js)    │
 └──────────┘           └──────────┘                   └──────────────┘
 ```
@@ -80,20 +80,20 @@ The dashboard will poll the snapshot URL at a configurable interval (default: 10
 
 ## Tuning Parameters
 
-Set in `/etc/jvshomecontrol.env`:
+All HLS/RTSP tuning parameters are configured in `config.json` and can be edited via the Settings UI or the config API. Common tuning options:
 
-| Variable | Default | Range | Description |
-|----------|---------|-------|-------------|
-| `RTSP_HLS_SEGMENT_SECONDS` | `2` | 1–6 | Shorter = lower latency, more CPU |
-| `RTSP_HLS_OUTPUT_FPS` | `15` | 1–60 | Lower = less CPU, choppier video |
-| `RTSP_HLS_RTSP_TRANSPORT` | `tcp` | tcp/udp | TCP is more reliable; UDP is lower latency |
+| Setting | Default | Range | Description |
+|---------|---------|-------|-------------|
+| Segment duration | `2` seconds | 1–6 | Shorter = lower latency, more CPU |
+| Output FPS | `15` | 1–60 | Lower = less CPU, choppier video |
+| RTSP transport | `tcp` | tcp/udp | TCP is more reliable; UDP is lower latency |
 
 ### Performance Tips
 
-- **High CPU?** Lower FPS: `RTSP_HLS_OUTPUT_FPS=10`
+- **High CPU?** Lower FPS to 10
 - **Choppy video?** Increase FPS or check network bandwidth
-- **High latency?** Decrease segment duration: `RTSP_HLS_SEGMENT_SECONDS=1`
-- **Unreliable stream?** Switch transport: `RTSP_HLS_RTSP_TRANSPORT=udp`
+- **High latency?** Decrease segment duration to 1 second
+- **Unreliable stream?** Switch transport to UDP
 
 ---
 
@@ -112,20 +112,16 @@ curl -sk https://localhost/api/hls/health | python3 -m json.tool
 
 ### Advanced Health Settings
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `RTSP_HLS_HEALTH_CHECK_INTERVAL_MS` | `10000` | How often to check stream health |
-| `RTSP_HLS_MAX_RESTART_ATTEMPTS` | `5` | Max auto-restarts before giving up |
-| `RTSP_HLS_STALE_THRESHOLD_SECONDS` | `15` | How long before a stream is considered dead |
-| `RTSP_HLS_CLEANUP_ON_SHUTDOWN` | `false` | Delete HLS files when server stops |
-| `RTSP_HLS_LIST_SIZE` | `5` | HLS playlist window size (number of segments) |
-| `RTSP_HLS_MAX_SEGMENT_AGE_SECONDS` | `30` | Delete segments older than this |
-| `RTSP_HLS_DIR` | Auto | Custom directory for HLS segment files |
-| `RTSP_HLS_PROBESIZE` | Auto | ffmpeg input probe size (bytes) |
-| `RTSP_HLS_ANALYZEDURATION` | Auto | ffmpeg input analysis duration (µs) |
-| `RTSP_HLS_DEBUG` | `false` | Enable verbose ffmpeg logging |
-| `RTSP_HLS_RESTART_BACKOFF_MS` | `5000` | Delay before restarting a failed stream |
-| `RTSP_HLS_STARTUP_TIMEOUT_MS` | `15000` | Timeout waiting for first HLS segment |
+These defaults are configured in the server's config modules:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Health check interval | `10000` ms | How often to check stream health |
+| Max restart attempts | `5` | Max auto-restarts before giving up |
+| Stale threshold | `15` seconds | How long before a stream is considered dead |
+| Cleanup on shutdown | `false` | Delete HLS files when server stops |
+| Playlist window size | `6` segments | HLS playlist window size |
+| Max segment age | `30` seconds | Delete segments older than this |
 
 ---
 

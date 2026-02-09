@@ -37,14 +37,12 @@ EXPOSE 80
 ENV NODE_ENV=production
 
 # Health check so orchestrators (Docker Compose, Portainer, K8s) can monitor.
-# Uses PORT env var so the check follows any custom port setting.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD wget -qO- http://localhost:${PORT:-80}/api/status || exit 1
+    CMD wget -qO- http://localhost:80/api/status || exit 1
 
 # The server looks for data in server/data/ by default.
-# Hubitat configuration is passed via environment variables:
-#   HUBITAT_HOST, HUBITAT_APP_ID, HUBITAT_ACCESS_TOKEN
-# See docs/03-Installation.md for the full list.
+# All configuration is managed through config.json (editable via the browser UI).
+# See docs/03-Installation.md for details.
 
 WORKDIR /app/server
 CMD ["node", "server.js"]

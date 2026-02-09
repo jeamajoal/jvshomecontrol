@@ -8,7 +8,6 @@ The server starts on HTTP by default. After installation, generate an HTTPS cert
 
 - If certificates exist in `server/data/certs/`, the server uses HTTPS automatically
 - If no certificates exist, it falls back to HTTP
-- Set `HTTP_ONLY=1` to force HTTP even when certificates are present
 
 ---
 
@@ -32,8 +31,14 @@ sudo systemctl restart jvshomecontrol
 
 ```bash
 cd /opt/jvshomecontrol/server
-sudo -u jvshome HTTPS=1 HTTPS_SETUP_ASSUME_YES=1 HTTPS_CERT_HOSTNAME=your-hostname node scripts/https-setup.js
+sudo -u jvshome node scripts/https-setup.js your-hostname
 sudo systemctl restart jvshomecontrol
+```
+
+Pass the hostname or IP as the first argument. Use `--yes` to skip prompts:
+
+```bash
+sudo -u jvshome node scripts/https-setup.js 192.168.1.100 --yes
 ```
 
 ---
@@ -81,32 +86,21 @@ https://your-server/api/events
 
 ## Hubitat HTTPS
 
-If your Hubitat uses HTTPS with a self-signed cert, enable **Allow self-signed certs** in **Settings → Server**, or set via environment:
-
-```bash
-# In /etc/jvshomecontrol.env:
-HUBITAT_TLS_INSECURE=1
-```
-
-Then restart: `sudo systemctl restart jvshomecontrol`
+If your Hubitat uses HTTPS with a self-signed cert, enable **Allow self-signed certs** in **Settings → Server**.
 
 ---
 
-## Custom Certificate Paths
+## Mount Your Own Certificates
 
-```bash
-# In /etc/jvshomecontrol.env:
-HTTPS_CERT_PATH=/path/to/cert.crt
-HTTPS_KEY_PATH=/path/to/cert.key
-```
+If you have certificates from Let's Encrypt or another CA, place them at:
+
+- `server/data/certs/localhost.crt`
+- `server/data/certs/localhost.key`
+
+The server auto-detects them at startup.
 
 ---
 
-## Force HTTP Only
+## Use a Reverse Proxy
 
-Disable HTTPS in **Settings → Server**, or via environment:
-
-```bash
-# In /etc/jvshomecontrol.env:
-HTTP_ONLY=1
-```
+Put nginx, Caddy, or Traefik in front of JVSHomeControl and let it handle TLS. The server will serve HTTP on its configured port and the proxy terminates HTTPS.

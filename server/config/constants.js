@@ -18,17 +18,9 @@ const CLIENT_INDEX_HTML = path.join(CLIENT_DIST_DIR, 'index.html');
 const CERT_DIR_DEFAULT = path.join(DATA_DIR, 'certs');
 
 // --- Server Configuration ---
-const PORT = (() => {
-    const raw = process.env.PORT;
-    const parsed = raw ? Number(raw) : 80;
-    return Number.isFinite(parsed) && parsed > 0 && parsed <= 65535 ? Math.floor(parsed) : 80;
-})();
-
-const MAX_BACKUP_FILES = (() => {
-    const raw = process.env.BACKUP_MAX_FILES;
-    const parsed = raw ? Number(raw) : 200;
-    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 200;
-})();
+// Defaults only — runtime values come from config.json (applied at startup).
+const PORT = 80;
+const MAX_BACKUP_FILES = 200;
 
 // --- UI Color Schemes ---
 // New versions use the unified palette (ALLOWED_TOLERANCE_COLOR_IDS) for ui.accentColorId.

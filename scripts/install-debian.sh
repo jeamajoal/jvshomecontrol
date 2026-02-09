@@ -205,6 +205,7 @@ ensure_repo() {
     cfg_backup="/tmp/jvshomecontrol.config.${stamp}.json"
     log "Backing up existing config.json to ${cfg_backup}…"
     /usr/bin/cp -a "${cfg}" "${cfg_backup}"
+    /usr/bin/chmod 600 "${cfg_backup}" || true
   fi
 
   if [[ -d "${cert_dir}" ]]; then
@@ -214,6 +215,7 @@ ensure_repo() {
     log "Backing up existing certs dir to ${cert_backup_dir}…"
     /usr/bin/mkdir -p "${cert_backup_dir}"
     /usr/bin/cp -a "${cert_dir}/." "${cert_backup_dir}/" || true
+    /usr/bin/chmod -R 600 "${cert_backup_dir}" || true
   fi
 
   if [[ -d "${backgrounds_dir}" ]]; then
@@ -266,6 +268,7 @@ ensure_repo() {
     /usr/bin/mkdir -p "$(/usr/bin/dirname "${cfg}")"
     /usr/bin/cp -a "${cfg_backup}" "${cfg}"
     /usr/bin/chown "${APP_USER}:${APP_GROUP}" "${cfg}" || true
+    /usr/bin/chmod 600 "${cfg}" || true
 
     warn "Backup left in /tmp: ${cfg_backup}"
     warn "After confirming your settings are correct, you should remove it (e.g. sudo rm -f '${cfg_backup}')."
@@ -276,6 +279,7 @@ ensure_repo() {
     /usr/bin/mkdir -p "${cert_dir}"
     /usr/bin/cp -a "${cert_backup_dir}/." "${cert_dir}/" || true
     /usr/bin/chown -R "${APP_USER}:${APP_GROUP}" "${cert_dir}" || true
+    /usr/bin/chmod -R 600 "${cert_dir}" || true
 
     warn "Backup left in /tmp: ${cert_backup_dir}"
     warn "After confirming HTTPS is working, you should remove it (e.g. sudo rm -rf '${cert_backup_dir}')."

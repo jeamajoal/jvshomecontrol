@@ -1,10 +1,7 @@
 /**
  * Hubitat Maker API configuration.
- * Handles Hubitat connection settings and API URL construction.
+ * Defaults only — runtime values come from config.json (applied at startup).
  */
-
-// Helper to get and trim env var values
-const envTrim = (name) => String(process.env[name] || '').trim();
 
 // Normalize Hubitat host URL
 const normalizeHubitatHost = (raw) => {
@@ -17,40 +14,18 @@ const normalizeHubitatHost = (raw) => {
     return noTrailingSlash;
 };
 
-// --- Hubitat Configuration ---
-// Public-repo posture: no built-in defaults or legacy env var fallbacks.
-// If Hubitat isn't configured, the server still runs but Hubitat polling/commands are disabled.
-const HUBITAT_HOST = normalizeHubitatHost(envTrim('HUBITAT_HOST'));
-const HUBITAT_APP_ID = envTrim('HUBITAT_APP_ID');
-const HUBITAT_ACCESS_TOKEN = envTrim('HUBITAT_ACCESS_TOKEN');
-const HUBITAT_CONFIGURED = Boolean(HUBITAT_HOST && HUBITAT_APP_ID && HUBITAT_ACCESS_TOKEN);
-
-const HUBITAT_POLL_INTERVAL_MS = (() => {
-    const raw = String(process.env.HUBITAT_POLL_INTERVAL_MS || '').trim();
-    if (!raw) return 2000;
-    const parsed = Number(raw);
-    if (!Number.isFinite(parsed)) return 2000;
-    // Keep it sane: too-fast polling can overload Hubitat; too-slow can feel stale.
-    const clamped = Math.max(1000, Math.min(60 * 60 * 1000, Math.floor(parsed)));
-    return clamped;
-})();
-
-const HUBITAT_TLS_INSECURE = (() => {
-    const raw = String(process.env.HUBITAT_TLS_INSECURE || '').trim().toLowerCase();
-    return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
-})();
-
-// --- API URLs ---
-const HUBITAT_API_BASE = HUBITAT_CONFIGURED ? `${HUBITAT_HOST}/apps/api/${HUBITAT_APP_ID}` : '';
-const HUBITAT_API_URL = HUBITAT_CONFIGURED
-    ? `${HUBITAT_API_BASE}/devices/all?access_token=${encodeURIComponent(HUBITAT_ACCESS_TOKEN)}`
-    : '';
-const HUBITAT_MODES_URL = HUBITAT_CONFIGURED
-    ? `${HUBITAT_API_BASE}/modes?access_token=${encodeURIComponent(HUBITAT_ACCESS_TOKEN)}`
-    : '';
+// All values are initial defaults; config.json is the single source of truth.
+const HUBITAT_HOST = '';
+const HUBITAT_APP_ID = '';
+const HUBITAT_ACCESS_TOKEN = '';
+const HUBITAT_CONFIGURED = false;
+const HUBITAT_POLL_INTERVAL_MS = 2000;
+const HUBITAT_TLS_INSECURE = false;
+const HUBITAT_API_BASE = '';
+const HUBITAT_API_URL = '';
+const HUBITAT_MODES_URL = '';
 
 module.exports = {
-    envTrim,
     normalizeHubitatHost,
     HUBITAT_HOST,
     HUBITAT_APP_ID,

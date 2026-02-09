@@ -6,19 +6,12 @@ const path = require('path');
 const readline = require('readline');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
-const CERT_DIR_DEFAULT = path.join(DATA_DIR, 'certs');
+const CERT_DIR = path.join(DATA_DIR, 'certs');
+const CERT_PATH = path.join(CERT_DIR, 'localhost.crt');
+const KEY_PATH = path.join(CERT_DIR, 'localhost.key');
 
-const truthy = (v) => ['1', 'true', 'yes', 'on'].includes(String(v || '').trim().toLowerCase());
-const falsy = (v) => ['0', 'false', 'no', 'off'].includes(String(v || '').trim().toLowerCase());
-
-function resolveCertPaths() {
-  const certPath = String(process.env.HTTPS_CERT_PATH || '').trim() || path.join(CERT_DIR_DEFAULT, 'localhost.crt');
-  const keyPath = String(process.env.HTTPS_KEY_PATH || '').trim() || path.join(CERT_DIR_DEFAULT, 'localhost.key');
-  return { certPath, keyPath };
-}
-
-function certExists({ certPath, keyPath }) {
-  return fs.existsSync(certPath) && fs.existsSync(keyPath);
+function certExists() {
+  return fs.existsSync(CERT_PATH) && fs.existsSync(KEY_PATH);
 }
 
 async function promptYesNo(question, defaultYes = true) {
@@ -48,44 +41,40 @@ async function promptText(question, defaultValue = '') {
   }
 }
 
-function printTrustWarning({ certPath }) {
+function printTrustWarning() {
   console.log('');
   console.log('HTTPS: self-signed certificate created.');
   console.log('IMPORTANT: You must TRUST this certificate on the device/browser running the dashboard,');
   console.log('otherwise you will see security warnings and the panel may alert on every load.');
   console.log('');
-  console.log(`Certificate: ${certPath}`);
+  console.log(`Certificate: ${CERT_PATH}`);
   console.log('');
   console.log('Maker API note: if Hubitat Maker "postURL" is set to HTTPS and Hubitat does not trust your cert,');
   console.log('you must configure Hubitat/Maker to ignore certificate warnings (if available) or use HTTP for the postURL.');
   console.log('');
-  console.log('If your HUBITAT_HOST uses https:// with a self-signed cert, set: HUBITAT_TLS_INSECURE=1');
+  console.log('If your Hubitat host uses https:// with a self-signed cert, enable "TLS insecure" in Settings → Server.');
   console.log('');
 }
 
 async function main() {
-  // Escape hatch
-  if (truthy(process.env.HTTP_ONLY) || falsy(process.env.HTTPS)) {
-    return;
-  }
+  // Accept optional CLI arguments: node https-setup.js [hostname] [--yes]
+  const args = process.argv.slice(2);
+  const assumeYes = args.includes('--yes') || args.includes('-y');
+  const cliHostname = args.find((a) => !a.startsWith('-'));
 
-  const assumeYes = truthy(process.env.HTTPS_SETUP_ASSUME_YES) || truthy(process.env.JVS_ASSUME_YES) || truthy(process.env.CI);
-
-  const paths = resolveCertPaths();
-
-  if (certExists(paths)) {
-    console.log(`HTTPS: using existing certificate (${paths.certPath})`);
+  if (certExists()) {
+    console.log(`HTTPS: using existing certificate (${CERT_PATH})`);
     return;
   }
 
   const interactive = Boolean(process.stdin.isTTY);
-  if (!interactive && !assumeYes) {
+  if (!interactive && !assumeYes && !cliHostname) {
     console.log('HTTPS: certificate not found (non-interactive session).');
-    console.log('Run again in an interactive terminal to create a self-signed cert, or provide HTTPS_CERT_PATH/HTTPS_KEY_PATH.');
+    console.log('Run again in an interactive terminal to create a self-signed cert.');
     return;
   }
 
-  const create = assumeYes ? true : await promptYesNo('HTTPS certificate not found. Create a self-signed certificate now?', true);
+  const create = (assumeYes || cliHostname) ? true : await promptYesNo('HTTPS certificate not found. Create a self-signed certificate now?', true);
   if (!create) {
     console.log('HTTPS: skipping certificate creation. Server will fall back to HTTP unless you provide a cert.');
     return;
@@ -93,12 +82,10 @@ async function main() {
 
   const selfsigned = require('selfsigned');
 
-  const certDir = path.dirname(paths.certPath);
-  fs.mkdirSync(certDir, { recursive: true });
+  fs.mkdirSync(CERT_DIR, { recursive: true });
 
-  const envHostname = String(process.env.HTTPS_CERT_HOSTNAME || '').trim();
-  const suggestedHostname = envHostname || os.hostname() || 'localhost';
-  const hostname = envHostname || await promptText('Hostname (or IP) to include in the HTTPS certificate', suggestedHostname);
+  const suggestedHostname = os.hostname() || 'localhost';
+  const hostname = cliHostname || await promptText('Hostname (or IP) to include in the HTTPS certificate', suggestedHostname);
 
   const altNames = [
     { type: 2, value: 'localhost' },
@@ -119,10 +106,10 @@ async function main() {
     extensions: [{ name: 'subjectAltName', altNames }],
   });
 
-  fs.writeFileSync(paths.keyPath, pems.private, { encoding: 'utf8', mode: 0o600 });
-  fs.writeFileSync(paths.certPath, pems.cert, { encoding: 'utf8' });
+  fs.writeFileSync(KEY_PATH, pems.private, { encoding: 'utf8', mode: 0o600 });
+  fs.writeFileSync(CERT_PATH, pems.cert, { encoding: 'utf8' });
 
-  printTrustWarning(paths);
+  printTrustWarning();
 }
 
 main().catch((err) => {

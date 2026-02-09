@@ -19,13 +19,7 @@ async function saveServerSettings(payload) {
 
 /* ─── Stable sub-components (module-level = fixed references) ──────────── */
 
-const LockBadge = () => (
-  <span className="ml-2 inline-flex items-center rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-400/80">
-    env
-  </span>
-);
-
-const NumericField = ({ label, value, locked: isLocked, min, max, step, unit, field }) => {
+const NumericField = ({ label, value, min, max, step, unit, field }) => {
   const [draft, setDraft] = React.useState(String(value ?? ''));
   const focusRef = React.useRef(false);
 
@@ -36,7 +30,7 @@ const NumericField = ({ label, value, locked: isLocked, min, max, step, unit, fi
   return (
     <div>
       <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
-        {label}{isLocked ? <LockBadge /> : null}
+        {label}
       </label>
       <div className="mt-1 flex items-center gap-2">
         <input
@@ -45,7 +39,6 @@ const NumericField = ({ label, value, locked: isLocked, min, max, step, unit, fi
           max={max}
           step={step || 1}
           value={draft}
-          disabled={isLocked}
           onChange={(e) => setDraft(e.target.value)}
           onFocus={() => { focusRef.current = true; }}
           onBlur={() => {
@@ -57,7 +50,7 @@ const NumericField = ({ label, value, locked: isLocked, min, max, step, unit, fi
             if (clamped !== value) saveServerSettings({ [field]: clamped }).catch(() => {});
           }}
           onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-          className={`w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white/85 ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+          className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white/85"
         />
         {unit ? <span className="text-[11px] text-white/40 shrink-0">{unit}</span> : null}
       </div>
@@ -65,19 +58,18 @@ const NumericField = ({ label, value, locked: isLocked, min, max, step, unit, fi
   );
 };
 
-const SelectField = ({ label, value, locked: isLocked, options, field }) => (
+const SelectField = ({ label, value, options, field }) => (
   <div>
     <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
-      {label}{isLocked ? <LockBadge /> : null}
+      {label}
     </label>
     <select
       value={value || ''}
-      disabled={isLocked}
       onChange={(e) => {
         const next = e.target.value;
         if (next && next !== value) saveServerSettings({ [field]: next }).catch(() => {});
       }}
-      className={`mt-1 menu-select w-full rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 jvs-menu-select ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+      className="mt-1 menu-select w-full rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 jvs-menu-select"
     >
       {options.map((o) => (
         <option key={o.value} value={o.value}>{o.label}</option>
@@ -86,17 +78,16 @@ const SelectField = ({ label, value, locked: isLocked, options, field }) => (
   </div>
 );
 
-const ToggleField = ({ label, value, locked: isLocked, field, description }) => (
+const ToggleField = ({ label, value, field, description }) => (
   <div>
     <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
-      {label}{isLocked ? <LockBadge /> : null}
+      {label}
     </label>
     <div className="mt-1 flex items-center gap-3">
       <button
         type="button"
-        disabled={isLocked}
         onClick={() => saveServerSettings({ [field]: !value }).catch(() => {})}
-        className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${value ? 'bg-emerald-500/70' : 'bg-white/15'} ${isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+        className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none cursor-pointer ${value ? 'bg-emerald-500/70' : 'bg-white/15'}`}
         role="switch"
         aria-checked={!!value}
       >
@@ -107,7 +98,7 @@ const ToggleField = ({ label, value, locked: isLocked, field, description }) => 
   </div>
 );
 
-const TextField = ({ label, value, locked: isLocked, field, placeholder, type = 'text' }) => {
+const TextField = ({ label, value, field, placeholder, type = 'text' }) => {
   const [draft, setDraft] = React.useState(value || '');
   const focusRef = React.useRef(false);
 
@@ -118,12 +109,11 @@ const TextField = ({ label, value, locked: isLocked, field, placeholder, type = 
   return (
     <div>
       <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
-        {label}{isLocked ? <LockBadge /> : null}
+        {label}
       </label>
       <input
         type={type}
         value={draft}
-        disabled={isLocked}
         placeholder={placeholder}
         onChange={(e) => setDraft(e.target.value)}
         onFocus={() => { focusRef.current = true; }}
@@ -133,26 +123,26 @@ const TextField = ({ label, value, locked: isLocked, field, placeholder, type = 
           if (trimmed !== (value || '')) saveServerSettings({ [field]: trimmed }).catch(() => {});
         }}
         onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-        className={`mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white/85 placeholder-white/25 ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+        className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white/85 placeholder-white/25"
       />
     </div>
   );
 };
 
-const PasswordField = ({ label, locked: isLocked, field, hasValue }) => {
+const PasswordField = ({ label, field, hasValue }) => {
   const [draft, setDraft] = React.useState('');
   const [editing, setEditing] = React.useState(false);
   return (
     <div>
       <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
-        {label}{isLocked ? <LockBadge /> : null}
+        {label}
       </label>
       {!editing ? (
-        <div className="mt-1 flex items-center gap-2">
-          <span className={`text-sm ${hasValue ? 'text-emerald-400/70' : 'text-white/30'}`}>
-            {hasValue ? '••••••••••••' : 'Not set'}
-          </span>
-          {!isLocked && (
+        <div className="mt-1">
+          <div className="flex items-center gap-2">
+            <span className={`text-sm ${hasValue ? 'text-emerald-400/70' : 'text-white/30'}`}>
+              {hasValue ? '••••••••••••' : 'Not set'}
+            </span>
             <button
               type="button"
               onClick={() => { setDraft(''); setEditing(true); }}
@@ -160,7 +150,7 @@ const PasswordField = ({ label, locked: isLocked, field, hasValue }) => {
             >
               {hasValue ? 'Change' : 'Set'}
             </button>
-          )}
+          </div>
         </div>
       ) : (
         <div className="mt-1 flex items-center gap-2">
@@ -355,7 +345,6 @@ const CertificateSection = ({ ss: s }) => {
 
 const ServerSettingsTab = ({ config }) => {
   const ss = config?.serverSettings || {};
-  const locked = config?.serverSettingsEnvLocked || {};
 
   return (
     <div className="utility-panel p-4 md:p-6">
@@ -366,7 +355,7 @@ const ServerSettingsTab = ({ config }) => {
         Server Settings
       </div>
       <div className="mt-1 text-xs text-white/45">
-        Runtime-tunable server configuration. Settings marked <span className="text-amber-400/80 font-semibold">ENV</span> are locked by environment variables.
+        Runtime-tunable server configuration. Changes are saved to config.json automatically.
       </div>
 
       {/* Network */}
@@ -377,7 +366,6 @@ const ServerSettingsTab = ({ config }) => {
             <NumericField
               label="Port"
               value={ss.port}
-              locked={locked.port}
               min={80}
               max={65535}
               step={1}
@@ -410,27 +398,23 @@ const ServerSettingsTab = ({ config }) => {
           <TextField
             label="Hubitat Host"
             value={ss.hubitatHost}
-            locked={locked.hubitatHost}
             field="hubitatHost"
             placeholder="http://192.168.1.x"
           />
           <TextField
             label="Maker API App ID"
             value={ss.hubitatAppId}
-            locked={locked.hubitatAppId}
             field="hubitatAppId"
             placeholder="e.g. 42"
           />
           <PasswordField
             label="Access Token"
-            locked={locked.hubitatAccessToken}
             field="hubitatAccessToken"
             hasValue={ss.hubitatHasAccessToken}
           />
           <ToggleField
             label="TLS Insecure"
             value={ss.hubitatTlsInsecure}
-            locked={locked.hubitatTlsInsecure}
             field="hubitatTlsInsecure"
             description="Skip certificate verification (self-signed certs)"
           />
@@ -444,7 +428,6 @@ const ServerSettingsTab = ({ config }) => {
           <NumericField
             label="Poll Interval"
             value={ss.pollIntervalMs}
-            locked={locked.pollIntervalMs}
             min={1000}
             max={3600000}
             step={500}
@@ -461,7 +444,6 @@ const ServerSettingsTab = ({ config }) => {
           <SelectField
             label="Temperature"
             value={ss.temperatureUnit}
-            locked={locked.temperatureUnit}
             field="temperatureUnit"
             options={[
               { value: 'fahrenheit', label: 'Fahrenheit (°F)' },
@@ -471,7 +453,6 @@ const ServerSettingsTab = ({ config }) => {
           <SelectField
             label="Wind Speed"
             value={ss.windSpeedUnit}
-            locked={locked.windSpeedUnit}
             field="windSpeedUnit"
             options={[
               { value: 'mph', label: 'mph' },
@@ -483,7 +464,6 @@ const ServerSettingsTab = ({ config }) => {
           <SelectField
             label="Precipitation"
             value={ss.precipitationUnit}
-            locked={locked.precipitationUnit}
             field="precipitationUnit"
             options={[
               { value: 'inch', label: 'Inches (in)' },
@@ -500,7 +480,6 @@ const ServerSettingsTab = ({ config }) => {
           <NumericField
             label="Max Events in Memory"
             value={ss.eventsMax}
-            locked={locked.eventsMax}
             min={50}
             max={10000}
             step={50}
@@ -509,7 +488,6 @@ const ServerSettingsTab = ({ config }) => {
           <ToggleField
             label="Persist Events to Disk"
             value={ss.eventsPersistJsonl}
-            locked={locked.eventsPersistJsonl}
             field="eventsPersistJsonl"
             description="Write events to events.jsonl"
           />
@@ -523,7 +501,6 @@ const ServerSettingsTab = ({ config }) => {
           <NumericField
             label="Max Backup Files"
             value={ss.backupMaxFiles}
-            locked={locked.backupMaxFiles}
             min={10}
             max={1000}
             step={10}
