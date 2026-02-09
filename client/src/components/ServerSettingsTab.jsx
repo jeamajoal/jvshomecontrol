@@ -403,6 +403,10 @@ const CertificateSection = ({ ss: s }) => {
 const RestartBanner = () => {
   const [busy, setBusy] = React.useState(false);
   const [msg, setMsg] = React.useState('');
+  const pollRef = React.useRef(null);
+
+  // Clean up polling on unmount
+  React.useEffect(() => () => clearInterval(pollRef.current), []);
 
   const handleRestart = async () => {
     setBusy(true);
@@ -413,7 +417,30 @@ const RestartBanner = () => {
         const text = await res.text().catch(() => '');
         throw new Error(text || `Restart failed (${res.status})`);
       }
-      setMsg('Server is restarting\u2026 the page will reconnect automatically.');
+      setMsg('Server is restarting\u2026');
+
+      // Poll until the server comes back, then reload the page.
+      let attempts = 0;
+      pollRef.current = setInterval(async () => {
+        attempts++;
+        try {
+          const probe = await fetch(`${API_HOST}/api/config`, { cache: 'no-store' });
+          if (probe.ok) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+            setMsg('Server is back \u2014 reloading\u2026');
+            setTimeout(() => window.location.reload(), 400);
+          }
+        } catch {
+          // still down — keep polling
+        }
+        if (attempts > 60) { // ~60 s
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+          setMsg('Server has not returned. Check the service manually.');
+          setBusy(false);
+        }
+      }, 1000);
     } catch (err) {
       setMsg(`Restart failed: ${err.message || err}`);
       setBusy(false);
