@@ -21,6 +21,8 @@ REPO_BRANCH="${REPO_BRANCH:-main}"
 CONFIG_FILE_REL="${CONFIG_FILE_REL:-server/data/config.json}"
 CERT_DIR_REL="${CERT_DIR_REL:-server/data/certs}"
 BACKGROUNDS_DIR_REL="${BACKGROUNDS_DIR_REL:-server/data/backgrounds}"
+BACKUP_DIR_REL="${BACKUP_DIR_REL:-server/data/backups}"
+MAX_INSTALLER_BACKUPS=10
 
 log() { echo "[install] $*"; }
 warn() { echo "[install][WARN] $*"; }
@@ -181,48 +183,69 @@ ensure_user() {
     "${APP_USER}"
 }
 
+prune_installer_backups() {
+  # Remove the oldest installer backup sets, keeping at most MAX_INSTALLER_BACKUPS.
+  local bk_dir="${APP_DIR}/${BACKUP_DIR_REL}"
+  [[ -d "${bk_dir}" ]] || return 0
+
+  # Each installer run creates files matching "install.<stamp>.*"
+  # Collect unique stamps, newest first.
+  local stamps
+  stamps="$(find "${bk_dir}" -maxdepth 1 -name 'install.*' -printf '%f\n' 2>/dev/null \
+    | sed 's/^install\.\([0-9T]*Z\).*/\1/' \
+    | sort -ru \
+    | uniq)"
+  [[ -n "${stamps}" ]] || return 0
+
+  local count=0
+  while IFS= read -r s; do
+    count=$((count + 1))
+    if (( count > MAX_INSTALLER_BACKUPS )); then
+      log "Pruning old installer backup set: ${s}"
+      /usr/bin/rm -rf "${bk_dir}"/install."${s}".* || true
+    fi
+  done <<< "${stamps}"
+}
+
 ensure_repo() {
   /usr/bin/mkdir -p "${APP_DIR}"
   /usr/bin/chown -R "${APP_USER}:${APP_GROUP}" "${APP_DIR}"
 
+  # Backup directory lives inside server/data/ which is gitignored,
+  # so it survives git clean -fd.  All installer backups go here.
+  local bk_dir="${APP_DIR}/${BACKUP_DIR_REL}"
+  /usr/bin/mkdir -p "${bk_dir}"
+  /usr/bin/chown "${APP_USER}:${APP_GROUP}" "${bk_dir}" || true
+
   # Preserve user-specific files across updates (the update uses git clean).
-  local cfg cert_dir
+  local cfg cert_dir backgrounds_dir
   cfg="${APP_DIR}/${CONFIG_FILE_REL}"
   cert_dir="${APP_DIR}/${CERT_DIR_REL}"
-  local backgrounds_dir
   backgrounds_dir="${APP_DIR}/${BACKGROUNDS_DIR_REL}"
 
-  local cfg_backup cert_backup_dir
-  cfg_backup=""
-  cert_backup_dir=""
+  local stamp
+  stamp="$(/usr/bin/date -u +%Y%m%dT%H%M%SZ)"
 
-  local backgrounds_backup_dir
-  backgrounds_backup_dir=""
+  local cfg_backup="" cert_backup_dir="" backgrounds_backup_dir=""
 
   if [[ -f "${cfg}" ]]; then
-    local stamp
-    stamp="$(/usr/bin/date -u +%Y%m%dT%H%M%SZ)"
-    cfg_backup="/tmp/jvshomecontrol.config.${stamp}.json"
-    log "Backing up existing config.json to ${cfg_backup}…"
+    cfg_backup="${bk_dir}/install.${stamp}.config.json"
+    log "Backing up config.json…"
     /usr/bin/cp -a "${cfg}" "${cfg_backup}"
     /usr/bin/chmod 600 "${cfg_backup}" || true
   fi
 
   if [[ -d "${cert_dir}" ]]; then
-    local stamp
-    stamp="$(/usr/bin/date -u +%Y%m%dT%H%M%SZ)"
-    cert_backup_dir="/tmp/jvshomecontrol.certs.${stamp}"
-    log "Backing up existing certs dir to ${cert_backup_dir}…"
+    cert_backup_dir="${bk_dir}/install.${stamp}.certs"
+    log "Backing up certs…"
     /usr/bin/mkdir -p "${cert_backup_dir}"
     /usr/bin/cp -a "${cert_dir}/." "${cert_backup_dir}/" || true
     /usr/bin/chmod -R 600 "${cert_backup_dir}" || true
   fi
 
   if [[ -d "${backgrounds_dir}" ]]; then
-    local stamp
-    stamp="$(/usr/bin/date -u +%Y%m%dT%H%M%SZ)"
-    backgrounds_backup_dir="/tmp/jvshomecontrol.backgrounds.${stamp}"
-    log "Backing up existing backgrounds dir to ${backgrounds_backup_dir}…"
+    backgrounds_backup_dir="${bk_dir}/install.${stamp}.backgrounds"
+    log "Backing up backgrounds…"
     /usr/bin/mkdir -p "${backgrounds_backup_dir}"
     /usr/bin/cp -a "${backgrounds_dir}/." "${backgrounds_backup_dir}/" || true
   fi
@@ -263,37 +286,32 @@ ensure_repo() {
     fi
   fi
 
+  # Restore preserved files
   if [[ -n "${cfg_backup}" && -f "${cfg_backup}" ]]; then
-    log "Restoring config.json to ${cfg}…"
+    log "Restoring config.json…"
     /usr/bin/mkdir -p "$(/usr/bin/dirname "${cfg}")"
     /usr/bin/cp -a "${cfg_backup}" "${cfg}"
     /usr/bin/chown "${APP_USER}:${APP_GROUP}" "${cfg}" || true
     /usr/bin/chmod 600 "${cfg}" || true
-
-    warn "Backup left in /tmp: ${cfg_backup}"
-    warn "After confirming your settings are correct, you should remove it (e.g. sudo rm -f '${cfg_backup}')."
   fi
 
   if [[ -n "${cert_backup_dir}" && -d "${cert_backup_dir}" ]]; then
-    log "Restoring certs dir to ${cert_dir}…"
+    log "Restoring certs…"
     /usr/bin/mkdir -p "${cert_dir}"
     /usr/bin/cp -a "${cert_backup_dir}/." "${cert_dir}/" || true
     /usr/bin/chown -R "${APP_USER}:${APP_GROUP}" "${cert_dir}" || true
     /usr/bin/chmod -R 600 "${cert_dir}" || true
-
-    warn "Backup left in /tmp: ${cert_backup_dir}"
-    warn "After confirming HTTPS is working, you should remove it (e.g. sudo rm -rf '${cert_backup_dir}')."
   fi
 
   if [[ -n "${backgrounds_backup_dir}" && -d "${backgrounds_backup_dir}" ]]; then
-    log "Restoring backgrounds dir to ${backgrounds_dir}…"
+    log "Restoring backgrounds…"
     /usr/bin/mkdir -p "${backgrounds_dir}"
     /usr/bin/cp -a "${backgrounds_backup_dir}/." "${backgrounds_dir}/" || true
     /usr/bin/chown -R "${APP_USER}:${APP_GROUP}" "${backgrounds_dir}" || true
-
-    warn "Backup left in /tmp: ${backgrounds_backup_dir}"
-    warn "After confirming backgrounds are present, you should remove it (e.g. sudo rm -rf '${backgrounds_backup_dir}')."
   fi
+
+  # Prune old installer backup sets
+  prune_installer_backups
 }
 
 main() {

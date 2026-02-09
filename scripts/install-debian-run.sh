@@ -145,9 +145,11 @@ ensure_config_json() {
   fi
 
   log "Merging new default config keys into existing config.json (preserving your values)…"
-  local stamp backup
+  local stamp backup backup_dir
   stamp="$(/usr/bin/date -u +%Y%m%dT%H%M%SZ)"
-  backup="${cfg}.${stamp}.bak"
+  backup_dir="${APP_DIR}/server/data/backups"
+  /usr/bin/mkdir -p "${backup_dir}"
+  backup="${backup_dir}/merge.${stamp}.config.json"
   /usr/bin/cp -a "${cfg}" "${backup}"
 
   # Use Node to perform a deep "defaults" merge:
@@ -209,7 +211,18 @@ NODE
   /usr/bin/chown "${APP_USER}:${APP_GROUP}" "${cfg}" || true
   /usr/bin/chmod 600 "${cfg}" || true
   /usr/bin/chmod 600 "${backup}" || true
-  warn "Config backup left in place: ${backup}"
+
+  # Prune old merge backups — keep the 10 most recent
+  local old_merges
+  old_merges="$(find "${backup_dir}" -maxdepth 1 -name 'merge.*.config.json' -printf '%T@ %p\n' 2>/dev/null \
+    | sort -rn \
+    | tail -n +11 \
+    | awk '{print $2}')"
+  if [[ -n "${old_merges}" ]]; then
+    echo "${old_merges}" | xargs /usr/bin/rm -f || true
+  fi
+
+  log "Pre-merge backup: ${backup}"
 }
 
 install_and_build() {
