@@ -20,7 +20,6 @@ REPO_URL="${REPO_URL:-https://github.com/jeamajoal/JVSHomeControl.git}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
 CONFIG_FILE_REL="${CONFIG_FILE_REL:-server/data/config.json}"
 CERT_DIR_REL="${CERT_DIR_REL:-server/data/certs}"
-BACKGROUNDS_DIR_REL="${BACKGROUNDS_DIR_REL:-server/data/backgrounds}"
 BACKUP_DIR_REL="${BACKUP_DIR_REL:-server/data/backups}"
 MAX_INSTALLER_BACKUPS=10
 
@@ -218,15 +217,14 @@ ensure_repo() {
   /usr/bin/chown "${APP_USER}:${APP_GROUP}" "${bk_dir}" || true
 
   # Preserve user-specific files across updates (the update uses git clean).
-  local cfg cert_dir backgrounds_dir
+  local cfg cert_dir
   cfg="${APP_DIR}/${CONFIG_FILE_REL}"
   cert_dir="${APP_DIR}/${CERT_DIR_REL}"
-  backgrounds_dir="${APP_DIR}/${BACKGROUNDS_DIR_REL}"
 
   local stamp
   stamp="$(/usr/bin/date -u +%Y%m%dT%H%M%SZ)"
 
-  local cfg_backup="" cert_backup_dir="" backgrounds_backup_dir=""
+  local cfg_backup="" cert_backup_dir=""
 
   if [[ -f "${cfg}" ]]; then
     cfg_backup="${bk_dir}/install.${stamp}.config.json"
@@ -244,17 +242,11 @@ ensure_repo() {
     find "${cert_backup_dir}" -type f -exec chmod 600 {} + 2>/dev/null || true
   fi
 
-  if [[ -d "${backgrounds_dir}" ]]; then
-    backgrounds_backup_dir="${bk_dir}/install.${stamp}.backgrounds"
-    log "Backing up backgrounds…"
-    /usr/bin/mkdir -p "${backgrounds_backup_dir}"
-    /usr/bin/cp -a "${backgrounds_dir}/." "${backgrounds_backup_dir}/" || true
-  fi
 
   # Check if this is a valid git repository
   if [[ -d "${APP_DIR}/.git" ]] && git -C "${APP_DIR}" rev-parse --git-dir >/dev/null 2>&1; then
     log "Updating existing repo in ${APP_DIR}…"
-    sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git fetch --prune origin && git checkout -B '${REPO_BRANCH}' 'origin/${REPO_BRANCH}' && git reset --hard 'origin/${REPO_BRANCH}' && git clean -fd"
+    sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git fetch --prune origin && git checkout -B '${REPO_BRANCH}' 'origin/${REPO_BRANCH}' && git reset --hard 'origin/${REPO_BRANCH}' && git clean -fd -e server/data/backgrounds/"
   else
     # Not a valid git repo - need to initialize it
     log "Setting up git repository in ${APP_DIR}…"
@@ -282,7 +274,7 @@ ensure_repo() {
       die "Failed to fetch branch '${REPO_BRANCH}' from remote"
     fi
     
-    if ! sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git checkout -f -B '${REPO_BRANCH}' 'origin/${REPO_BRANCH}' && git reset --hard 'origin/${REPO_BRANCH}' && git clean -fd"; then
+    if ! sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git checkout -f -B '${REPO_BRANCH}' 'origin/${REPO_BRANCH}' && git reset --hard 'origin/${REPO_BRANCH}' && git clean -fd -e server/data/backgrounds/"; then
       die "Failed to checkout branch '${REPO_BRANCH}'"
     fi
   fi
@@ -305,12 +297,6 @@ ensure_repo() {
     find "${cert_dir}" -type f -exec chmod 600 {} + 2>/dev/null || true
   fi
 
-  if [[ -n "${backgrounds_backup_dir}" && -d "${backgrounds_backup_dir}" ]]; then
-    log "Restoring backgrounds…"
-    /usr/bin/mkdir -p "${backgrounds_dir}"
-    /usr/bin/cp -a "${backgrounds_backup_dir}/." "${backgrounds_dir}/" || true
-    /usr/bin/chown -R "${APP_USER}:${APP_GROUP}" "${backgrounds_dir}" || true
-  fi
 
   # Prune old installer backup sets
   prune_installer_backups
