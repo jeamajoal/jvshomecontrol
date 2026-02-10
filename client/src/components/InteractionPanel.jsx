@@ -958,6 +958,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                       attrs,
                       commands,
                       commandSchemas: schemas,
+                      capabilities: d.status?.capabilities,
                       controls,
                       state: d.status?.state,
                       internalType,
@@ -1017,15 +1018,19 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                         const canOff = switchControl ? switchControl.canOff : d.commands.includes('off');
                         const canToggle = switchControl ? switchControl.canToggle : d.commands.includes('toggle');
 
-                        // Per-device manual control icons, or auto-inferred fallback
+                        // Per-device manual control icons, or auto-inferred fallback.
+                        // For popup-capable devices, skip auto-assignment — the popup
+                        // IS the rich control surface; inline icons would just show "?".
                         const manualIconIds = getDeviceControlIconIds(d.id);
                         const controlIconIds = manualIconIds.length > 0
                           ? manualIconIds
-                          : inferControlIconIds({
-                              capabilities: d.capabilities || [],
-                              attributes: d.attrs,
-                              commandSchemas: d.commandSchemas,
-                            });
+                          : hasPopup
+                            ? []
+                            : inferControlIconIds({
+                                capabilities: d.capabilities || [],
+                                attributes: d.attrs,
+                                commandSchemas: d.commandSchemas,
+                              });
 
                         // Does this device type have a dedicated popup?
                         const hasPopup = DEVICE_TYPES_WITH_POPUP.has(d.internalType);
