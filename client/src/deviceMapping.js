@@ -242,16 +242,10 @@ export function inferControlIconIds({ capabilities, attributes, commandSchemas }
   if (cmdSet.has('setSaturation')) ids.push('saturation-slider');
   if (cmdSet.has('setColorTemperature') || capSet.has('ColorTemperature')) ids.push('color-temp-slider');
 
-  // Shade position
-  if (cmdSet.has('setPosition')) ids.push('shade-position-slider');
-
-  // Fan speed
-  if (cmdSet.has('setSpeed') || cmdSet.has('cycleSpeed')) ids.push('fan-speed');
-
-  // Thermostat
-  if (cmdSet.has('setThermostatMode') || capSet.has('Thermostat')) ids.push('thermostat-mode');
-  if (cmdSet.has('setHeatingSetpoint') || cmdSet.has('setCoolingSetpoint') || cmdSet.has('setThermostatSetpoint')) ids.push('thermostat-setpoint');
-  if (cmdSet.has('setThermostatFanMode')) ids.push('thermostat-fan-mode');
+  // NOTE: thermostat-mode, thermostat-setpoint, thermostat-fan-mode, fan-speed,
+  // and shade-position-slider are React-only manifests handled by their popup
+  // controllers — they have no inline renderer in InteractiveControlIcon, so
+  // they are intentionally NOT auto-assigned here.
 
   // Media
   if (cmdSet.has('play') || cmdSet.has('pause') || capSet.has('MediaTransport') || capSet.has('MusicPlayer')) ids.push('media-transport');
