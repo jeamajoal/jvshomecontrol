@@ -1,0 +1,35 @@
+{
+  "id": "thermostat-mode",
+  "name": "Thermostat Mode",
+  "description": "Cycles through thermostat modes: heat, cool, auto, off.",
+  "file": null,
+  "version": "1.0.0",
+  "reactComponent": "ThermostatMode",
+
+  "requiredCommands": ["setThermostatMode"],
+  "optionalCommands": ["heat", "cool", "auto", "emergencyHeat", "off"],
+
+  "stateBindings": {
+    "thermostatMode": {
+      "type": "enum",
+      "attribute": "thermostatMode",
+      "values": ["heat", "cool", "auto", "off", "emergency heat"]
+    }
+  },
+
+  "regions": [
+    {
+      "id": "mode",
+      "action": "popup",
+      "command": "setThermostatMode",
+      "stateAttribute": "thermostatMode",
+      "tooltip": "Change thermostat mode"
+    }
+  ],
+
+  "layout": {
+    "aspectRatio": "1:1",
+    "preferredWidth": 48,
+    "preferredHeight": 48
+  }
+}

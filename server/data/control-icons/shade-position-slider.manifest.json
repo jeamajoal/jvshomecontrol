@@ -1,0 +1,43 @@
+{
+  "id": "shade-position-slider",
+  "name": "Shade Position",
+  "description": "Slider for adjusting window shade/blind position (0-100%).",
+  "file": null,
+  "version": "1.0.0",
+  "reactComponent": "ShadePosition",
+
+  "requiredCommands": ["setPosition"],
+  "optionalCommands": ["open", "close", "startPositionChange", "stopPositionChange"],
+
+  "stateBindings": {
+    "position": {
+      "type": "number",
+      "attribute": "position",
+      "min": 0,
+      "max": 100,
+      "cssVariable": "--position"
+    }
+  },
+
+  "regions": [
+    {
+      "id": "position",
+      "action": "slider",
+      "command": "setPosition",
+      "stateAttribute": "position",
+      "parameter": "position",
+      "min": 0,
+      "max": 100,
+      "step": 5,
+      "orientation": "vertical",
+      "debounce": 200,
+      "tooltip": "Drag to adjust shade position"
+    }
+  ],
+
+  "layout": {
+    "aspectRatio": "40:100",
+    "preferredWidth": 40,
+    "preferredHeight": 100
+  }
+}

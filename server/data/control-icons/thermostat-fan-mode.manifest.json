@@ -1,0 +1,35 @@
+{
+  "id": "thermostat-fan-mode",
+  "name": "Thermostat Fan Mode",
+  "description": "Cycles through thermostat fan modes: auto, on, circulate.",
+  "file": null,
+  "version": "1.0.0",
+  "reactComponent": "ThermostatFanMode",
+
+  "requiredCommands": ["setThermostatFanMode"],
+  "optionalCommands": ["fanAuto", "fanOn", "fanCirculate"],
+
+  "stateBindings": {
+    "thermostatFanMode": {
+      "type": "enum",
+      "attribute": "thermostatFanMode",
+      "values": ["auto", "on", "circulate"]
+    }
+  },
+
+  "regions": [
+    {
+      "id": "fan-mode",
+      "action": "popup",
+      "command": "setThermostatFanMode",
+      "stateAttribute": "thermostatFanMode",
+      "tooltip": "Change fan mode"
+    }
+  ],
+
+  "layout": {
+    "aspectRatio": "1:1",
+    "preferredWidth": 48,
+    "preferredHeight": 48
+  }
+}
