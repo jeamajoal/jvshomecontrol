@@ -15,19 +15,28 @@ import {
   Flame,
   CircleAlert,
   User,
+  Info,
+  Fan,
+  Lock,
+  Blinds,
+  Siren,
+  Palette,
+  SunDim,
+  Tv,
 } from 'lucide-react';
 
 import { getUiScheme } from '../uiScheme';
 import { useAppState } from '../appState';
 import { buildRoomsWithStatuses, getHomeVisibleDeviceIdSet, getDeviceInfoMetricAllowlist } from '../deviceSelectors';
 import { API_HOST } from '../apiHost';
-import { inferInternalDeviceType } from '../deviceMapping';
+import { inferInternalDeviceType, mapDeviceToControls } from '../deviceMapping';
 import { getDeviceTypeIconSrc } from '../deviceIcons';
 import { asNumber, asText, formatTemp, formatPercent, formatLux, formatSpeed, formatInches, toCompass, isSafeInfoMetricKey, isDisplayableInfoValue, formatInfoMetricLabel, formatInfoMetricValue, sortInfoMetricKeys } from '../utils';
 import DeviceInfoGrid from './DeviceInfoGrid';
 import InlineSvg from './InlineSvg';
 import InteractiveControlIcon from './InteractiveControlIcon';
 import HlsPlayer from './HlsPlayer';
+import DevicePopup, { DEVICE_TYPES_WITH_POPUP } from './DevicePopup';
 import {
   normalizeToleranceColorId,
   getToleranceTextClass as getToleranceTextClassForColorId,
@@ -582,6 +591,7 @@ const getDeviceCommandAllowlistForId = (deviceCommandAllowlist, deviceId) => {
 const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, sensorIndicatorColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, deviceCommandAllowlist, deviceHomeMetricAllowlist, deviceInfoMetricAllowlist, deviceTypeIcons, deviceControlIcons, switchControlStyle = 'auto', switchAnimationStyle = 'none', homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', tertiaryTextColorClassName = '', contentScale = 1, fillHeight = false }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
   const [svgHotspotsByDeviceId, setSvgHotspotsByDeviceId] = useState(() => ({}));
+  const [popupTarget, setPopupTarget] = useState(null);
 
   const scaleNumRaw = Number(contentScale);
   const scaleNum = Number.isFinite(scaleNumRaw) ? Math.max(0.5, Math.min(2, scaleNumRaw)) : 1;
@@ -1025,21 +1035,44 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
             {supportedActions.map((d) => {
               const iconSrc = getDeviceTypeIconSrc({ ui: { deviceTypeIcons } }, d.internalType);
               
+              // Does this device type have a dedicated popup controller?
+              const hasPopup = DEVICE_TYPES_WITH_POPUP.has(d.internalType);
+
               // Check for per-device control icon assignment (supports array or string)
               const controlIconVal = (deviceControlIcons && typeof deviceControlIcons === 'object')
                 ? deviceControlIcons[d.id]
                 : null;
-              const controlIconIds = controlIconVal
-                ? (Array.isArray(controlIconVal) ? controlIconVal : [controlIconVal]).map((v) => String(v || '').trim()).filter(Boolean)
-                : [];
+              // For popup-capable devices, skip manual control icons — they are
+              // React-only manifests with no inline renderer and would show "?".
+              // The popup IS the rich control surface.
+              const controlIconIds = hasPopup
+                ? []
+                : (controlIconVal
+                    ? (Array.isArray(controlIconVal) ? controlIconVal : [controlIconVal]).map((v) => String(v || '').trim()).filter(Boolean)
+                    : []);
               
-              // Build device object for InteractiveControlIcon
+              // Build device object for InteractiveControlIcon / popup
               const deviceObj = {
                 id: d.id,
                 switch: d.attrs?.switch || 'off',
                 level: d.attrs?.level ?? 0,
                 ...d.attrs,
+                commands: d.commands,
               };
+
+              // Build structured control for popup
+              const controls = hasPopup
+                ? mapDeviceToControls({
+                    deviceId: d.id,
+                    label: d.label,
+                    hubitatType: d.hubitatType,
+                    capabilities: d.caps,
+                    attributes: d.attrs,
+                    state: d.state,
+                    commandSchemas: d.commands,
+                  })
+                : [];
+              const primaryControl = controls.length ? controls[0] : null;
 
               return (
                 <div
@@ -1055,6 +1088,50 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
                   </div>
                   <div className="mt-3 flex flex-wrap justify-center gap-2">
                     {(() => {
+                    // ── Popup tile for sophisticated device types ──────────
+                    if (hasPopup) {
+                      const summaryParts = [];
+                      if (primaryControl?.kind === 'thermostat') {
+                        if (primaryControl.temperature !== null) summaryParts.push(`${Math.round(primaryControl.temperature)}°`);
+                        summaryParts.push(primaryControl.thermostatMode || 'off');
+                        if (primaryControl.thermostatOperatingState && primaryControl.thermostatOperatingState !== 'idle') {
+                          summaryParts.push(primaryControl.thermostatOperatingState);
+                        }
+                      } else if (primaryControl?.kind === 'lock') {
+                        summaryParts.push(primaryControl.isLocked ? 'Locked' : 'Unlocked');
+                      } else if (primaryControl?.kind === 'garage') {
+                        summaryParts.push(primaryControl.state || 'unknown');
+                      } else if (primaryControl?.kind === 'shade') {
+                        summaryParts.push(`${primaryControl.position ?? 0}%`);
+                        summaryParts.push(primaryControl.state || 'unknown');
+                      } else if (primaryControl?.kind === 'valve') {
+                        summaryParts.push(primaryControl.isOpen ? 'Open' : 'Closed');
+                      } else if (primaryControl?.kind === 'media') {
+                        if (primaryControl.isPlaying) summaryParts.push('Playing');
+                        else if (primaryControl.isPaused) summaryParts.push('Paused');
+                        else summaryParts.push('Stopped');
+                        if (primaryControl.volume !== null) summaryParts.push(`Vol ${primaryControl.volume}%`);
+                      }
+                      return (
+                        <div className="w-full flex items-center justify-between gap-2">
+                          <div
+                            className={`jvs-secondary-text text-white capitalize`}
+                            style={{ fontSize: `calc(${Math.round(12 * scaleNum)}px * var(--jvs-secondary-text-size-scale, 1))` }}
+                          >
+                            {summaryParts.join(' · ') || d.internalType}
+                          </div>
+                          <button
+                            type="button"
+                            disabled={!connected}
+                            onClick={() => setPopupTarget({ deviceId: d.id, internalType: d.internalType, device: deviceObj, control: primaryControl })}
+                            className={`shrink-0 rounded-xl border px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] ${uiScheme?.actionButton || 'text-neon-blue border-neon-blue/30 bg-neon-blue/10'} ${!connected ? 'opacity-50' : 'hover:bg-white/5'}`}
+                          >
+                            <Info className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    }
+
                     const commands = Array.isArray(d.commands)
                       ? d.commands.map((v) => String(v || '').trim()).filter(Boolean)
                       : [];
@@ -1335,6 +1412,17 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
       {!supportedActions.length && !sensorDevices.length && !hasEnv ? (
         <div className="mt-4 text-sm text-white/40">No supported devices in this room.</div>
       ) : null}
+
+      {/* ── Device popup (thermostat, lock, color light, etc.) ── */}
+      {popupTarget && (
+        <DevicePopup
+          internalType={popupTarget.internalType}
+          device={popupTarget.device}
+          control={popupTarget.control}
+          onCommand={(deviceId, command, args) => runAction(deviceId, command, args)}
+          onClose={() => setPopupTarget(null)}
+        />
+      )}
     </section>
   );
 };

@@ -1035,17 +1035,6 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                                 commandSchemas: d.commandSchemas,
                               });
 
-                        // DEBUG: trace rendering path for thermostat
-                        if (d.internalType === 'thermostat') {
-                          console.log('[DEBUG thermostat render]', {
-                            hasPopup,
-                            switchControl: !!switchControl,
-                            controlIconIds,
-                            manualIconIds,
-                            path: hasPopup && !switchControl ? 'POPUP_TILE' : switchControl ? 'SWITCH_TILE' : 'FALLBACK',
-                          });
-                        }
-
                         // Build device object for InteractiveControlIcon / popup
                         const deviceObj = {
                           id: d.id,
