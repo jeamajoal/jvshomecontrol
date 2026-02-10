@@ -828,21 +828,29 @@ function useAsyncSave(saveFn) {
   const [status, setStatus] = useState('idle'); // idle | saving | saved | error
   const [error, setError] = useState(null);
 
-  const run = async (payload) => {
-    setStatus('saving');
-    setError(null);
-    try {
-      const res = await saveFn(payload);
-      setStatus('saved');
-      return res;
-    } catch (e) {
-      setStatus('error');
-      setError(e?.message || String(e));
-      throw e;
-    }
-  };
+  // Keep a ref to the latest saveFn so the stable `run` always calls it.
+  const fnRef = useRef(saveFn);
+  fnRef.current = saveFn;
 
-  return { status, error, run, setError, setStatus };
+  // Stable `run` reference — created once, never changes.
+  const runRef = useRef(null);
+  if (!runRef.current) {
+    runRef.current = async (payload) => {
+      setStatus('saving');
+      setError(null);
+      try {
+        const res = await fnRef.current(payload);
+        setStatus('saved');
+        return res;
+      } catch (e) {
+        setStatus('error');
+        setError(e?.message || String(e));
+        throw e;
+      }
+    };
+  }
+
+  return { status, error, run: runRef.current, setError, setStatus };
 }
 
 const statusText = (status) => {
@@ -898,6 +906,12 @@ const ConfigPanel = ({
   const [soundFilesError, setSoundFilesError] = useState(null);
   const [backgroundFiles, setBackgroundFiles] = useState([]);
   const [backgroundFilesError, setBackgroundFilesError] = useState(null);
+  const [bgRefreshKey, setBgRefreshKey] = useState(0);
+  const [bgUploading, setBgUploading] = useState(false);
+  const [bgUploadError, setBgUploadError] = useState(null);
+  const [bgDeleting, setBgDeleting] = useState(null);  // filename being deleted, or null
+  const [bgDragOver, setBgDragOver] = useState(false);
+  const bgFileInputRef = useRef(null);
   const [deviceIconsIndex, setDeviceIconsIndex] = useState(() => ({ rootUrl: '/device-icons', byType: {} }));
   const [deviceIconsError, setDeviceIconsError] = useState(null);
   const [controlIconsIndex, setControlIconsIndex] = useState(() => ({ rootUrl: '/control-icons', icons: [] }));
@@ -2481,7 +2495,8 @@ const ConfigPanel = ({
     }, 650);
 
     return () => clearTimeout(t);
-  }, [connected, homeTopRowDirty, homeTopRowDraft, homeTopRowSave]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- homeTopRowSave excluded: unstable ref resets debounce timer
+  }, [connected, homeTopRowDirty, homeTopRowDraft]);
 
   // Autosave: Home room columns (XL).
   useEffect(() => {
@@ -2622,7 +2637,8 @@ const ConfigPanel = ({
     }, 700);
 
     return () => clearTimeout(t);
-  }, [connected, openMeteoDirty, openMeteoDraft, openMeteoSave]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- openMeteoSave excluded: unstable ref resets debounce timer
+  }, [connected, openMeteoDirty, openMeteoDraft]);
 
   const toFinite = (value) => {
     if (value === null || value === undefined) return null;
@@ -3172,7 +3188,56 @@ const ConfigPanel = ({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [bgRefreshKey]);
+
+  // ── Background upload / delete helpers ──────────────────────────────────
+  const BG_MAX_SIZE = 10 * 1024 * 1024; // 10 MB — matches server limit
+  const BG_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+  const handleBgUpload = async (file) => {
+    if (!file) return;
+    if (!BG_ALLOWED_TYPES.has(file.type)) {
+      setBgUploadError('Unsupported file type. Use JPEG, PNG, WebP, or GIF.');
+      return;
+    }
+    if (file.size > BG_MAX_SIZE) {
+      setBgUploadError(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is 10 MB.`);
+      return;
+    }
+    setBgUploading(true);
+    setBgUploadError(null);
+    try {
+      const res = await fetch(`${API_HOST}/api/backgrounds/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': file.type, 'X-Filename': file.name },
+        body: file,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Upload failed (${res.status})`);
+      setBgRefreshKey((k) => k + 1);
+    } catch (e) {
+      setBgUploadError(e?.message || String(e));
+    } finally {
+      setBgUploading(false);
+      if (bgFileInputRef.current) bgFileInputRef.current.value = '';
+    }
+  };
+
+  const handleBgDelete = async (filename) => {
+    if (!filename) return;
+    setBgDeleting(filename);
+    setBgUploadError(null);
+    try {
+      const res = await fetch(`${API_HOST}/api/backgrounds/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Delete failed (${res.status})`);
+      setBgRefreshKey((k) => k + 1);
+    } catch (e) {
+      setBgUploadError(e?.message || String(e));
+    } finally {
+      setBgDeleting(null);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -4910,133 +4975,6 @@ const ConfigPanel = ({
                 </div>
               </div>
 
-              <div className="utility-group p-4 lg:col-span-2">
-                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
-                  Background Image
-                </div>
-                <div className="mt-1 text-xs text-white/45">
-                  Set a background image for the Home view. Place images in <code className="text-white/55">server/data/backgrounds/</code>.
-                </div>
-
-                {homeBackgroundSave.error ? (
-                  <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {homeBackgroundSave.error}</div>
-                ) : null}
-
-                {backgroundFilesError ? (
-                  <div className="mt-2 text-[11px] text-amber-400/70">Could not load backgrounds: {backgroundFilesError}</div>
-                ) : null}
-
-                {(() => {
-                  const bgObj = config?.ui?.homeBackground;
-                  const bgEnabled = bgObj?.enabled === true;
-                  const bgUrl = bgObj?.url || '';
-                  const bgOpacity = Number.isFinite(Number(bgObj?.opacityPct)) ? Math.max(0, Math.min(100, Math.round(Number(bgObj?.opacityPct)))) : 35;
-                  // Extract filename from /backgrounds/filename for matching
-                  const bgFile = bgUrl.startsWith('/backgrounds/') ? decodeURIComponent(bgUrl.slice('/backgrounds/'.length)) : '';
-
-                  return (
-                    <div className="mt-3 space-y-3">
-                      {/* Current background preview */}
-                      {bgEnabled && bgUrl ? (
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="h-12 w-20 rounded-lg border border-white/10 bg-cover bg-center"
-                            style={{ backgroundImage: `url(${API_HOST}${bgUrl})` }}
-                          />
-                          <div className="min-w-0">
-                            <div className="text-xs text-white/70 truncate">{bgFile || bgUrl}</div>
-                            <div className="text-[10px] text-white/40">Opacity: {bgOpacity}%</div>
-                          </div>
-                          <button
-                            type="button"
-                            disabled={!connected || busy || homeBackgroundSave.status === 'saving'}
-                            onClick={async () => {
-                              try {
-                                await homeBackgroundSave.run({ enabled: false, url: null });
-                              } catch { /* handled */ }
-                            }}
-                            className="shrink-0 text-[10px] font-bold uppercase tracking-widest text-red-400/70 hover:text-red-300"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="text-xs text-white/35">No background image set.</div>
-                      )}
-
-                      {/* Opacity slider (only when a background is active) */}
-                      {bgEnabled && bgUrl ? (
-                        <div className="flex items-center gap-3">
-                          <span className="text-[10px] text-white/40 shrink-0">Opacity</span>
-                          <input
-                            type="range"
-                            min={0}
-                            max={100}
-                            step={1}
-                            value={bgOpacity}
-                            disabled={!connected || busy || homeBackgroundSave.status === 'saving'}
-                            onChange={async (e) => {
-                              const next = Math.max(0, Math.min(100, Math.round(Number(e.target.value))));
-                              try {
-                                await homeBackgroundSave.run({ enabled: true, url: bgUrl, opacityPct: next });
-                              } catch { /* handled */ }
-                            }}
-                            className="flex-1"
-                          />
-                          <span className="text-xs text-white/50 w-8 text-right">{bgOpacity}%</span>
-                        </div>
-                      ) : null}
-
-                      {/* File grid */}
-                      {backgroundFiles.length > 0 ? (
-                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-                          {backgroundFiles.map((file) => {
-                            const fileUrl = `/backgrounds/${encodeURIComponent(file)}`;
-                            const isActive = bgEnabled && bgFile === file;
-                            return (
-                              <button
-                                key={file}
-                                type="button"
-                                disabled={!connected || busy || homeBackgroundSave.status === 'saving'}
-                                onClick={async () => {
-                                  try {
-                                    if (isActive) {
-                                      await homeBackgroundSave.run({ enabled: false, url: null });
-                                    } else {
-                                      await homeBackgroundSave.run({ enabled: true, url: fileUrl, opacityPct: bgOpacity });
-                                    }
-                                  } catch { /* handled */ }
-                                }}
-                                className={`relative rounded-lg border overflow-hidden aspect-video bg-black/30 transition-colors ${
-                                  isActive ? 'border-emerald-400/60 ring-1 ring-emerald-400/30' : 'border-white/10 hover:border-white/25'
-                                }`}
-                              >
-                                <img
-                                  src={`${API_HOST}${fileUrl}`}
-                                  alt={file}
-                                  className="w-full h-full object-cover"
-                                />
-                                {isActive ? (
-                                  <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                                    <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-300">Active</span>
-                                  </div>
-                                ) : null}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ) : !backgroundFilesError ? (
-                        <div className="text-xs text-white/35">No background images found. Add images to <code className="text-white/55">server/data/backgrounds/</code>.</div>
-                      ) : null}
-
-                      <div className="text-xs text-white/45">
-                        {statusText(homeBackgroundSave.status)}
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-
               <div className="utility-group p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
@@ -5499,6 +5437,202 @@ const ConfigPanel = ({
                   <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {secondaryTextColorError}</div>
                 ) : null}
               </div>
+            </div>
+
+            <div className="mt-4 utility-group p-4">
+                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                  Background Image
+                </div>
+                <div className="mt-1 text-xs text-white/45">
+                  Set a background image for the Home view. Upload an image or drag and drop below.
+                </div>
+                <div className="mt-1 text-[10px] text-white/30">
+                  For best results use a high-resolution landscape image (1920×1080 or higher). The image is
+                  scaled to cover the full screen, so low-resolution or portrait images may appear cropped or blurry.
+                </div>
+
+                {homeBackgroundSave.error ? (
+                  <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {homeBackgroundSave.error}</div>
+                ) : null}
+
+                {bgUploadError ? (
+                  <div className="mt-2 text-[11px] text-neon-red break-words">{bgUploadError}</div>
+                ) : null}
+
+                {backgroundFilesError ? (
+                  <div className="mt-2 text-[11px] text-amber-400/70">Could not load backgrounds: {backgroundFilesError}</div>
+                ) : null}
+
+                {(() => {
+                  const bgObj = config?.ui?.homeBackground;
+                  const bgEnabled = bgObj?.enabled === true;
+                  const bgUrl = bgObj?.url || '';
+                  const bgOpacity = Number.isFinite(Number(bgObj?.opacityPct)) ? Math.max(0, Math.min(100, Math.round(Number(bgObj?.opacityPct)))) : 35;
+                  // Extract filename from /backgrounds/filename for matching
+                  const bgFile = bgUrl.startsWith('/backgrounds/') ? decodeURIComponent(bgUrl.slice('/backgrounds/'.length)) : '';
+                  // Absolute URLs (preset themes use https Unsplash URLs) must not
+                  // be prefixed with API_HOST; relative paths need it for dev mode.
+                  const resolvedBgUrl = /^https?:\/\//i.test(bgUrl) ? bgUrl : `${API_HOST}${bgUrl}`;
+
+                  return (
+                    <div className="mt-3 space-y-3">
+                      {/* Current background preview */}
+                      {bgEnabled && bgUrl ? (
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="h-12 w-20 rounded-lg border border-white/10 bg-cover bg-center"
+                            style={{ backgroundImage: `url(${resolvedBgUrl})` }}
+                          />
+                          <div className="min-w-0">
+                            <div className="text-xs text-white/70 truncate">{bgFile || bgUrl}</div>
+                            <div className="text-[10px] text-white/40">Opacity: {bgOpacity}%</div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={!connected || busy || homeBackgroundSave.status === 'saving'}
+                            onClick={async () => {
+                              try {
+                                await homeBackgroundSave.run({ enabled: false, url: null });
+                              } catch { /* handled */ }
+                            }}
+                            className="shrink-0 text-[10px] font-bold uppercase tracking-widest text-red-400/70 hover:text-red-300"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-white/35">No background image set.</div>
+                      )}
+
+                      {/* Opacity slider (only when a background is active) */}
+                      {bgEnabled && bgUrl ? (
+                        <div className="flex items-center gap-3">
+                          <span className="text-[10px] text-white/40 shrink-0">Opacity</span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={bgOpacity}
+                            disabled={!connected || busy || homeBackgroundSave.status === 'saving'}
+                            onChange={async (e) => {
+                              const next = Math.max(0, Math.min(100, Math.round(Number(e.target.value))));
+                              try {
+                                await homeBackgroundSave.run({ enabled: true, url: bgUrl, opacityPct: next });
+                              } catch { /* handled */ }
+                            }}
+                            className="flex-1"
+                          />
+                          <span className="text-xs text-white/50 w-8 text-right">{bgOpacity}%</span>
+                        </div>
+                      ) : null}
+
+                      {/* Upload zone */}
+                      <div
+                        className={`relative rounded-lg border-2 border-dashed transition-colors p-3 text-center cursor-pointer ${
+                          bgDragOver
+                            ? 'border-emerald-400/60 bg-emerald-400/5'
+                            : 'border-white/15 hover:border-white/30'
+                        } ${bgUploading ? 'opacity-50 pointer-events-none' : ''}`}
+                        onClick={() => bgFileInputRef.current?.click()}
+                        onDragOver={(e) => { e.preventDefault(); setBgDragOver(true); }}
+                        onDragLeave={() => setBgDragOver(false)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setBgDragOver(false);
+                          const file = e.dataTransfer?.files?.[0];
+                          if (file) handleBgUpload(file);
+                        }}
+                      >
+                        <input
+                          ref={bgFileInputRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/gif"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleBgUpload(file);
+                          }}
+                        />
+                        <div className="text-xs text-white/50">
+                          {bgUploading ? (
+                            <span className="text-emerald-300/80">Uploading…</span>
+                          ) : (
+                            <>
+                              <span className="text-white/70 font-medium">Click to upload</span> or drag and drop
+                              <div className="mt-1 text-[10px] text-white/30">JPEG, PNG, WebP, or GIF — max 10 MB</div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* File grid */}
+                      {backgroundFiles.length > 0 ? (
+                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                          {backgroundFiles.map((file) => {
+                            const fileUrl = `/backgrounds/${encodeURIComponent(file)}`;
+                            const isActive = bgEnabled && bgFile === file;
+                            const isDeleting = bgDeleting === file;
+                            return (
+                              <div key={file} className="relative group">
+                                <button
+                                  type="button"
+                                  disabled={!connected || busy || homeBackgroundSave.status === 'saving' || isDeleting}
+                                  onClick={async () => {
+                                    try {
+                                      if (isActive) {
+                                        await homeBackgroundSave.run({ enabled: false, url: null });
+                                      } else {
+                                        await homeBackgroundSave.run({ enabled: true, url: fileUrl, opacityPct: bgOpacity });
+                                      }
+                                    } catch { /* handled */ }
+                                  }}
+                                  className={`w-full relative rounded-lg border overflow-hidden aspect-video bg-black/30 transition-colors ${
+                                    isActive ? 'border-emerald-400/60 ring-1 ring-emerald-400/30' : 'border-white/10 hover:border-white/25'
+                                  } ${isDeleting ? 'opacity-40' : ''}`}
+                                >
+                                  <img
+                                    src={`${API_HOST}${fileUrl}`}
+                                    alt={file}
+                                    className="w-full h-full object-cover"
+                                  />
+                                  {isActive ? (
+                                    <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                                      <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-300">Active</span>
+                                    </div>
+                                  ) : null}
+                                </button>
+                                {/* Delete button — top-right corner */}
+                                <button
+                                  type="button"
+                                  disabled={isDeleting}
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    // If this file is the active background, unset it first
+                                    if (isActive) {
+                                      try { await homeBackgroundSave.run({ enabled: false, url: null }); } catch { /* handled */ }
+                                    }
+                                    await handleBgDelete(file);
+                                  }}
+                                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 border border-white/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-900/80 hover:border-red-400/40"
+                                  title={`Delete ${file}`}
+                                >
+                                  <span className="text-[10px] text-white/80 leading-none">✕</span>
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : !backgroundFilesError ? (
+                        <div className="text-xs text-white/35">No background images yet. Upload one above.</div>
+                      ) : null}
+
+                      <div className="text-xs text-white/45">
+                        {statusText(homeBackgroundSave.status)}
+                      </div>
+                    </div>
+                  );
+                })()}
             </div>
 
             <div className="utility-group p-4">

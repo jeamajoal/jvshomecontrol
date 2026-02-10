@@ -3510,6 +3510,110 @@ app.get('/api/backgrounds', (req, res) => {
     }
 });
 
+// ── Upload a background image ──────────────────────────────────────────────
+// Accepts raw binary body with the image MIME type as Content-Type.
+// The desired filename is sent via the X-Filename header.
+const BACKGROUND_UPLOAD_MAX = 10 * 1024 * 1024; // 10 MB
+const BACKGROUND_ALLOWED_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+const BACKGROUND_ALLOWED_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
+const BACKGROUND_SAFE_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\.[a-zA-Z0-9]{1,8}$/;
+
+app.post('/api/backgrounds/upload',
+    express.raw({ type: () => true, limit: BACKGROUND_UPLOAD_MAX }),
+    (req, res) => {
+        try {
+            ensureDataDirs();
+
+            // --- Validate MIME type ---
+            const mime = (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+            if (!BACKGROUND_ALLOWED_MIMES.has(mime)) {
+                return res.status(400).json({
+                    ok: false,
+                    error: `Unsupported image type "${mime}". Allowed: ${[...BACKGROUND_ALLOWED_MIMES].join(', ')}`,
+                });
+            }
+
+            // --- Validate / sanitize filename ---
+            const rawName = req.headers['x-filename'] || '';
+            const filename = path.basename(String(rawName).trim());
+            if (!filename || !BACKGROUND_SAFE_NAME_RE.test(filename)) {
+                return res.status(400).json({
+                    ok: false,
+                    error: 'Invalid filename. Use alphanumeric characters, dots, hyphens, or underscores (e.g. my-photo.jpg).',
+                });
+            }
+            const ext = path.extname(filename).toLowerCase();
+            if (!BACKGROUND_ALLOWED_EXTS.has(ext)) {
+                return res.status(400).json({
+                    ok: false,
+                    error: `File extension "${ext}" not allowed. Allowed: ${[...BACKGROUND_ALLOWED_EXTS].join(', ')}`,
+                });
+            }
+
+            // --- Validate body ---
+            if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+                return res.status(400).json({ ok: false, error: 'No file data received.' });
+            }
+
+            // --- Write file ---
+            const dest = path.join(BACKGROUNDS_DIR, filename);
+            // Resolve and verify the file stays within BACKGROUNDS_DIR (path-traversal guard)
+            if (!path.resolve(dest).startsWith(path.resolve(BACKGROUNDS_DIR) + path.sep) &&
+                path.resolve(dest) !== path.resolve(BACKGROUNDS_DIR, filename)) {
+                return res.status(400).json({ ok: false, error: 'Invalid filename (path traversal rejected).' });
+            }
+            fs.writeFileSync(dest, req.body);
+            console.log(`Background uploaded: ${filename} (${(req.body.length / 1024).toFixed(1)} KB)`);
+
+            res.json({ ok: true, filename });
+        } catch (err) {
+            console.error('Background upload failed:', err);
+            if (err.code === 'EACCES') {
+                return res.status(500).json({
+                    ok: false,
+                    error: 'Permission denied writing to backgrounds directory.',
+                    fix: 'sudo chown -R $(whoami) server/data/backgrounds',
+                });
+            }
+            res.status(500).json({ ok: false, error: err?.message || String(err) });
+        }
+    },
+);
+
+// ── Delete a background image ──────────────────────────────────────────────
+app.delete('/api/backgrounds/:filename', (req, res) => {
+    try {
+        ensureDataDirs();
+
+        const filename = path.basename(String(req.params.filename || '').trim());
+        if (!filename || !BACKGROUND_SAFE_NAME_RE.test(filename)) {
+            return res.status(400).json({ ok: false, error: 'Invalid filename.' });
+        }
+        if (!BACKGROUND_ALLOWED_EXTS.has(path.extname(filename).toLowerCase())) {
+            return res.status(400).json({ ok: false, error: 'Invalid file extension.' });
+        }
+
+        const filePath = path.join(BACKGROUNDS_DIR, filename);
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ ok: false, error: 'File not found.' });
+        }
+
+        fs.unlinkSync(filePath);
+        console.log(`Background deleted: ${filename}`);
+        res.json({ ok: true, filename });
+    } catch (err) {
+        console.error('Background delete failed:', err);
+        if (err.code === 'EACCES') {
+            return res.status(500).json({
+                ok: false,
+                error: 'Permission denied deleting background file.',
+                fix: 'sudo chown -R $(whoami) server/data/backgrounds',
+            });
+        }
+        res.status(500).json({ ok: false, error: err?.message || String(err) });
+    }
+});
+
 app.get('/api/device-icons', (req, res) => {
     try {
         ensureDataDirs();
