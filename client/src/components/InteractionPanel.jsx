@@ -1098,22 +1098,6 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                               </div>
 
                               <DeviceInfoGrid items={d.infoItems} compact />
-
-                              {/* Auto-assigned control icons */}
-                              {controlIconIds.length > 0 && (
-                                <div className="mt-3 flex flex-wrap justify-center gap-2 items-end">
-                                  {controlIconIds.map((iconId) => (
-                                    <InteractiveControlIcon
-                                      key={iconId}
-                                      iconId={iconId}
-                                      device={deviceObj}
-                                      onCommand={(deviceId, command, args) => run(deviceId, command, args)}
-                                      className="w-16 h-20"
-                                      disabled={!connected}
-                                    />
-                                  ))}
-                                </div>
-                              )}
                             </div>
                           );
                         }
