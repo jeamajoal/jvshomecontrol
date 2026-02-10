@@ -230,6 +230,21 @@ ensure_data_ownership() {
   if [[ -d "${data_dir}" ]]; then
     log "Ensuring ${data_dir} is owned by ${APP_USER}:${APP_GROUP}…"
     /usr/bin/chown -R "${APP_USER}:${APP_GROUP}" "${data_dir}" || true
+
+    # Directories need the execute bit for traversal; files default to 644.
+    find "${data_dir}" -type d -exec chmod 755 {} + 2>/dev/null || true
+    find "${data_dir}" -type f -exec chmod 644 {} + 2>/dev/null || true
+
+    # Sensitive files: config.json gets restricted permissions.
+    local cfg="${APP_DIR}/${CONFIG_FILE_REL}"
+    [[ -f "${cfg}" ]] && chmod 600 "${cfg}" || true
+
+    # Certs directory: app user needs read/write, but restrict from others.
+    local cert_dir="${data_dir}/certs"
+    if [[ -d "${cert_dir}" ]]; then
+      find "${cert_dir}" -type d -exec chmod 700 {} + 2>/dev/null || true
+      find "${cert_dir}" -type f -exec chmod 600 {} + 2>/dev/null || true
+    fi
   fi
 }
 

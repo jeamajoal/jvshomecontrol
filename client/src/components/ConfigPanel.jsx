@@ -4961,7 +4961,7 @@ const ConfigPanel = ({
                         <div className="flex items-center gap-3">
                           <div
                             className="h-12 w-20 rounded-lg border border-white/10 bg-cover bg-center"
-                            style={{ backgroundImage: `url(${resolvedBgUrl})` }}
+                            style={{ backgroundImage: `url(${resolvedBgUrl}${resolvedBgUrl.includes('?') ? '&' : '?'}v=${bgRefreshKey})` }}
                           />
                           <div className="min-w-0">
                             <div className="text-xs text-white/70 truncate">{bgFile || bgUrl}</div>
@@ -5072,10 +5072,23 @@ const ConfigPanel = ({
                                   } ${isDeleting ? 'opacity-40' : ''}`}
                                 >
                                   <img
-                                    src={`${API_HOST}${fileUrl}`}
+                                    src={`${API_HOST}${fileUrl}?v=${bgRefreshKey}`}
                                     alt={file}
                                     className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      // Hide the broken image icon and show a styled fallback
+                                      e.target.style.display = 'none';
+                                      const fallback = e.target.nextElementSibling;
+                                      if (fallback?.dataset?.bgFallback) fallback.style.display = '';
+                                    }}
                                   />
+                                  <div
+                                    data-bg-fallback="1"
+                                    className="absolute inset-0 flex items-center justify-center bg-black/50 text-[10px] text-white/50 text-center px-1 break-all"
+                                    style={{ display: 'none' }}
+                                  >
+                                    {file}
+                                  </div>
                                   {isActive ? (
                                     <div className="absolute inset-0 flex items-center justify-center bg-black/40">
                                       <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-300">Active</span>

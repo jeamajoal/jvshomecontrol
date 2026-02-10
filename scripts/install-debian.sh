@@ -240,7 +240,8 @@ ensure_repo() {
     log "Backing up certs…"
     /usr/bin/mkdir -p "${cert_backup_dir}"
     /usr/bin/cp -a "${cert_dir}/." "${cert_backup_dir}/" || true
-    /usr/bin/chmod -R 600 "${cert_backup_dir}" || true
+    find "${cert_backup_dir}" -type d -exec chmod 700 {} + 2>/dev/null || true
+    find "${cert_backup_dir}" -type f -exec chmod 600 {} + 2>/dev/null || true
   fi
 
   if [[ -d "${backgrounds_dir}" ]]; then
@@ -300,7 +301,8 @@ ensure_repo() {
     /usr/bin/mkdir -p "${cert_dir}"
     /usr/bin/cp -a "${cert_backup_dir}/." "${cert_dir}/" || true
     /usr/bin/chown -R "${APP_USER}:${APP_GROUP}" "${cert_dir}" || true
-    /usr/bin/chmod -R 600 "${cert_dir}" || true
+    find "${cert_dir}" -type d -exec chmod 700 {} + 2>/dev/null || true
+    find "${cert_dir}" -type f -exec chmod 600 {} + 2>/dev/null || true
   fi
 
   if [[ -n "${backgrounds_backup_dir}" && -d "${backgrounds_backup_dir}" ]]; then

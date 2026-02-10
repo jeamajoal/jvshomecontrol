@@ -17,7 +17,7 @@ import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
 const GRID_COLS = 12;
-const GRID_MAX_ROWS = 24;
+const GRID_MAX_ROWS = 48;
 const GRID_ROW_HEIGHT = 36;
 
 const ReactGridLayout = WidthProvider(GridLayout);
@@ -621,10 +621,13 @@ const HeatmapPanel = ({ config: configProp, statuses: statusesProp, uiScheme: ui
             </aside>
 
             <div className="flex-1 min-w-0">
-              <div className="glass-panel border border-white/10 overflow-auto md:overflow-hidden touch-pan-x touch-pan-y">
+              <div className="glass-panel border border-white/10 overflow-auto touch-pan-x touch-pan-y">
                 <div
-                  className="relative w-full min-w-[960px] md:min-w-0 h-[76vh] md:h-[82vh] bg-black/30 p-2 md:p-4"
-                  style={supportsZoom ? { zoom: effectiveMapZoom } : { transform: `scale(${effectiveMapZoom})`, transformOrigin: 'top left' }}
+                  className="relative w-full min-w-[960px] md:min-w-0 bg-black/30 p-2 md:p-4"
+                  style={{
+                    minHeight: `${GRID_MAX_ROWS * (isMdUp ? GRID_ROW_HEIGHT : 44) + (isMdUp ? 12 : 8) * (GRID_MAX_ROWS - 1) + 32}px`,
+                    ...(supportsZoom ? { zoom: effectiveMapZoom } : { transform: `scale(${effectiveMapZoom})`, transformOrigin: 'top left' }),
+                  }}
                 >
                   <ReactGridLayout
                     className="layout jvs-heatmap-grid"

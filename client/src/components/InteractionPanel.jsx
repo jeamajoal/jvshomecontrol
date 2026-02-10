@@ -767,7 +767,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
           transformOrigin: 'top left',
         }}
       >
-        <div ref={contentRef} className="w-full">
+        <div ref={contentRef} className="w-full min-h-full">
           <div className="glass-panel border border-white/10 p-4 md:p-5">
             <div className="flex items-center justify-between gap-4">
               <div className="min-w-0">
