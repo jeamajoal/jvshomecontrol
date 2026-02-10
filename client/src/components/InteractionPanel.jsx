@@ -1000,6 +1000,19 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
 
                     <div className="mt-3 grid grid-cols-1 gap-2">
                       {controllables.map((d) => {
+                        // DEBUG: trace device type detection for troubleshooting
+                        if (String(d.label || '').toLowerCase().includes('thermostat') || String(d.internalType || '').includes('thermostat')) {
+                          console.log('[DEBUG thermostat]', {
+                            id: d.id,
+                            label: d.label,
+                            internalType: d.internalType,
+                            capabilities: d.capabilities,
+                            commands: d.commands,
+                            controls: d.controls,
+                            attrs: d.attrs,
+                          });
+                        }
+
                         const level = d.attrs.level;
                         const hasLevel = d.commands.includes('setLevel') || asNumber(level) !== null;
 
