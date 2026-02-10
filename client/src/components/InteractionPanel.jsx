@@ -2,7 +2,7 @@
 import {
   Loader2, Power, SlidersHorizontal,
   Thermometer, Fan, Lock, DoorOpen, Blinds, Droplets,
-  Palette, SunDim, Siren, Tv, Info,
+  Palette, SunDim, Siren, Tv,
 } from 'lucide-react';
 
 import { getUiScheme } from '../uiScheme';
@@ -1022,14 +1022,14 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                         const hasPopup = DEVICE_TYPES_WITH_POPUP.has(d.internalType);
 
                         // Per-device manual control icons, or auto-inferred fallback.
-                        // For popup-capable devices, skip auto-assignment — the popup
-                        // IS the rich control surface; inline icons would just show "?".
+                        // Manual Settings choices are always respected.  For popup-
+                        // capable devices the auto-assignment still runs — React-only
+                        // manifests (thermostat-mode etc.) gracefully return null in
+                        // InteractiveControlIcon so they won't produce "?" marks.
                         const manualIconIds = getDeviceControlIconIds(d.id);
                         const controlIconIds = manualIconIds.length > 0
                           ? manualIconIds
-                          : hasPopup
-                            ? []
-                            : inferControlIconIds({
+                          : inferControlIconIds({
                                 capabilities: d.capabilities || [],
                                 attributes: d.attrs,
                                 commandSchemas: d.commandSchemas,
@@ -1044,68 +1044,6 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                           ...d.attrs,
                           commands: d.commands,
                         };
-
-                        // ── Popup-only tile for sophisticated device types ────────
-                        // Thermostat, lock, garage, shade, valve, fan, color light,
-                        // media — show a summary + "open popup" button.
-                        if (hasPopup && !switchControl) {
-                          const summaryParts = [];
-                          if (primaryControl?.kind === 'thermostat') {
-                            if (primaryControl.temperature !== null) summaryParts.push(`${Math.round(primaryControl.temperature)}°`);
-                            summaryParts.push(primaryControl.thermostatMode || 'off');
-                            if (primaryControl.thermostatOperatingState && primaryControl.thermostatOperatingState !== 'idle') {
-                              summaryParts.push(primaryControl.thermostatOperatingState);
-                            }
-                          } else if (primaryControl?.kind === 'lock') {
-                            summaryParts.push(primaryControl.isLocked ? 'Locked' : 'Unlocked');
-                          } else if (primaryControl?.kind === 'garage') {
-                            summaryParts.push(primaryControl.state || 'unknown');
-                          } else if (primaryControl?.kind === 'shade') {
-                            summaryParts.push(`${primaryControl.position ?? 0}%`);
-                            summaryParts.push(primaryControl.state || 'unknown');
-                          } else if (primaryControl?.kind === 'valve') {
-                            summaryParts.push(primaryControl.isOpen ? 'Open' : 'Closed');
-                          } else if (primaryControl?.kind === 'media') {
-                            if (primaryControl.isPlaying) summaryParts.push('Playing');
-                            else if (primaryControl.isPaused) summaryParts.push('Paused');
-                            else summaryParts.push('Stopped');
-                            if (primaryControl.volume !== null) summaryParts.push(`Vol ${primaryControl.volume}%`);
-                          }
-
-                          return (
-                            <div key={d.id} className="w-full glass-panel border-0 shadow-none p-2 md:p-3">
-                              <div className="flex items-center justify-between gap-3">
-                                <div className="min-w-0">
-                                  <div
-                                    className="uppercase tracking-[0.2em] jvs-secondary-text-strong text-white font-semibold"
-                                    style={{ fontSize: 'calc(11px * var(--jvs-secondary-text-size-scale, 1))' }}
-                                  >
-                                    <span className="inline-flex items-center gap-2 min-w-0 max-w-full">
-                                      <DeviceIcon className="w-3.5 h-3.5 shrink-0 text-white/50" />
-                                      <span className="truncate">{d.label}</span>
-                                    </span>
-                                  </div>
-                                  <div
-                                    className="mt-1 jvs-secondary-text text-white capitalize"
-                                    style={{ fontSize: 'calc(12px * var(--jvs-secondary-text-size-scale, 1))' }}
-                                  >
-                                    {summaryParts.join(' · ') || d.internalType}
-                                  </div>
-                                </div>
-                                <button
-                                  type="button"
-                                  disabled={!connected}
-                                  onClick={() => setPopupTarget({ deviceId: d.id, internalType: d.internalType, device: deviceObj, control: primaryControl })}
-                                  className={`shrink-0 rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] ${resolvedUiScheme.actionButton} ${!connected ? 'opacity-50' : 'hover:bg-white/5'}`}
-                                >
-                                  <Info className="w-4 h-4" />
-                                </button>
-                              </div>
-
-                              <DeviceInfoGrid items={d.infoItems} compact />
-                            </div>
-                          );
-                        }
 
                         // ── Switch + dimmer tiles (with optional popup for color/CT/fan) ──
                         if (switchControl && hasLevel && d.commands.includes('setLevel')) {
@@ -1262,6 +1200,19 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                                 ))}
                               </div>
                             )}
+
+                            {/* Popup trigger for multi-control devices */}
+                            {hasPopup ? (
+                              <button
+                                type="button"
+                                disabled={!connected}
+                                onClick={() => setPopupTarget({ deviceId: d.id, internalType: d.internalType, device: deviceObj, control: primaryControl })}
+                                className={`mt-2 w-full flex items-center justify-center gap-1.5 rounded-xl border border-white/10 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white/40 hover:text-white/60 hover:bg-white/5 transition-colors`}
+                              >
+                                <DeviceIcon className="w-3 h-3" />
+                                More Controls
+                              </button>
+                            ) : null}
 
                             <div className="mt-2 flex flex-col gap-2">
                               {schemaList.map((schema) => {

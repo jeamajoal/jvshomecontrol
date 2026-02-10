@@ -16,13 +16,6 @@ import {
   CircleAlert,
   User,
   Info,
-  Fan,
-  Lock,
-  Blinds,
-  Siren,
-  Palette,
-  SunDim,
-  Tv,
 } from 'lucide-react';
 
 import { getUiScheme } from '../uiScheme';
@@ -1039,17 +1032,14 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
               const hasPopup = DEVICE_TYPES_WITH_POPUP.has(d.internalType);
 
               // Check for per-device control icon assignment (supports array or string)
+              // Settings choices are ALWAYS respected.  React-only manifests
+              // (thermostat-mode etc.) gracefully return null in InteractiveControlIcon.
               const controlIconVal = (deviceControlIcons && typeof deviceControlIcons === 'object')
                 ? deviceControlIcons[d.id]
                 : null;
-              // For popup-capable devices, skip manual control icons — they are
-              // React-only manifests with no inline renderer and would show "?".
-              // The popup IS the rich control surface.
-              const controlIconIds = hasPopup
-                ? []
-                : (controlIconVal
-                    ? (Array.isArray(controlIconVal) ? controlIconVal : [controlIconVal]).map((v) => String(v || '').trim()).filter(Boolean)
-                    : []);
+              const controlIconIds = controlIconVal
+                ? (Array.isArray(controlIconVal) ? controlIconVal : [controlIconVal]).map((v) => String(v || '').trim()).filter(Boolean)
+                : [];
               
               // Build device object for InteractiveControlIcon / popup
               const deviceObj = {
@@ -1088,50 +1078,6 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
                   </div>
                   <div className="mt-3 flex flex-wrap justify-center gap-2">
                     {(() => {
-                    // ── Popup tile for sophisticated device types ──────────
-                    if (hasPopup) {
-                      const summaryParts = [];
-                      if (primaryControl?.kind === 'thermostat') {
-                        if (primaryControl.temperature !== null) summaryParts.push(`${Math.round(primaryControl.temperature)}°`);
-                        summaryParts.push(primaryControl.thermostatMode || 'off');
-                        if (primaryControl.thermostatOperatingState && primaryControl.thermostatOperatingState !== 'idle') {
-                          summaryParts.push(primaryControl.thermostatOperatingState);
-                        }
-                      } else if (primaryControl?.kind === 'lock') {
-                        summaryParts.push(primaryControl.isLocked ? 'Locked' : 'Unlocked');
-                      } else if (primaryControl?.kind === 'garage') {
-                        summaryParts.push(primaryControl.state || 'unknown');
-                      } else if (primaryControl?.kind === 'shade') {
-                        summaryParts.push(`${primaryControl.position ?? 0}%`);
-                        summaryParts.push(primaryControl.state || 'unknown');
-                      } else if (primaryControl?.kind === 'valve') {
-                        summaryParts.push(primaryControl.isOpen ? 'Open' : 'Closed');
-                      } else if (primaryControl?.kind === 'media') {
-                        if (primaryControl.isPlaying) summaryParts.push('Playing');
-                        else if (primaryControl.isPaused) summaryParts.push('Paused');
-                        else summaryParts.push('Stopped');
-                        if (primaryControl.volume !== null) summaryParts.push(`Vol ${primaryControl.volume}%`);
-                      }
-                      return (
-                        <div className="w-full flex items-center justify-between gap-2">
-                          <div
-                            className={`jvs-secondary-text text-white capitalize`}
-                            style={{ fontSize: `calc(${Math.round(12 * scaleNum)}px * var(--jvs-secondary-text-size-scale, 1))` }}
-                          >
-                            {summaryParts.join(' · ') || d.internalType}
-                          </div>
-                          <button
-                            type="button"
-                            disabled={!connected}
-                            onClick={() => setPopupTarget({ deviceId: d.id, internalType: d.internalType, device: deviceObj, control: primaryControl })}
-                            className={`shrink-0 rounded-xl border px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] ${uiScheme?.actionButton || 'text-neon-blue border-neon-blue/30 bg-neon-blue/10'} ${!connected ? 'opacity-50' : 'hover:bg-white/5'}`}
-                          >
-                            <Info className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      );
-                    }
-
                     const commands = Array.isArray(d.commands)
                       ? d.commands.map((v) => String(v || '').trim()).filter(Boolean)
                       : [];
@@ -1365,6 +1311,20 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
                     );
                     })()}
                   </div>
+
+                  {/* Popup trigger for multi-control devices */}
+                  {hasPopup ? (
+                    <button
+                      type="button"
+                      disabled={!connected}
+                      onClick={() => setPopupTarget({ deviceId: d.id, internalType: d.internalType, device: deviceObj, control: primaryControl })}
+                      className={`mt-2 w-full flex items-center justify-center gap-1.5 rounded-xl border border-white/10 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white/40 hover:text-white/60 hover:bg-white/5 transition-colors active:scale-[0.98] ${!connected ? 'opacity-50' : ''}`}
+                    >
+                      <Info className="w-3 h-3" />
+                      More Controls
+                    </button>
+                  ) : null}
+
                   <DeviceInfoGrid items={d.infoItems} scale={scaleNum} primaryTextColorClassName={primaryTextColorClassName} secondaryTextColorClassName={secondaryTextColorClassName} tertiaryTextColorClassName={tertiaryTextColorClassName} />
                 </div>
               );

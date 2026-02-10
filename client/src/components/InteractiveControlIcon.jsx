@@ -544,17 +544,11 @@ export default function InteractiveControlIcon({
     );
   }
 
-  // If no SVG URL (React-only component that didn't match any type), render nothing
+  // If no SVG URL (React-only component that didn't match any type above),
+  // render nothing.  These manifests live inside popup controllers — they
+  // have no meaningful inline representation.
   if (!manifest.svgUrl) {
-    return (
-      <div
-        className={`${className} flex items-center justify-center text-xs text-yellow-400/50`}
-        style={style}
-        title={`Unknown React component: ${manifest.reactComponent || 'none'}`}
-      >
-        <span>?</span>
-      </div>
-    );
+    return null;
   }
 
   // Render SVG-based control for toggle buttons and other types

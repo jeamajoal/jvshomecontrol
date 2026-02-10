@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useMemo } from 'react';
-import { Palette, Sun, Thermometer, Droplets, Loader2 } from 'lucide-react';
+import { Palette, Sun, Thermometer, Droplets, Loader2, Power } from 'lucide-react';
 import DevicePopupShell from './DevicePopupShell';
 import ControlSlider from './ControlSlider';
 import ColorWheel from './ColorWheel';
@@ -26,6 +26,13 @@ export default function ColorLightPopup({ open, onClose, device, control, onComm
   const saturation = Number(attrs.saturation ?? 100);
   const colorTemp = Number(attrs.colorTemperature ?? 4000);
 
+  const switchState = String(attrs.switch || '').toLowerCase();
+  const isOn = switchState === 'on';
+  const hasOn = cmdSet.has('on');
+  const hasOff = cmdSet.has('off');
+  const hasToggle = cmdSet.has('toggle');
+  const hasPower = hasOn || hasOff || hasToggle;
+
   const hasLevel = cmdSet.has('setLevel');
   const hasHue = cmdSet.has('setHue') || cmdSet.has('setColor');
   const hasSat = cmdSet.has('setSaturation');
@@ -40,6 +47,31 @@ export default function ColorLightPopup({ open, onClose, device, control, onComm
 
   return (
     <DevicePopupShell title={control?.label || 'Light'} subtitle="Color Light" open={open} onClose={onClose} uiScheme={uiScheme}>
+      {/* Power toggle */}
+      {hasPower ? (
+        <div className="mb-4 flex justify-center">
+          <button
+            type="button"
+            disabled={disabled || busy.has('on') || busy.has('off') || busy.has('toggle')}
+            onClick={() => {
+              if (isOn && hasOff) run('off');
+              else if (!isOn && hasOn) run('on');
+              else if (hasToggle) run('toggle');
+              else run(isOn ? 'off' : 'on');
+            }}
+            className={`flex items-center gap-2 rounded-xl border px-5 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors active:scale-[0.97] disabled:opacity-40
+              ${isOn
+                ? (uiScheme?.actionButton || 'text-neon-blue border-neon-blue/30 bg-neon-blue/10')
+                : 'text-white/40 border-white/10 bg-white/5 hover:bg-white/10'}`}
+          >
+            <Power className="w-4 h-4" />
+            {(busy.has('on') || busy.has('off') || busy.has('toggle'))
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : (isOn ? 'On' : 'Off')}
+          </button>
+        </div>
+      ) : null}
+
       {/* Color wheel */}
       {hasHue ? (
         <div className="mb-4 flex justify-center">
