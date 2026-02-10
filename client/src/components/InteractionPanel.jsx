@@ -1000,19 +1000,6 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
 
                     <div className="mt-3 grid grid-cols-1 gap-2">
                       {controllables.map((d) => {
-                        // DEBUG: trace device type detection for troubleshooting
-                        if (String(d.label || '').toLowerCase().includes('thermostat') || String(d.internalType || '').includes('thermostat')) {
-                          console.log('[DEBUG thermostat]', {
-                            id: d.id,
-                            label: d.label,
-                            internalType: d.internalType,
-                            capabilities: d.capabilities,
-                            commands: d.commands,
-                            controls: d.controls,
-                            attrs: d.attrs,
-                          });
-                        }
-
                         const level = d.attrs.level;
                         const hasLevel = d.commands.includes('setLevel') || asNumber(level) !== null;
 
@@ -1031,6 +1018,9 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                         const canOff = switchControl ? switchControl.canOff : d.commands.includes('off');
                         const canToggle = switchControl ? switchControl.canToggle : d.commands.includes('toggle');
 
+                        // Does this device type have a dedicated popup?
+                        const hasPopup = DEVICE_TYPES_WITH_POPUP.has(d.internalType);
+
                         // Per-device manual control icons, or auto-inferred fallback.
                         // For popup-capable devices, skip auto-assignment — the popup
                         // IS the rich control surface; inline icons would just show "?".
@@ -1044,9 +1034,6 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                                 attributes: d.attrs,
                                 commandSchemas: d.commandSchemas,
                               });
-
-                        // Does this device type have a dedicated popup?
-                        const hasPopup = DEVICE_TYPES_WITH_POPUP.has(d.internalType);
 
                         // Build device object for InteractiveControlIcon / popup
                         const deviceObj = {
