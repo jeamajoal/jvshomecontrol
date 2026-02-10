@@ -2408,6 +2408,28 @@ function pickAttributes(attrs = {}) {
         colorTemperature: attrs.colorTemperature,
         colorMode: attrs.colorMode,
         colorName: attrs.colorName,
+        // Thermostat
+        heatingSetpoint: attrs.heatingSetpoint,
+        coolingSetpoint: attrs.coolingSetpoint,
+        thermostatSetpoint: attrs.thermostatSetpoint,
+        thermostatMode: attrs.thermostatMode,
+        thermostatFanMode: attrs.thermostatFanMode,
+        thermostatOperatingState: attrs.thermostatOperatingState,
+        // Lock
+        lock: attrs.lock,
+        // Garage door
+        door: attrs.door,
+        // Shade / blind
+        windowShade: attrs.windowShade,
+        windowBlind: attrs.windowBlind,
+        position: attrs.position,
+        tilt: attrs.tilt,
+        // Valve
+        valve: attrs.valve,
+        // Fan
+        speed: attrs.speed,
+        // Siren
+        alarm: attrs.alarm,
         // Media/Audio controls
         volume: attrs.volume,
         mute: attrs.mute,
