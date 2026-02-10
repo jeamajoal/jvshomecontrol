@@ -36,9 +36,10 @@ export const useResizeObserver = (ref) => {
  *
  * Previously duplicated in InteractionPanel.jsx and HeatmapPanel.jsx.
  *
+ * @param {{ heightOnly?: boolean }} [opts]
  * @returns {{ viewportRef, contentRef, scale: number }}
  */
-export const useFitScale = () => {
+export const useFitScale = ({ heightOnly = false } = {}) => {
   const viewportRef = useRef(null);
   const contentRef = useRef(null);
   const [scale, setScale] = useState(1);
@@ -64,7 +65,8 @@ export const useFitScale = () => {
       const cw = Math.max(contentEl.scrollWidth, contentEl.clientWidth, 1);
       const ch = Math.max(contentEl.scrollHeight, contentEl.clientHeight, 1);
 
-      const raw = Math.min(vw / cw, vh / ch) * 0.99;
+      const rawW = heightOnly ? Infinity : (vw / cw);
+      const raw = Math.min(rawW, vh / ch) * 0.99;
       const next = Math.min(raw, 1.15);
       setScale((prev) => (Math.abs(prev - next) < 0.01 ? prev : next));
     };
@@ -79,7 +81,7 @@ export const useFitScale = () => {
       window.removeEventListener('resize', compute);
       ro.disconnect();
     };
-  }, []);
+  }, [heightOnly]);
 
   return { viewportRef, contentRef, scale };
 };

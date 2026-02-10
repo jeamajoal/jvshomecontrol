@@ -339,7 +339,7 @@ const ActivityPanel = ({ config: configProp, statuses: statusesProp, uiScheme: u
   }, [alertsEnabled]);
 
   return (
-    <div className="relative w-full h-full overflow-auto p-3 md:p-5">
+    <div className="relative w-full h-full overflow-y-auto overflow-x-hidden p-3 md:p-5">
       {activityBackground.enabled && activityBackground.url && !activityBackgroundImageError ? (
         <div
           className="fixed inset-0 z-0 pointer-events-none"
@@ -355,6 +355,7 @@ const ActivityPanel = ({ config: configProp, statuses: statusesProp, uiScheme: u
       <div
         className="relative z-10 min-h-full flex flex-col"
         style={{
+          width: `${100 / contentScale}%`,
           transform: `scale(${contentScale})`,
           transformOrigin: 'top left',
         }}
@@ -387,7 +388,7 @@ const ActivityPanel = ({ config: configProp, statuses: statusesProp, uiScheme: u
         </button>
       </div>
 
-      <div className="mt-4 flex-1 max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4 content-start">
+      <div className="mt-4 flex-1 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4 content-start">
         {rooms.length ? (
           rooms.map((r) => {
             const motionActive = r.devices.filter((d) => d.motion === 'active').length;

@@ -371,7 +371,7 @@ const LevelTile = ({
 };
 
 const InteractionPanel = ({ config: configProp, statuses: statusesProp, connected: connectedProp, uiScheme: uiSchemeProp }) => {
-  const { viewportRef, contentRef, scale } = useFitScale();
+  const { viewportRef, contentRef, scale } = useFitScale({ heightOnly: true });
 
   const ctx = useAppState();
   const config = configProp ?? ctx?.config;
@@ -747,7 +747,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
   }, [connected, rooms]);
 
   return (
-    <div ref={viewportRef} className="relative w-full h-full overflow-auto md:overflow-hidden p-4 md:p-6">
+    <div ref={viewportRef} className="relative w-full h-full overflow-y-auto overflow-x-hidden p-4 md:p-6">
       {controlsBackground.enabled && controlsBackground.url && !controlsBackgroundImageError ? (
         <div
           className="fixed inset-0 z-0 pointer-events-none"
@@ -761,8 +761,9 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
       ) : null}
 
       <div
-        className="relative z-10 w-full h-full"
+        className="relative z-10 h-full"
         style={{
+          width: `${100 / finalScale}%`,
           transform: `scale(${finalScale})`,
           transformOrigin: 'top left',
         }}
