@@ -15,14 +15,15 @@ import {
   Flame,
   CircleAlert,
   User,
-  Info,
+  Fan,
+  Tv,
 } from 'lucide-react';
 
 import { getUiScheme } from '../uiScheme';
 import { useAppState } from '../appState';
 import { buildRoomsWithStatuses, getHomeVisibleDeviceIdSet, getDeviceInfoMetricAllowlist } from '../deviceSelectors';
 import { API_HOST } from '../apiHost';
-import { inferInternalDeviceType, mapDeviceToControls } from '../deviceMapping';
+import { inferInternalDeviceType, mapDeviceToControls, INTERNAL_DEVICE_TYPES } from '../deviceMapping';
 import { getDeviceTypeIconSrc } from '../deviceIcons';
 import { asNumber, asText, formatTemp, formatPercent, formatLux, formatSpeed, formatInches, toCompass, isSafeInfoMetricKey, isDisplayableInfoValue, formatInfoMetricLabel, formatInfoMetricValue, sortInfoMetricKeys } from '../utils';
 import DeviceInfoGrid from './DeviceInfoGrid';
@@ -1314,15 +1315,22 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
 
                   {/* Popup trigger for multi-control devices */}
                   {hasPopup ? (
-                    <button
-                      type="button"
-                      disabled={!connected}
-                      onClick={() => setPopupTarget({ deviceId: d.id, internalType: d.internalType, device: deviceObj, control: primaryControl })}
-                      className={`mt-2 w-full flex items-center justify-center gap-1.5 rounded-xl border border-white/10 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white/40 hover:text-white/60 hover:bg-white/5 transition-colors active:scale-[0.98] ${!connected ? 'opacity-50' : ''}`}
-                    >
-                      <Info className="w-3 h-3" />
-                      More Controls
-                    </button>
+                    (() => {
+                      const PopupIcon = d.internalType === INTERNAL_DEVICE_TYPES.FAN_CONTROLLER ? Fan
+                        : d.internalType === INTERNAL_DEVICE_TYPES.MEDIA_PLAYER ? Tv
+                        : Thermometer;
+                      return (
+                        <button
+                          type="button"
+                          disabled={!connected}
+                          onClick={() => setPopupTarget({ deviceId: d.id, internalType: d.internalType, device: deviceObj, control: primaryControl })}
+                          className={`mt-2 w-full flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 p-2 transition-all active:scale-[0.97] ${!connected ? 'opacity-50' : 'hover:bg-white/10 hover:border-white/20 cursor-pointer'}`}
+                          title={`Open ${d.label} controls`}
+                        >
+                          <PopupIcon className={`w-5 h-5 ${uiScheme?.metricIcon || 'text-neon-blue'}`} />
+                        </button>
+                      );
+                    })()
                   ) : null}
 
                   <DeviceInfoGrid items={d.infoItems} scale={scaleNum} primaryTextColorClassName={primaryTextColorClassName} secondaryTextColorClassName={secondaryTextColorClassName} tertiaryTextColorClassName={tertiaryTextColorClassName} />

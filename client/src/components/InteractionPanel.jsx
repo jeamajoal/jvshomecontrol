@@ -1045,6 +1045,56 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                           commands: d.commands,
                         };
 
+                        // ── Popup icon tile for multi-control devices (no switch) ──
+                        // Thermostat, media player — show a clean tile with a clickable
+                        // device-type icon that opens the popup with all controls.
+                        if (hasPopup && !switchControl) {
+                          const summaryParts = [];
+                          if (primaryControl?.kind === 'thermostat') {
+                            if (primaryControl.temperature !== null) summaryParts.push(`${Math.round(primaryControl.temperature)}°`);
+                            summaryParts.push(primaryControl.thermostatMode || 'off');
+                            if (primaryControl.thermostatOperatingState && primaryControl.thermostatOperatingState !== 'idle') {
+                              summaryParts.push(primaryControl.thermostatOperatingState);
+                            }
+                          } else if (primaryControl?.kind === 'media') {
+                            if (primaryControl.isPlaying) summaryParts.push('Playing');
+                            else if (primaryControl.isPaused) summaryParts.push('Paused');
+                            else summaryParts.push('Stopped');
+                            if (primaryControl.volume !== null) summaryParts.push(`Vol ${primaryControl.volume}%`);
+                          }
+
+                          return (
+                            <div key={d.id} className="w-full glass-panel border-0 shadow-none p-2 md:p-3">
+                              <div className="flex items-center justify-between gap-4">
+                                <div className="min-w-0 text-left">
+                                  <div
+                                    className="uppercase tracking-[0.2em] jvs-secondary-text-strong text-white font-semibold"
+                                    style={{ fontSize: 'calc(11px * var(--jvs-secondary-text-size-scale, 1))' }}
+                                  >
+                                    <span className="truncate">{d.label}</span>
+                                  </div>
+                                  <div
+                                    className="mt-1 jvs-secondary-text text-white/60 capitalize"
+                                    style={{ fontSize: 'calc(12px * var(--jvs-secondary-text-size-scale, 1))' }}
+                                  >
+                                    {summaryParts.join(' · ') || d.internalType}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  disabled={!connected}
+                                  onClick={() => setPopupTarget({ deviceId: d.id, internalType: d.internalType, device: deviceObj, control: primaryControl })}
+                                  className={`shrink-0 w-14 h-14 md:w-16 md:h-16 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center transition-all active:scale-90 ${!connected ? 'opacity-50' : 'hover:bg-white/10 hover:border-white/20 cursor-pointer'}`}
+                                  title={`Open ${d.label} controls`}
+                                >
+                                  <DeviceIcon className={`w-7 h-7 md:w-8 md:h-8 ${resolvedUiScheme?.metricIcon || 'text-neon-blue'}`} />
+                                </button>
+                              </div>
+                              <DeviceInfoGrid items={d.infoItems} compact />
+                            </div>
+                          );
+                        }
+
                         // ── Switch + dimmer tiles (with optional popup for color/CT/fan) ──
                         if (switchControl && hasLevel && d.commands.includes('setLevel')) {
                           return (
@@ -1078,10 +1128,10 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                                   type="button"
                                   disabled={!connected}
                                   onClick={() => setPopupTarget({ deviceId: d.id, internalType: d.internalType, device: deviceObj, control: primaryControl })}
-                                  className="mt-1 w-full flex items-center justify-center gap-1.5 rounded-xl border border-white/10 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white/40 hover:text-white/60 hover:bg-white/5 transition-colors"
+                                  className={`mt-1 w-full flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 p-2 transition-all active:scale-[0.97] ${!connected ? 'opacity-50' : 'hover:bg-white/10 hover:border-white/20 cursor-pointer'}`}
+                                  title={`Open ${d.label} controls`}
                                 >
-                                  <DeviceIcon className="w-3 h-3" />
-                                  More Controls
+                                  <DeviceIcon className={`w-5 h-5 ${resolvedUiScheme?.metricIcon || 'text-neon-blue'}`} />
                                 </button>
                               ) : null}
                             </React.Fragment>
@@ -1125,10 +1175,10 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                                   type="button"
                                   disabled={!connected}
                                   onClick={() => setPopupTarget({ deviceId: d.id, internalType: d.internalType, device: deviceObj, control: primaryControl })}
-                                  className="mt-1 w-full flex items-center justify-center gap-1.5 rounded-xl border border-white/10 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white/40 hover:text-white/60 hover:bg-white/5 transition-colors"
+                                  className={`mt-1 w-full flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 p-2 transition-all active:scale-[0.97] ${!connected ? 'opacity-50' : 'hover:bg-white/10 hover:border-white/20 cursor-pointer'}`}
+                                  title={`Open ${d.label} controls`}
                                 >
-                                  <DeviceIcon className="w-3 h-3" />
-                                  More Controls
+                                  <DeviceIcon className={`w-5 h-5 ${resolvedUiScheme?.metricIcon || 'text-neon-blue'}`} />
                                 </button>
                               ) : null}
                             </React.Fragment>
@@ -1207,10 +1257,10 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                                 type="button"
                                 disabled={!connected}
                                 onClick={() => setPopupTarget({ deviceId: d.id, internalType: d.internalType, device: deviceObj, control: primaryControl })}
-                                className={`mt-2 w-full flex items-center justify-center gap-1.5 rounded-xl border border-white/10 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white/40 hover:text-white/60 hover:bg-white/5 transition-colors`}
+                                className={`mt-2 w-full flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 p-2.5 transition-all active:scale-[0.97] ${!connected ? 'opacity-50' : 'hover:bg-white/10 hover:border-white/20 cursor-pointer'}`}
+                                title={`Open ${d.label} controls`}
                               >
-                                <DeviceIcon className="w-3 h-3" />
-                                More Controls
+                                <DeviceIcon className={`w-6 h-6 ${resolvedUiScheme?.metricIcon || 'text-neon-blue'}`} />
                               </button>
                             ) : null}
 
