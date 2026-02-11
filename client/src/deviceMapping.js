@@ -242,10 +242,9 @@ export function inferControlIconIds({ capabilities, attributes, commandSchemas }
   if (cmdSet.has('setSaturation')) ids.push('saturation-slider');
   if (cmdSet.has('setColorTemperature') || capSet.has('ColorTemperature')) ids.push('color-temp-slider');
 
-  // NOTE: thermostat-mode, thermostat-setpoint, thermostat-fan-mode, fan-speed,
-  // and shade-position-slider are React-only manifests handled by their popup
-  // controllers — they have no inline renderer in InteractiveControlIcon, so
-  // they are intentionally NOT auto-assigned here.
+  // Thermostat setpoint knobs (reuse VolumeKnob component with different config)
+  if (cmdSet.has('setHeatingSetpoint') || capSet.has('ThermostatHeatingSetpoint')) ids.push('heat-setpoint-knob');
+  if (cmdSet.has('setCoolingSetpoint') || capSet.has('ThermostatCoolingSetpoint')) ids.push('cool-setpoint-knob');
 
   // Media
   if (cmdSet.has('play') || cmdSet.has('pause') || capSet.has('MediaTransport') || capSet.has('MusicPlayer')) ids.push('media-transport');

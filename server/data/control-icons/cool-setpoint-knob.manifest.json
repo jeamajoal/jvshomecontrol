@@ -1,0 +1,41 @@
+{
+  "id": "cool-setpoint-knob",
+  "name": "Cool Setpoint Knob",
+  "description": "A rotary dial for cooling setpoint control, cool-colored.",
+  "file": null,
+  "version": "1.0.0",
+  "reactComponent": "VolumeKnob",
+
+  "requiredCommands": ["setCoolingSetpoint"],
+  "optionalCommands": [],
+
+  "stateBindings": {
+    "coolingSetpoint": {
+      "type": "number",
+      "attribute": "coolingSetpoint",
+      "min": 60,
+      "max": 95
+    }
+  },
+
+  "regions": [
+    {
+      "id": "coolingSetpoint",
+      "action": "knob",
+      "command": "setCoolingSetpoint",
+      "stateAttribute": "coolingSetpoint",
+      "min": 60,
+      "max": 95,
+      "step": 1,
+      "color": "#22D3EE",
+      "label": "Cool",
+      "tooltip": "Rotate to adjust cooling setpoint"
+    }
+  ],
+
+  "layout": {
+    "aspectRatio": "80:100",
+    "preferredWidth": 80,
+    "preferredHeight": 100
+  }
+}

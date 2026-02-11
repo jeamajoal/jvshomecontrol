@@ -15,22 +15,19 @@ import {
   Flame,
   CircleAlert,
   User,
-  Fan,
-  Tv,
 } from 'lucide-react';
 
 import { getUiScheme } from '../uiScheme';
 import { useAppState } from '../appState';
 import { buildRoomsWithStatuses, getHomeVisibleDeviceIdSet, getDeviceInfoMetricAllowlist } from '../deviceSelectors';
 import { API_HOST } from '../apiHost';
-import { inferInternalDeviceType, mapDeviceToControls, INTERNAL_DEVICE_TYPES } from '../deviceMapping';
+import { inferInternalDeviceType } from '../deviceMapping';
 import { getDeviceTypeIconSrc } from '../deviceIcons';
 import { asNumber, asText, formatTemp, formatPercent, formatLux, formatSpeed, formatInches, toCompass, isSafeInfoMetricKey, isDisplayableInfoValue, formatInfoMetricLabel, formatInfoMetricValue, sortInfoMetricKeys } from '../utils';
 import DeviceInfoGrid from './DeviceInfoGrid';
 import InlineSvg from './InlineSvg';
 import InteractiveControlIcon from './InteractiveControlIcon';
 import HlsPlayer from './HlsPlayer';
-import DevicePopup, { DEVICE_TYPES_WITH_POPUP } from './DevicePopup';
 import {
   normalizeToleranceColorId,
   getToleranceTextClass as getToleranceTextClassForColorId,
@@ -585,7 +582,6 @@ const getDeviceCommandAllowlistForId = (deviceCommandAllowlist, deviceId) => {
 const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, sensorIndicatorColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, deviceCommandAllowlist, deviceHomeMetricAllowlist, deviceInfoMetricAllowlist, deviceTypeIcons, deviceControlIcons, switchControlStyle = 'auto', switchAnimationStyle = 'none', homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', tertiaryTextColorClassName = '', contentScale = 1, fillHeight = false }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
   const [svgHotspotsByDeviceId, setSvgHotspotsByDeviceId] = useState(() => ({}));
-  const [popupTarget, setPopupTarget] = useState(null);
 
   const scaleNumRaw = Number(contentScale);
   const scaleNum = Number.isFinite(scaleNumRaw) ? Math.max(0.5, Math.min(2, scaleNumRaw)) : 1;
@@ -961,7 +957,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
               aria-label={metrics.smokeAlarm ? 'Smoke detected' : 'Smoke detector'}
             >
               <Flame
-                className={`${statusIconSizeClass} jvs-icon ${metrics.smokeAlarm ? smokeActiveIconClass : inactiveIconClass}`.trim()}
+                className={`${statusIconSizeClass} jvs-icon ${metrics.smokeAlarm ? `${smokeActiveIconClass} animate-pulse` : inactiveIconClass}`.trim()}
                 style={statusIconSizeStyle}
               />
             </span>
@@ -975,7 +971,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
               aria-label={metrics.coAlarm ? 'Carbon monoxide detected' : 'CO detector'}
             >
               <CircleAlert
-                className={`${statusIconSizeClass} jvs-icon ${metrics.coAlarm ? coActiveIconClass : inactiveIconClass}`.trim()}
+                className={`${statusIconSizeClass} jvs-icon ${metrics.coAlarm ? `${coActiveIconClass} animate-pulse` : inactiveIconClass}`.trim()}
                 style={statusIconSizeStyle}
               />
             </span>
@@ -989,7 +985,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
               aria-label={metrics.waterAlarm ? 'Water leak detected' : 'Water sensor'}
             >
               <Droplets
-                className={`${statusIconSizeClass} jvs-icon ${metrics.waterAlarm ? waterActiveIconClass : inactiveIconClass}`.trim()}
+                className={`${statusIconSizeClass} jvs-icon ${metrics.waterAlarm ? `${waterActiveIconClass} animate-pulse` : inactiveIconClass}`.trim()}
                 style={statusIconSizeStyle}
               />
             </span>
@@ -1029,12 +1025,8 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
             {supportedActions.map((d) => {
               const iconSrc = getDeviceTypeIconSrc({ ui: { deviceTypeIcons } }, d.internalType);
               
-              // Does this device type have a dedicated popup controller?
-              const hasPopup = DEVICE_TYPES_WITH_POPUP.has(d.internalType);
-
               // Check for per-device control icon assignment (supports array or string)
-              // Settings choices are ALWAYS respected.  React-only manifests
-              // (thermostat-mode etc.) gracefully return null in InteractiveControlIcon.
+              // Settings choices are ALWAYS respected.
               const controlIconVal = (deviceControlIcons && typeof deviceControlIcons === 'object')
                 ? deviceControlIcons[d.id]
                 : null;
@@ -1042,7 +1034,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
                 ? (Array.isArray(controlIconVal) ? controlIconVal : [controlIconVal]).map((v) => String(v || '').trim()).filter(Boolean)
                 : [];
               
-              // Build device object for InteractiveControlIcon / popup
+              // Build device object for InteractiveControlIcon
               const deviceObj = {
                 id: d.id,
                 switch: d.attrs?.switch || 'off',
@@ -1050,20 +1042,6 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
                 ...d.attrs,
                 commands: d.commands,
               };
-
-              // Build structured control for popup
-              const controls = hasPopup
-                ? mapDeviceToControls({
-                    deviceId: d.id,
-                    label: d.label,
-                    hubitatType: d.hubitatType,
-                    capabilities: d.caps,
-                    attributes: d.attrs,
-                    state: d.state,
-                    commandSchemas: d.commands,
-                  })
-                : [];
-              const primaryControl = controls.length ? controls[0] : null;
 
               return (
                 <div
@@ -1313,26 +1291,6 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
                     })()}
                   </div>
 
-                  {/* Popup trigger for multi-control devices */}
-                  {hasPopup ? (
-                    (() => {
-                      const PopupIcon = d.internalType === INTERNAL_DEVICE_TYPES.FAN_CONTROLLER ? Fan
-                        : d.internalType === INTERNAL_DEVICE_TYPES.MEDIA_PLAYER ? Tv
-                        : Thermometer;
-                      return (
-                        <button
-                          type="button"
-                          disabled={!connected}
-                          onClick={() => setPopupTarget({ deviceId: d.id, internalType: d.internalType, device: deviceObj, control: primaryControl })}
-                          className={`mt-2 w-full flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 p-2 transition-all active:scale-[0.97] ${!connected ? 'opacity-50' : 'hover:bg-white/10 hover:border-white/20 cursor-pointer'}`}
-                          title={`Open ${d.label} controls`}
-                        >
-                          <PopupIcon className={`w-5 h-5 ${uiScheme?.metricIcon || 'text-neon-blue'}`} />
-                        </button>
-                      );
-                    })()
-                  ) : null}
-
                   <DeviceInfoGrid items={d.infoItems} scale={scaleNum} primaryTextColorClassName={primaryTextColorClassName} secondaryTextColorClassName={secondaryTextColorClassName} tertiaryTextColorClassName={tertiaryTextColorClassName} />
                 </div>
               );
@@ -1381,16 +1339,6 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
         <div className="mt-4 text-sm text-white/40">No supported devices in this room.</div>
       ) : null}
 
-      {/* ── Device popup (thermostat, lock, color light, etc.) ── */}
-      {popupTarget && (
-        <DevicePopup
-          internalType={popupTarget.internalType}
-          device={popupTarget.device}
-          control={popupTarget.control}
-          onCommand={(deviceId, command, args) => runAction(deviceId, command, args)}
-          onClose={() => setPopupTarget(null)}
-        />
-      )}
     </section>
   );
 };

@@ -412,7 +412,8 @@ export default function InteractiveControlIcon({
       min: region.min ?? 0,
       max: region.max ?? 100,
       step: region.step ?? 1,
-      color: '#22D3EE', // cyan for volume
+      color: region.color || '#22D3EE',
+      label: region.label || manifest.name || '',
     };
   }, [manifest, isKnobIcon]);
 
@@ -518,6 +519,7 @@ export default function InteractiveControlIcon({
         min={knobConfig.min}
         max={knobConfig.max}
         step={knobConfig.step}
+        label={knobConfig.label}
         color={knobConfig.color}
         disabled={disabled}
         onChangeEnd={handleKnobChangeEnd}

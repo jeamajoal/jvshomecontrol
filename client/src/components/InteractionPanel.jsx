@@ -1,15 +1,13 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Loader2, Power, SlidersHorizontal,
-  Thermometer, Fan, Lock, DoorOpen, Blinds, Droplets,
-  Palette, SunDim, Siren, Tv,
 } from 'lucide-react';
 
 import { getUiScheme } from '../uiScheme';
 import { API_HOST } from '../apiHost';
 import { useAppState } from '../appState';
 import { buildRoomsWithStatuses, getCtrlVisibleDeviceIdSet, getDeviceCommandAllowlist, getDeviceInfoMetricAllowlist } from '../deviceSelectors';
-import { INTERNAL_DEVICE_TYPES, filterCommandSchemasByAllowlist, inferInternalDeviceType, inferControlIconIds, mapDeviceToControls, normalizeCommandSchemas } from '../deviceMapping';
+import { filterCommandSchemasByAllowlist, inferInternalDeviceType, inferControlIconIds, mapDeviceToControls, normalizeCommandSchemas } from '../deviceMapping';
 import { getDeviceTypeIconSrc } from '../deviceIcons';
 import { asNumber, asText, isSafeInfoMetricKey, isDisplayableInfoValue, formatInfoMetricLabel, formatInfoMetricValue, sortInfoMetricKeys } from '../utils';
 import { useFitScale } from '../hooks/useLayout';
@@ -17,7 +15,6 @@ import DeviceInfoGrid from './DeviceInfoGrid';
 import InlineSvg from './InlineSvg';
 import InteractiveControlIcon from './InteractiveControlIcon';
 import HlsPlayer from './HlsPlayer';
-import DevicePopup, { DEVICE_TYPES_WITH_POPUP } from './DevicePopup';
 
 const CONTROLS_MASONRY_MIN_WIDTH_PX_DEFAULT = 360;
 const CONTROLS_MASONRY_ROW_HEIGHT_PX_DEFAULT = 10;
@@ -41,22 +38,6 @@ async function sendDeviceCommand(deviceId, command, args = []) {
 }
 
 /** Returns a Lucide icon component appropriate for the internal device type. */
-function getDeviceTypeIcon(internalType) {
-  switch (internalType) {
-    case INTERNAL_DEVICE_TYPES.THERMOSTAT: return Thermometer;
-    case INTERNAL_DEVICE_TYPES.FAN_CONTROLLER: return Fan;
-    case INTERNAL_DEVICE_TYPES.LOCK: return Lock;
-    case INTERNAL_DEVICE_TYPES.GARAGE: return DoorOpen;
-    case INTERNAL_DEVICE_TYPES.SHADE: return Blinds;
-    case INTERNAL_DEVICE_TYPES.VALVE: return Droplets;
-    case INTERNAL_DEVICE_TYPES.SIREN: return Siren;
-    case INTERNAL_DEVICE_TYPES.COLOR_LIGHT: return Palette;
-    case INTERNAL_DEVICE_TYPES.CT_LIGHT: return SunDim;
-    case INTERNAL_DEVICE_TYPES.MEDIA_PLAYER: return Tv;
-    default: return Power;
-  }
-}
-
 const SwitchTile = ({
   label,
   iconSrc,
@@ -713,9 +694,6 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
 
   const [busy, setBusy] = useState(() => new Set());
 
-  // Popup state: { deviceId, internalType, device, control } or null
-  const [popupTarget, setPopupTarget] = useState(null);
-
   const run = async (deviceId, command, args = []) => {
     const key = `${deviceId}:${command}`;
     setBusy((prev) => new Set(prev).add(key));
@@ -1004,28 +982,17 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                         const hasLevel = d.commands.includes('setLevel') || asNumber(level) !== null;
 
                         const iconSrc = getDeviceTypeIconSrc(config, d.internalType);
-                        const DeviceIcon = getDeviceTypeIcon(d.internalType);
 
                         const switchControl = Array.isArray(d.controls)
                           ? d.controls.find((c) => c && c.kind === 'switch')
                           : null;
-
-                        // Get the first structured control (thermostat, lock, etc.)
-                        const primaryControl = Array.isArray(d.controls) && d.controls.length ? d.controls[0] : null;
 
                         const isOn = switchControl ? switchControl.isOn : false;
                         const canOn = switchControl ? switchControl.canOn : d.commands.includes('on');
                         const canOff = switchControl ? switchControl.canOff : d.commands.includes('off');
                         const canToggle = switchControl ? switchControl.canToggle : d.commands.includes('toggle');
 
-                        // Does this device type have a dedicated popup?
-                        const hasPopup = DEVICE_TYPES_WITH_POPUP.has(d.internalType);
-
                         // Per-device manual control icons, or auto-inferred fallback.
-                        // Manual Settings choices are always respected.  For popup-
-                        // capable devices the auto-assignment still runs — React-only
-                        // manifests (thermostat-mode etc.) gracefully return null in
-                        // InteractiveControlIcon so they won't produce "?" marks.
                         const manualIconIds = getDeviceControlIconIds(d.id);
                         const controlIconIds = manualIconIds.length > 0
                           ? manualIconIds
@@ -1035,7 +1002,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                                 commandSchemas: d.commandSchemas,
                               });
 
-                        // Build device object for InteractiveControlIcon / popup
+                        // Build device object for InteractiveControlIcon
                         const deviceObj = {
                           id: d.id,
                           label: d.label,
@@ -1045,57 +1012,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                           commands: d.commands,
                         };
 
-                        // ── Popup icon tile for multi-control devices (no switch) ──
-                        // Thermostat, media player — show a clean tile with a clickable
-                        // device-type icon that opens the popup with all controls.
-                        if (hasPopup && !switchControl) {
-                          const summaryParts = [];
-                          if (primaryControl?.kind === 'thermostat') {
-                            if (primaryControl.temperature !== null) summaryParts.push(`${Math.round(primaryControl.temperature)}°`);
-                            summaryParts.push(primaryControl.thermostatMode || 'off');
-                            if (primaryControl.thermostatOperatingState && primaryControl.thermostatOperatingState !== 'idle') {
-                              summaryParts.push(primaryControl.thermostatOperatingState);
-                            }
-                          } else if (primaryControl?.kind === 'media') {
-                            if (primaryControl.isPlaying) summaryParts.push('Playing');
-                            else if (primaryControl.isPaused) summaryParts.push('Paused');
-                            else summaryParts.push('Stopped');
-                            if (primaryControl.volume !== null) summaryParts.push(`Vol ${primaryControl.volume}%`);
-                          }
-
-                          return (
-                            <div key={d.id} className="w-full glass-panel border-0 shadow-none p-2 md:p-3">
-                              <div className="flex items-center justify-between gap-4">
-                                <div className="min-w-0 text-left">
-                                  <div
-                                    className="uppercase tracking-[0.2em] jvs-secondary-text-strong text-white font-semibold"
-                                    style={{ fontSize: 'calc(11px * var(--jvs-secondary-text-size-scale, 1))' }}
-                                  >
-                                    <span className="truncate">{d.label}</span>
-                                  </div>
-                                  <div
-                                    className="mt-1 jvs-secondary-text text-white/60 capitalize"
-                                    style={{ fontSize: 'calc(12px * var(--jvs-secondary-text-size-scale, 1))' }}
-                                  >
-                                    {summaryParts.join(' · ') || d.internalType}
-                                  </div>
-                                </div>
-                                <button
-                                  type="button"
-                                  disabled={!connected}
-                                  onClick={() => setPopupTarget({ deviceId: d.id, internalType: d.internalType, device: deviceObj, control: primaryControl })}
-                                  className={`shrink-0 w-14 h-14 md:w-16 md:h-16 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center transition-all active:scale-90 ${!connected ? 'opacity-50' : 'hover:bg-white/10 hover:border-white/20 cursor-pointer'}`}
-                                  title={`Open ${d.label} controls`}
-                                >
-                                  <DeviceIcon className={`w-7 h-7 md:w-8 md:h-8 ${resolvedUiScheme?.metricIcon || 'text-neon-blue'}`} />
-                                </button>
-                              </div>
-                              <DeviceInfoGrid items={d.infoItems} compact />
-                            </div>
-                          );
-                        }
-
-                        // ── Switch + dimmer tiles (with optional popup for color/CT/fan) ──
+                        // ── Switch + dimmer tiles ──
                         if (switchControl && hasLevel && d.commands.includes('setLevel')) {
                           return (
                             <React.Fragment key={d.id}>
@@ -1123,17 +1040,6 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                                 onCommand={(deviceId, command, args) => run(deviceId, command, args)}
                                 uiScheme={resolvedUiScheme}
                               />
-                              {hasPopup ? (
-                                <button
-                                  type="button"
-                                  disabled={!connected}
-                                  onClick={() => setPopupTarget({ deviceId: d.id, internalType: d.internalType, device: deviceObj, control: primaryControl })}
-                                  className={`mt-1 w-full flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 p-2 transition-all active:scale-[0.97] ${!connected ? 'opacity-50' : 'hover:bg-white/10 hover:border-white/20 cursor-pointer'}`}
-                                  title={`Open ${d.label} controls`}
-                                >
-                                  <DeviceIcon className={`w-5 h-5 ${resolvedUiScheme?.metricIcon || 'text-neon-blue'}`} />
-                                </button>
-                              ) : null}
                             </React.Fragment>
                           );
                         }
@@ -1170,17 +1076,6 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                                 animationStyle={switchAnimationStyle}
                                 uiScheme={resolvedUiScheme}
                               />
-                              {hasPopup ? (
-                                <button
-                                  type="button"
-                                  disabled={!connected}
-                                  onClick={() => setPopupTarget({ deviceId: d.id, internalType: d.internalType, device: deviceObj, control: primaryControl })}
-                                  className={`mt-1 w-full flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 p-2 transition-all active:scale-[0.97] ${!connected ? 'opacity-50' : 'hover:bg-white/10 hover:border-white/20 cursor-pointer'}`}
-                                  title={`Open ${d.label} controls`}
-                                >
-                                  <DeviceIcon className={`w-5 h-5 ${resolvedUiScheme?.metricIcon || 'text-neon-blue'}`} />
-                                </button>
-                              ) : null}
                             </React.Fragment>
                           );
                         }
@@ -1250,19 +1145,6 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                                 ))}
                               </div>
                             )}
-
-                            {/* Popup trigger for multi-control devices */}
-                            {hasPopup ? (
-                              <button
-                                type="button"
-                                disabled={!connected}
-                                onClick={() => setPopupTarget({ deviceId: d.id, internalType: d.internalType, device: deviceObj, control: primaryControl })}
-                                className={`mt-2 w-full flex items-center justify-center rounded-2xl border border-white/10 bg-black/20 p-2.5 transition-all active:scale-[0.97] ${!connected ? 'opacity-50' : 'hover:bg-white/10 hover:border-white/20 cursor-pointer'}`}
-                                title={`Open ${d.label} controls`}
-                              >
-                                <DeviceIcon className={`w-6 h-6 ${resolvedUiScheme?.metricIcon || 'text-neon-blue'}`} />
-                              </button>
-                            ) : null}
 
                             <div className="mt-2 flex flex-col gap-2">
                               {schemaList.map((schema) => {
@@ -1382,17 +1264,6 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
             )}
           </div>
         </div>
-
-        {/* ── Device popup (thermostat, lock, color light, etc.) ── */}
-        {popupTarget && (
-          <DevicePopup
-            internalType={popupTarget.internalType}
-            device={popupTarget.device}
-            control={popupTarget.control}
-            onCommand={(deviceId, command, args) => run(deviceId, command, args)}
-            onClose={() => setPopupTarget(null)}
-          />
-        )}
       </div>
     </div>
   );
