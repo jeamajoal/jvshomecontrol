@@ -1015,12 +1015,6 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
 
       {supportedActions.length ? (
         <div className="mt-4">
-          <div
-            className={`text-[11px] md:text-xs uppercase tracking-[0.2em] jvs-secondary-text font-semibold mb-3 ${secondaryTextColorClassName}`.trim()}
-            style={{ fontSize: `calc(11px * var(--jvs-secondary-text-size-scale, 1))` }}
-          >
-            Controls
-          </div>
           <div className="flex flex-wrap justify-center gap-3">
             {supportedActions.map((d) => {
               const iconSrc = getDeviceTypeIconSrc({ ui: { deviceTypeIcons } }, d.internalType);
@@ -1301,12 +1295,6 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
 
       {sensorDevices.length ? (
         <div className="mt-4">
-          <div
-            className={`text-[11px] md:text-xs uppercase tracking-[0.2em] jvs-secondary-text font-semibold mb-3 ${secondaryTextColorClassName}`.trim()}
-            style={{ fontSize: `calc(11px * var(--jvs-secondary-text-size-scale, 1))` }}
-          >
-            Sensors
-          </div>
           <div className="flex flex-wrap justify-center gap-3">
             {sensorDevices.map((d) => {
               const iconSrc = getDeviceTypeIconSrc({ ui: { deviceTypeIcons } }, d.internalType);
