@@ -1644,6 +1644,58 @@ function normalizePersistedConfig(raw) {
             return outMap;
         })();
 
+        // Per-panel device control icon overrides (same format as global deviceControlIcons).
+        const pDeviceControlIcons = (() => {
+            if (!Object.prototype.hasOwnProperty.call(p, 'deviceControlIcons')) return null;
+            const rawMap = (p.deviceControlIcons && typeof p.deviceControlIcons === 'object')
+                ? p.deviceControlIcons
+                : {};
+            const outMap = {};
+            const isValidIconId = (s) => {
+                if (typeof s !== 'string') return false;
+                const trimmed = s.trim();
+                if (!trimmed || trimmed.length > 64) return false;
+                return /^[a-z0-9][a-z0-9-]*$/i.test(trimmed);
+            };
+            for (const [deviceIdRaw, iconValue] of Object.entries(rawMap)) {
+                const id = String(deviceIdRaw || '').trim();
+                if (!id) continue;
+                if (Array.isArray(iconValue)) {
+                    const validIcons = iconValue
+                        .map((v) => String(v || '').trim())
+                        .filter(isValidIconId);
+                    if (validIcons.length > 0) outMap[id] = validIcons;
+                    continue;
+                }
+                const icon = String(iconValue || '').trim();
+                if (icon && isValidIconId(icon)) outMap[id] = icon;
+            }
+            return Object.keys(outMap).length ? outMap : {};
+        })();
+
+        // Per-panel device control styles (switch controlStyle / animationStyle).
+        const pDeviceControlStyles = (() => {
+            if (!Object.prototype.hasOwnProperty.call(p, 'deviceControlStyles')) return null;
+            const rawStyles = (p.deviceControlStyles && typeof p.deviceControlStyles === 'object')
+                ? p.deviceControlStyles
+                : {};
+            const rawSwitch = (rawStyles.switch && typeof rawStyles.switch === 'object') ? rawStyles.switch : {};
+            const rawControlStyle = String(rawSwitch.controlStyle ?? '').trim().toLowerCase();
+            const rawAnimationStyle = String(rawSwitch.animationStyle ?? '').trim().toLowerCase();
+            const controlStyle = (rawControlStyle === 'buttons' || rawControlStyle === 'switch' || rawControlStyle === 'auto')
+                ? rawControlStyle : null;
+            const animationStyle = (rawAnimationStyle === 'pulse' || rawAnimationStyle === 'none')
+                ? rawAnimationStyle : null;
+            const out = {};
+            if (controlStyle || animationStyle) {
+                out.switch = {
+                    ...(controlStyle ? { controlStyle } : {}),
+                    ...(animationStyle ? { animationStyle } : {}),
+                };
+            }
+            return Object.keys(out).length ? out : {};
+        })();
+
         const pHomeBgRaw = (p.homeBackground && typeof p.homeBackground === 'object') ? p.homeBackground : null;
         // Preset profiles are trusted code-level constants (e.g. Unsplash URLs);
         // user-created profiles must go through sanitizeBackgroundUrl.
@@ -1709,6 +1761,8 @@ function normalizePersistedConfig(raw) {
             ...(pDeviceCommandAllowlist !== null ? { deviceCommandAllowlist: pDeviceCommandAllowlist } : {}),
             ...(pDeviceHomeMetricAllowlist !== null ? { deviceHomeMetricAllowlist: pDeviceHomeMetricAllowlist } : {}),
             ...(pDeviceInfoMetricAllowlist !== null ? { deviceInfoMetricAllowlist: pDeviceInfoMetricAllowlist } : {}),
+            ...(pDeviceControlIcons !== null ? { deviceControlIcons: pDeviceControlIcons } : {}),
+            ...(pDeviceControlStyles !== null ? { deviceControlStyles: pDeviceControlStyles } : {}),
             ...(PRESET_PANEL_PROFILE_NAMES.has(name) ? { _preset: true } : {}),
         };
 
@@ -1864,7 +1918,7 @@ function normalizePersistedConfig(raw) {
 }
 
 // Update device control style preferences by internal device type.
-// Expected payload: { deviceControlStyles: { switch?: { controlStyle?: 'auto'|'buttons'|'switch', animationStyle?: 'none'|'pulse' } } }
+// Expected payload: { deviceControlStyles: { switch?: { controlStyle?: 'auto'|'buttons'|'switch', animationStyle?: 'none'|'pulse' } }, panelName?: string }
 app.put('/api/ui/device-control-styles', (req, res) => {
     const body = (req.body && typeof req.body === 'object') ? req.body : {};
     const incoming = (body.deviceControlStyles && typeof body.deviceControlStyles === 'object') ? body.deviceControlStyles : null;
@@ -1872,27 +1926,60 @@ app.put('/api/ui/device-control-styles', (req, res) => {
         return res.status(400).json({ error: 'Missing deviceControlStyles' });
     }
 
-    const prevUi = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
-    const prevStyles = (prevUi.deviceControlStyles && typeof prevUi.deviceControlStyles === 'object') ? prevUi.deviceControlStyles : {};
-    const prevSwitch = (prevStyles.switch && typeof prevStyles.switch === 'object') ? prevStyles.switch : {};
+    const panelName = normalizePanelName(body.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+    }
 
     const incomingSwitch = (incoming.switch && typeof incoming.switch === 'object') ? incoming.switch : {};
-    const nextStyles = {
-        ...prevStyles,
-        ...incoming,
-        switch: {
-            ...prevSwitch,
-            ...incomingSwitch,
-        },
-    };
 
-    persistedConfig = normalizePersistedConfig({
-        ...(persistedConfig || {}),
-        ui: {
-            ...prevUi,
-            deviceControlStyles: nextStyles,
-        },
-    });
+    if (panelName) {
+        // Per-panel device control styles
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) return res.status(400).json({ error: 'Invalid panelName' });
+
+        const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+        const profiles = (ui.panelProfiles && typeof ui.panelProfiles === 'object') ? ui.panelProfiles : {};
+        const prevProfile = (profiles[ensured] && typeof profiles[ensured] === 'object') ? profiles[ensured] : {};
+        const prevStyles = (prevProfile.deviceControlStyles && typeof prevProfile.deviceControlStyles === 'object') ? prevProfile.deviceControlStyles : {};
+        const prevSwitch = (prevStyles.switch && typeof prevStyles.switch === 'object') ? prevStyles.switch : {};
+
+        const nextStyles = {
+            ...prevStyles,
+            ...incoming,
+            switch: { ...prevSwitch, ...incomingSwitch },
+        };
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...ui,
+                panelProfiles: {
+                    ...profiles,
+                    [ensured]: { ...prevProfile, deviceControlStyles: nextStyles },
+                },
+            },
+        });
+    } else {
+        // Global device control styles
+        const prevUi = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+        const prevStyles = (prevUi.deviceControlStyles && typeof prevUi.deviceControlStyles === 'object') ? prevUi.deviceControlStyles : {};
+        const prevSwitch = (prevStyles.switch && typeof prevStyles.switch === 'object') ? prevStyles.switch : {};
+
+        const nextStyles = {
+            ...prevStyles,
+            ...incoming,
+            switch: { ...prevSwitch, ...incomingSwitch },
+        };
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...prevUi,
+                deviceControlStyles: nextStyles,
+            },
+        });
+    }
 
     persistConfigToDiskIfChanged('api-ui-device-control-styles');
 
@@ -1956,7 +2043,7 @@ app.put('/api/ui/device-type-icons', (req, res) => {
 });
 
 // Update per-device control icon assignments.
-// Expected payload: { deviceControlIcons: { [deviceId: string]: string|string[]|null } }
+// Expected payload: { deviceControlIcons: { [deviceId: string]: string|string[]|null }, panelName?: string }
 app.put('/api/ui/device-control-icons', (req, res) => {
     const body = (req.body && typeof req.body === 'object') ? req.body : {};
     const incoming = (body.deviceControlIcons && typeof body.deviceControlIcons === 'object') ? body.deviceControlIcons : null;
@@ -1964,8 +2051,21 @@ app.put('/api/ui/device-control-icons', (req, res) => {
         return res.status(400).json({ error: 'Missing deviceControlIcons' });
     }
 
+    const panelName = normalizePanelName(body.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+    }
+
+    // Resolve the previous map (per-panel or global)
     const prevUi = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
-    const prevMap = (prevUi.deviceControlIcons && typeof prevUi.deviceControlIcons === 'object') ? prevUi.deviceControlIcons : {};
+    const prevMap = (() => {
+        if (panelName) {
+            const profiles = (prevUi.panelProfiles && typeof prevUi.panelProfiles === 'object') ? prevUi.panelProfiles : {};
+            const p = (profiles[panelName] && typeof profiles[panelName] === 'object') ? profiles[panelName] : {};
+            return (p.deviceControlIcons && typeof p.deviceControlIcons === 'object') ? p.deviceControlIcons : {};
+        }
+        return (prevUi.deviceControlIcons && typeof prevUi.deviceControlIcons === 'object') ? prevUi.deviceControlIcons : {};
+    })();
 
     const nextMap = { ...prevMap };
     
@@ -2009,13 +2109,35 @@ app.put('/api/ui/device-control-icons', (req, res) => {
         }
     }
 
-    persistedConfig = normalizePersistedConfig({
-        ...(persistedConfig || {}),
-        ui: {
-            ...prevUi,
-            deviceControlIcons: nextMap,
-        },
-    });
+    if (panelName) {
+        // Per-panel device control icons
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) return res.status(400).json({ error: 'Invalid panelName' });
+
+        const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+        const profiles = (ui.panelProfiles && typeof ui.panelProfiles === 'object') ? ui.panelProfiles : {};
+        const prevProfile = (profiles[ensured] && typeof profiles[ensured] === 'object') ? profiles[ensured] : {};
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...ui,
+                panelProfiles: {
+                    ...profiles,
+                    [ensured]: { ...prevProfile, deviceControlIcons: nextMap },
+                },
+            },
+        });
+    } else {
+        // Global device control icons
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...prevUi,
+                deviceControlIcons: nextMap,
+            },
+        });
+    }
 
     persistConfigToDiskIfChanged('api-ui-device-control-icons');
 
@@ -5176,6 +5298,13 @@ app.post('/api/ui/panels', (req, res) => {
         mainAllowedDeviceIds: Array.isArray(effectiveUi.mainAllowedDeviceIds) ? effectiveUi.mainAllowedDeviceIds : [],
         deviceLabelOverrides: (effectiveUi.deviceLabelOverrides && typeof effectiveUi.deviceLabelOverrides === 'object') ? effectiveUi.deviceLabelOverrides : {},
         deviceCommandAllowlist: (effectiveUi.deviceCommandAllowlist && typeof effectiveUi.deviceCommandAllowlist === 'object') ? effectiveUi.deviceCommandAllowlist : {},
+        ...(effectiveUi.deviceHomeMetricAllowlist && typeof effectiveUi.deviceHomeMetricAllowlist === 'object' ? { deviceHomeMetricAllowlist: effectiveUi.deviceHomeMetricAllowlist } : {}),
+        ...(effectiveUi.deviceInfoMetricAllowlist && typeof effectiveUi.deviceInfoMetricAllowlist === 'object' ? { deviceInfoMetricAllowlist: effectiveUi.deviceInfoMetricAllowlist } : {}),
+        // Per-panel device options (control icons + styles)
+        ...(effectiveUi.deviceControlIcons && typeof effectiveUi.deviceControlIcons === 'object' && Object.keys(effectiveUi.deviceControlIcons).length
+            ? { deviceControlIcons: effectiveUi.deviceControlIcons } : {}),
+        ...(effectiveUi.deviceControlStyles && typeof effectiveUi.deviceControlStyles === 'object' && Object.keys(effectiveUi.deviceControlStyles).length
+            ? { deviceControlStyles: effectiveUi.deviceControlStyles } : {}),
         accentColorId: effectiveUi.accentColorId,
         homeBackground: effectiveUi.homeBackground,
         cardOpacityScalePct: effectiveUi.cardOpacityScalePct,
@@ -5190,6 +5319,11 @@ app.post('/api/ui/panels', (req, res) => {
         tertiaryTextSizePct: effectiveUi.tertiaryTextSizePct,
         tertiaryTextColorId: effectiveUi.tertiaryTextColorId,
         cardScalePct: effectiveUi.cardScalePct,
+        // Top row
+        ...(effectiveUi.homeTopRowEnabled !== undefined ? { homeTopRowEnabled: effectiveUi.homeTopRowEnabled } : {}),
+        ...(effectiveUi.homeTopRowScalePct !== undefined ? { homeTopRowScalePct: effectiveUi.homeTopRowScalePct } : {}),
+        ...(Array.isArray(effectiveUi.homeTopRowCards) ? { homeTopRowCards: effectiveUi.homeTopRowCards } : {}),
+        // Room layout
         homeRoomColumnsXl: effectiveUi.homeRoomColumnsXl,
         homeRoomLayoutMode: String(effectiveUi.homeRoomLayoutMode ?? 'grid').trim() || 'grid',
         homeRoomMasonryRowHeightPx: clampInt(effectiveUi.homeRoomMasonryRowHeightPx, 4, 40, 10),
@@ -5197,10 +5331,24 @@ app.post('/api/ui/panels', (req, res) => {
         homeRoomTiles: (effectiveUi.homeRoomTiles && typeof effectiveUi.homeRoomTiles === 'object') ? effectiveUi.homeRoomTiles : {},
         homeRoomMetricColumns: effectiveUi.homeRoomMetricColumns,
         homeRoomMetricKeys: Array.isArray(effectiveUi.homeRoomMetricKeys) ? effectiveUi.homeRoomMetricKeys : ['temperature', 'humidity', 'illuminance'],
+        // Camera settings
+        ...(effectiveUi.homeCameraPreviewsEnabled !== undefined ? { homeCameraPreviewsEnabled: effectiveUi.homeCameraPreviewsEnabled } : {}),
+        ...(effectiveUi.controlsCameraPreviewsEnabled !== undefined ? { controlsCameraPreviewsEnabled: effectiveUi.controlsCameraPreviewsEnabled } : {}),
+        ...(effectiveUi.cameraPreviewRefreshSeconds !== undefined ? { cameraPreviewRefreshSeconds: effectiveUi.cameraPreviewRefreshSeconds } : {}),
+        ...(Array.isArray(effectiveUi.visibleCameraIds) ? { visibleCameraIds: effectiveUi.visibleCameraIds } : {}),
+        ...(Array.isArray(effectiveUi.topCameraIds) ? { topCameraIds: effectiveUi.topCameraIds } : {}),
+        ...(effectiveUi.topCameraSize ? { topCameraSize: effectiveUi.topCameraSize } : {}),
+        ...(effectiveUi.roomCameraIds && typeof effectiveUi.roomCameraIds === 'object' ? { roomCameraIds: effectiveUi.roomCameraIds } : {}),
+        // Glow & icon styling
         glowColorId: effectiveUi.glowColorId,
+        ...(effectiveUi.glowOpacityPct !== undefined ? { glowOpacityPct: effectiveUi.glowOpacityPct } : {}),
+        ...(effectiveUi.glowSizePct !== undefined ? { glowSizePct: effectiveUi.glowSizePct } : {}),
         iconColorId: effectiveUi.iconColorId,
         iconOpacityPct: effectiveUi.iconOpacityPct,
         iconSizePct: effectiveUi.iconSizePct,
+        // Visibility
+        ...(Array.isArray(effectiveUi.homeVisibleDeviceIds) ? { homeVisibleDeviceIds: effectiveUi.homeVisibleDeviceIds } : {}),
+        ...(Array.isArray(effectiveUi.ctrlVisibleDeviceIds) ? { ctrlVisibleDeviceIds: effectiveUi.ctrlVisibleDeviceIds } : {}),
     };
 
     persistedConfig = normalizePersistedConfig({

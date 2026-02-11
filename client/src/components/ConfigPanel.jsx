@@ -87,11 +87,11 @@ async function saveDeviceOverrides(payload) {
   return res.json().catch(() => ({}));
 }
 
-async function saveDeviceControlStyles(deviceControlStyles) {
+async function saveDeviceControlStyles(deviceControlStyles, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/device-control-styles`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ deviceControlStyles: deviceControlStyles || {} }),
+    body: JSON.stringify({ deviceControlStyles: deviceControlStyles || {}, ...(panelName ? { panelName } : {}) }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -113,11 +113,11 @@ async function saveDeviceTypeIcons(deviceTypeIcons) {
   return res.json().catch(() => ({}));
 }
 
-async function saveDeviceControlIcons(deviceControlIcons) {
+async function saveDeviceControlIcons(deviceControlIcons, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/device-control-icons`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ deviceControlIcons: deviceControlIcons || {} }),
+    body: JSON.stringify({ deviceControlIcons: deviceControlIcons || {}, ...(panelName ? { panelName } : {}) }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -947,9 +947,8 @@ const ConfigPanel = ({
 
   const [activeTab, setActiveTab] = useState('display');
 
-  // Sync local icon assignments from server config on initial load
+  // Sync local icon assignments from server config on initial load and panel switch
   useEffect(() => {
-    if (localIconAssignmentsInited) return;
     const serverAssignments = (config?.ui?.deviceControlIcons && typeof config.ui.deviceControlIcons === 'object')
       ? config.ui.deviceControlIcons
       : {};
@@ -957,7 +956,7 @@ const ConfigPanel = ({
       setLocalIconAssignments(serverAssignments);
       setLocalIconAssignmentsInited(true);
     }
-  }, [config?.ui?.deviceControlIcons, config?.ui, localIconAssignmentsInited]);
+  }, [config?.ui?.deviceControlIcons, selectedPanelName]);
 
   useEffect(() => {
     // Panel profile selection is only relevant on non-Global tabs.
@@ -1065,9 +1064,9 @@ const ConfigPanel = ({
   const iconOpacitySave = useAsyncSave((iconOpacityPct) => saveIconOpacityPct(iconOpacityPct, selectedPanelName || null));
   const iconSizeSave = useAsyncSave((iconSizePct) => saveIconSizePct(iconSizePct, selectedPanelName || null));
   const cardScaleSave = useAsyncSave((cardScalePct) => saveCardScalePct(cardScalePct, selectedPanelName || null));
-  const deviceControlStylesSave = useAsyncSave((deviceControlStyles) => saveDeviceControlStyles(deviceControlStyles));
+  const deviceControlStylesSave = useAsyncSave((deviceControlStyles) => saveDeviceControlStyles(deviceControlStyles, selectedPanelName || null));
   const deviceTypeIconsSave = useAsyncSave((deviceTypeIcons) => saveDeviceTypeIcons(deviceTypeIcons));
-  const deviceControlIconsSave = useAsyncSave((deviceControlIcons) => saveDeviceControlIcons(deviceControlIcons));
+  const deviceControlIconsSave = useAsyncSave((deviceControlIcons) => saveDeviceControlIcons(deviceControlIcons, selectedPanelName || null));
   const homeTopRowSave = useAsyncSave((payload) => saveHomeTopRow(payload, selectedPanelName || null));
   const homeRoomColsSave = useAsyncSave((homeRoomColumnsXl) => saveHomeRoomColumnsXl(homeRoomColumnsXl, selectedPanelName || null));
   const homeRoomLayoutSave = useAsyncSave((payload) => saveHomeRoomLayout(payload, selectedPanelName || null));
