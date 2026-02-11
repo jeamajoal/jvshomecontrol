@@ -348,6 +348,9 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
   let waterCount = 0; // Total water/leak sensors in room
   let waterAlarm = false;
   let waterAlarmCount = 0;
+  let sirenCount = 0; // Total siren/alarm devices in room
+  let sirenActive = false;
+  let sirenActiveCount = 0;
   let presenceCount = 0; // Total presence sensors in room
   let presenceHome = false;
   let presenceHomeCount = 0;
@@ -454,6 +457,16 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
       }
     }
 
+    // Siren / Alarm device: alarm attribute = 'off' | 'siren' | 'strobe' | 'both'
+    if (typeof attrs.alarm === 'string') {
+      sirenCount += 1;
+      const v = String(attrs.alarm).toLowerCase();
+      if (v === 'siren' || v === 'strobe' || v === 'both') {
+        sirenActive = true;
+        sirenActiveCount += 1;
+      }
+    }
+
     // Presence sensor: presence attribute = 'present' | 'not present'
     if (typeof attrs.presence === 'string') {
       presenceCount += 1; // Track that this room HAS a presence sensor
@@ -499,6 +512,9 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
     waterCount,
     waterAlarm,
     waterAlarmCount,
+    sirenCount,
+    sirenActive,
+    sirenActiveCount,
     presenceCount,
     presenceHome,
     presenceHomeCount,
@@ -2083,7 +2099,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
   ]);
 
   // Global emergency state: true when ANY room has smoke/CO/water alarm
-  const hasEmergency = overall.smokeAlarm || overall.coAlarm || overall.waterAlarm;
+  const hasEmergency = overall.smokeAlarm || overall.coAlarm || overall.waterAlarm || overall.sirenActive;
 
   return (
     <div ref={viewportRef} className="relative w-full h-full overflow-auto p-2 md:p-3">
