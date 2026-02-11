@@ -724,8 +724,8 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
 
   const hasEnv = Array.isArray(homeRoomMetricKeys) && homeRoomMetricKeys.length > 0;
 
-  // Any active sensor triggers the header glow
-  const hasActiveAlert = metrics.motionActive || metrics.doorOpen || metrics.smokeAlarm || metrics.coAlarm || metrics.waterAlarm || metrics.presenceHome;
+  // Only motion + contact sensors trigger the header glow
+  const hasActiveAlert = metrics.motionActive || metrics.doorOpen;
   const headerGlow = hasActiveAlert
     ? `${uiScheme?.selectedCard || 'border-primary/40'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
     : 'border-white/10';
@@ -769,27 +769,27 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
     const colorId = sensorIndicatorColors?.smoke;
     if (colorId && colorId !== 'none') {
       const textClass = getToleranceTextClassForColorId(colorId);
-      if (textClass) return `${textClass} ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+      if (textClass) return textClass;
     }
-    return `text-neon-red ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+    return 'text-neon-red';
   })();
 
   const coActiveIconClass = (() => {
     const colorId = sensorIndicatorColors?.co;
     if (colorId && colorId !== 'none') {
       const textClass = getToleranceTextClassForColorId(colorId);
-      if (textClass) return `${textClass} ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+      if (textClass) return textClass;
     }
-    return `text-neon-red ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+    return 'text-neon-red';
   })();
 
   const waterActiveIconClass = (() => {
     const colorId = sensorIndicatorColors?.water;
     if (colorId && colorId !== 'none') {
       const textClass = getToleranceTextClassForColorId(colorId);
-      if (textClass) return `${textClass} ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+      if (textClass) return textClass;
     }
-    return `text-neon-blue ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+    return 'text-neon-blue';
   })();
 
   const presenceActiveIconClass = (() => {
@@ -957,7 +957,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
               aria-label={metrics.smokeAlarm ? 'Smoke detected' : 'Smoke detector'}
             >
               <Flame
-                className={`${statusIconSizeClass} jvs-icon ${metrics.smokeAlarm ? `${smokeActiveIconClass} animate-pulse` : inactiveIconClass}`.trim()}
+                className={`${statusIconSizeClass} jvs-icon ${metrics.smokeAlarm ? smokeActiveIconClass : inactiveIconClass}`.trim()}
                 style={statusIconSizeStyle}
               />
             </span>
@@ -971,7 +971,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
               aria-label={metrics.coAlarm ? 'Carbon monoxide detected' : 'CO detector'}
             >
               <CircleAlert
-                className={`${statusIconSizeClass} jvs-icon ${metrics.coAlarm ? `${coActiveIconClass} animate-pulse` : inactiveIconClass}`.trim()}
+                className={`${statusIconSizeClass} jvs-icon ${metrics.coAlarm ? coActiveIconClass : inactiveIconClass}`.trim()}
                 style={statusIconSizeStyle}
               />
             </span>
@@ -985,7 +985,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
               aria-label={metrics.waterAlarm ? 'Water leak detected' : 'Water sensor'}
             >
               <Droplets
-                className={`${statusIconSizeClass} jvs-icon ${metrics.waterAlarm ? `${waterActiveIconClass} animate-pulse` : inactiveIconClass}`.trim()}
+                className={`${statusIconSizeClass} jvs-icon ${metrics.waterAlarm ? waterActiveIconClass : inactiveIconClass}`.trim()}
                 style={statusIconSizeStyle}
               />
             </span>
@@ -2094,8 +2094,15 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     weatherError,
   ]);
 
+  // Global emergency state: true when ANY room has smoke/CO/water alarm
+  const hasEmergency = overall.smokeAlarm || overall.coAlarm || overall.waterAlarm;
+
   return (
     <div ref={viewportRef} className="relative w-full h-full overflow-auto p-2 md:p-3">
+      {/* Emergency danger-red vignette from screen edges */}
+      {hasEmergency ? (
+        <div className="jvs-emergency-vignette" aria-hidden="true" />
+      ) : null}
       {homeBackground.enabled && homeBackground.url && !backgroundImageError ? (
         <div
           className="fixed inset-0 z-0 pointer-events-none"
