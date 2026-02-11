@@ -47,20 +47,28 @@ const DeviceInfoGrid = ({
     );
   }
 
-  // Environment-panel style: 2-col, tighter spacing
+  // Environment-panel style: responsive columns, tighter spacing
+  // When scale > 1 (wide cards) use larger base sizes and allow more columns
+  const isScaledUp = scale >= 1.1;
+  const baseLabelPx = isScaledUp ? 11 : 9;
+  const baseValuePx = isScaledUp ? 13 : 11;
+  const gridCols = list.length <= 2
+    ? 'grid-cols-2'
+    : isScaledUp ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2';
+
   return (
-    <div className="mt-2 grid grid-cols-2 gap-1">
+    <div className={`mt-2 grid ${gridCols} gap-1`}>
       {list.map((item) => (
-        <div key={item.key} className="rounded-lg border border-white/10 bg-black/20 px-2 py-1">
+        <div key={item.key} className={`rounded-lg border border-white/10 bg-black/20 ${isScaledUp ? 'px-3 py-1.5' : 'px-2 py-1'}`}>
           <div
-            className={`text-[9px] uppercase tracking-[0.12em] jvs-secondary-text ${secondaryTextColorClassName || 'text-white/60'}`.trim()}
-            style={{ fontSize: `calc(9px * ${scale} * var(--jvs-secondary-text-size-scale, 1))` }}
+            className={`uppercase tracking-[0.12em] jvs-secondary-text ${secondaryTextColorClassName || 'text-white/60'}`.trim()}
+            style={{ fontSize: `calc(${baseLabelPx}px * ${scale} * var(--jvs-secondary-text-size-scale, 1))` }}
           >
             {item.label}
           </div>
           <div
-            className={`text-[11px] font-semibold jvs-tertiary-text ${tertiaryTextColorClassName || 'text-white/80'}`.trim()}
-            style={{ fontSize: `calc(11px * ${scale} * var(--jvs-tertiary-text-size-scale, 1))` }}
+            className={`font-semibold jvs-tertiary-text ${tertiaryTextColorClassName || 'text-white/80'}`.trim()}
+            style={{ fontSize: `calc(${baseValuePx}px * ${scale} * var(--jvs-tertiary-text-size-scale, 1))` }}
           >
             {item.value}
           </div>
