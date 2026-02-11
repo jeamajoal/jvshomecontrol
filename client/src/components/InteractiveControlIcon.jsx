@@ -462,15 +462,9 @@ export default function InteractiveControlIcon({
   }
 
   if (error || !manifest) {
-    return (
-      <div
-        className={`${className} flex items-center justify-center text-xs text-red-400/50`}
-        style={style}
-        title={error || 'Unknown control icon'}
-      >
-        <span>⚠</span>
-      </div>
-    );
+    // Silently hide icons whose manifests no longer exist (e.g. deleted
+    // popup-only manifests still referenced in user config).
+    return null;
   }
 
   // Render React slider component for slider icons
