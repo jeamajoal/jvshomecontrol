@@ -91,6 +91,16 @@ function App() {
         deviceCommandAllowlist: mergeObj(ui.deviceCommandAllowlist, profile?.deviceCommandAllowlist),
         deviceHomeMetricAllowlist: mergeObj(ui.deviceHomeMetricAllowlist, profile?.deviceHomeMetricAllowlist),
         deviceInfoMetricAllowlist: mergeObj(ui.deviceInfoMetricAllowlist, profile?.deviceInfoMetricAllowlist),
+        // Per-panel device control icons/styles: panel overrides merge with global
+        deviceControlIcons: mergeObj(ui.deviceControlIcons, profile?.deviceControlIcons),
+        deviceControlStyles: {
+          ...((ui.deviceControlStyles && typeof ui.deviceControlStyles === 'object') ? ui.deviceControlStyles : {}),
+          ...((profile?.deviceControlStyles && typeof profile.deviceControlStyles === 'object') ? profile.deviceControlStyles : {}),
+          switch: {
+            ...((ui.deviceControlStyles?.switch && typeof ui.deviceControlStyles.switch === 'object') ? ui.deviceControlStyles.switch : {}),
+            ...((profile?.deviceControlStyles?.switch && typeof profile.deviceControlStyles.switch === 'object') ? profile.deviceControlStyles.switch : {}),
+          },
+        },
       },
     };
   }, [config, panelName]);

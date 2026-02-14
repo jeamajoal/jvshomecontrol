@@ -1,0 +1,41 @@
+{
+  "id": "heat-setpoint-knob",
+  "name": "Heat Setpoint Knob",
+  "description": "A rotary dial for heating setpoint control, warm-colored.",
+  "file": null,
+  "version": "1.0.0",
+  "reactComponent": "VolumeKnob",
+
+  "requiredCommands": ["setHeatingSetpoint"],
+  "optionalCommands": [],
+
+  "stateBindings": {
+    "heatingSetpoint": {
+      "type": "number",
+      "attribute": "heatingSetpoint",
+      "min": 40,
+      "max": 90
+    }
+  },
+
+  "regions": [
+    {
+      "id": "heatingSetpoint",
+      "action": "knob",
+      "command": "setHeatingSetpoint",
+      "stateAttribute": "heatingSetpoint",
+      "min": 40,
+      "max": 90,
+      "step": 1,
+      "color": "#F97316",
+      "label": "Heat",
+      "tooltip": "Rotate to adjust heating setpoint"
+    }
+  ],
+
+  "layout": {
+    "aspectRatio": "80:100",
+    "preferredWidth": 80,
+    "preferredHeight": 100
+  }
+}

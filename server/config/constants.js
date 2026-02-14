@@ -69,7 +69,32 @@ const ALLOWED_HOME_TOP_ROW_CARD_IDS = new Set(HOME_TOP_ROW_CARD_IDS);
 
 // Commands that can be rendered by the current UI panels.
 // (We intentionally constrain this so config can't inject arbitrary commands into the UI.)
-const ALLOWED_PANEL_DEVICE_COMMANDS = new Set(['on', 'off', 'toggle', 'setLevel', 'refresh', 'push']);
+const ALLOWED_PANEL_DEVICE_COMMANDS = new Set([
+    // Switch / dimmer
+    'on', 'off', 'toggle', 'setLevel', 'refresh', 'push',
+    // Thermostat
+    'setHeatingSetpoint', 'setCoolingSetpoint', 'setThermostatSetpoint',
+    'setThermostatMode', 'setThermostatFanMode',
+    'emergencyHeat', 'auto', 'heat', 'cool', 'fanAuto', 'fanOn', 'fanCirculate',
+    // Lock
+    'lock', 'unlock',
+    // Garage door
+    'open', 'close',
+    // Shade / blind
+    'setPosition', 'startPositionChange', 'stopPositionChange',
+    'setTiltLevel',
+    // Valve
+    // (uses open/close — already listed above)
+    // Fan
+    'setSpeed', 'cycleSpeed',
+    // Siren
+    'siren', 'strobe', 'both',
+    // Color light
+    'setColor', 'setHue', 'setSaturation', 'setColorTemperature',
+    // Media
+    'play', 'pause', 'stop', 'nextTrack', 'previousTrack',
+    'setVolume', 'volumeUp', 'volumeDown', 'mute', 'unmute',
+]);
 
 // Utility/lifecycle commands that should NOT be enabled by default when a
 // device first becomes available.  Everything not in this set is auto-checked.
@@ -80,7 +105,16 @@ const SKIP_DEFAULT_COMMANDS = new Set([
 
 // Home metrics that can be shown on the Home dashboard per device.
 // (Used for multi-sensors where you want to hide/show specific attributes.)
-const ALLOWED_HOME_METRIC_KEYS = new Set(['temperature', 'humidity', 'illuminance', 'motion', 'contact', 'door']);
+const ALLOWED_HOME_METRIC_KEYS = new Set([
+    'temperature', 'humidity', 'illuminance', 'motion', 'contact', 'door',
+    // Thermostat
+    'heatingSetpoint', 'coolingSetpoint', 'thermostatSetpoint',
+    'thermostatMode', 'thermostatFanMode', 'thermostatOperatingState',
+    // Lock / garage / shade / valve / fan
+    'lock', 'windowShade', 'position', 'valve', 'speed', 'alarm',
+    // Battery (common on locks, sensors)
+    'battery',
+]);
 
 // Home room metric cards (sub-cards inside each room panel).
 // These are configured globally (or per panel profile) and rendered for every room.

@@ -51,7 +51,8 @@ function getControlIcons() {
                     icons.push({
                         ...manifest,
                         manifestFile,
-                        svgUrl: null, // No SVG for React-only components
+                        // No svgUrl for React-only components (omit entirely;
+                        // sending null can become the literal string "null" in URLs).
                     });
                 } else if (manifest.file) {
                     // Verify the SVG file exists

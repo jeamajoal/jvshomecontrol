@@ -412,7 +412,8 @@ export default function InteractiveControlIcon({
       min: region.min ?? 0,
       max: region.max ?? 100,
       step: region.step ?? 1,
-      color: '#22D3EE', // cyan for volume
+      color: region.color || '#22D3EE',
+      label: region.label || manifest.name || '',
     };
   }, [manifest, isKnobIcon]);
 
@@ -461,15 +462,9 @@ export default function InteractiveControlIcon({
   }
 
   if (error || !manifest) {
-    return (
-      <div
-        className={`${className} flex items-center justify-center text-xs text-red-400/50`}
-        style={style}
-        title={error || 'Unknown control icon'}
-      >
-        <span>⚠</span>
-      </div>
-    );
+    // Silently hide icons whose manifests no longer exist (e.g. deleted
+    // popup-only manifests still referenced in user config).
+    return null;
   }
 
   // Render React slider component for slider icons
@@ -518,6 +513,7 @@ export default function InteractiveControlIcon({
         min={knobConfig.min}
         max={knobConfig.max}
         step={knobConfig.step}
+        label={knobConfig.label}
         color={knobConfig.color}
         disabled={disabled}
         onChangeEnd={handleKnobChangeEnd}
@@ -544,17 +540,11 @@ export default function InteractiveControlIcon({
     );
   }
 
-  // If no SVG URL (React-only component that didn't match any type), render nothing
+  // If no SVG URL (React-only component that didn't match any type above),
+  // render nothing.  These manifests live inside popup controllers — they
+  // have no meaningful inline representation.
   if (!manifest.svgUrl) {
-    return (
-      <div
-        className={`${className} flex items-center justify-center text-xs text-yellow-400/50`}
-        style={style}
-        title={`Unknown React component: ${manifest.reactComponent || 'none'}`}
-      >
-        <span>?</span>
-      </div>
-    );
+    return null;
   }
 
   // Render SVG-based control for toggle buttons and other types

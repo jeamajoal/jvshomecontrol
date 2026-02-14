@@ -1,11 +1,13 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Power, SlidersHorizontal } from 'lucide-react';
+import {
+  Loader2, Power, SlidersHorizontal,
+} from 'lucide-react';
 
 import { getUiScheme } from '../uiScheme';
 import { API_HOST } from '../apiHost';
 import { useAppState } from '../appState';
 import { buildRoomsWithStatuses, getCtrlVisibleDeviceIdSet, getDeviceCommandAllowlist, getDeviceInfoMetricAllowlist } from '../deviceSelectors';
-import { filterCommandSchemasByAllowlist, inferInternalDeviceType, mapDeviceToControls, normalizeCommandSchemas } from '../deviceMapping';
+import { filterCommandSchemasByAllowlist, inferInternalDeviceType, inferControlIconIds, mapDeviceToControls, normalizeCommandSchemas } from '../deviceMapping';
 import { getDeviceTypeIconSrc } from '../deviceIcons';
 import { asNumber, asText, isSafeInfoMetricKey, isDisplayableInfoValue, formatInfoMetricLabel, formatInfoMetricValue, sortInfoMetricKeys } from '../utils';
 import { useFitScale } from '../hooks/useLayout';
@@ -35,6 +37,7 @@ async function sendDeviceCommand(deviceId, command, args = []) {
   }
 }
 
+/** Returns a Lucide icon component appropriate for the internal device type. */
 const SwitchTile = ({
   label,
   iconSrc,
@@ -933,6 +936,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                       attrs,
                       commands,
                       commandSchemas: schemas,
+                      capabilities: d.status?.capabilities,
                       controls,
                       state: d.status?.state,
                       internalType,
@@ -988,45 +992,55 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                         const canOff = switchControl ? switchControl.canOff : d.commands.includes('off');
                         const canToggle = switchControl ? switchControl.canToggle : d.commands.includes('toggle');
 
-                        // Check for per-device control icon assignment (supports array)
-                        const controlIconIds = getDeviceControlIconIds(d.id);
+                        // Per-device manual control icons, or auto-inferred fallback.
+                        const manualIconIds = getDeviceControlIconIds(d.id);
+                        const controlIconIds = manualIconIds.length > 0
+                          ? manualIconIds
+                          : inferControlIconIds({
+                                capabilities: d.capabilities || [],
+                                attributes: d.attrs,
+                                commandSchemas: d.commandSchemas,
+                              });
 
                         // Build device object for InteractiveControlIcon
                         const deviceObj = {
                           id: d.id,
+                          label: d.label,
                           switch: isOn ? 'on' : 'off',
                           level: asNumber(level) ?? 0,
                           ...d.attrs,
                           commands: d.commands,
                         };
 
+                        // ── Switch + dimmer tiles ──
                         if (switchControl && hasLevel && d.commands.includes('setLevel')) {
                           return (
-                            <LevelTile
-                              key={d.id}
-                              label={d.label}
-                              iconSrc={iconSrc}
-                              controlIconIds={controlIconIds}
-                              deviceId={d.id}
-                              device={deviceObj}
-                              isOn={isOn}
-                              level={level}
-                              infoItems={d.infoItems}
-                              disabled={!connected}
-                              busy={busy.has(`${d.id}:toggle`) || busy.has(`${d.id}:setLevel`) || busy.has(`${d.id}:on`) || busy.has(`${d.id}:off`)}
-                              onToggle={() => {
-                                if (isOn && canOff) return run(d.id, 'off');
-                                if (!isOn && canOn) return run(d.id, 'on');
-                                if (canToggle) return run(d.id, 'toggle');
-                                return run(d.id, isOn ? 'off' : 'on');
-                              }}
-                              onSetLevel={(next) => {
-                                const n = Math.max(0, Math.min(100, Math.round(Number(next))));
-                                return run(d.id, 'setLevel', [n]);
-                              }}
-                              onCommand={(deviceId, command, args) => run(deviceId, command, args)}
-                              uiScheme={resolvedUiScheme}
-                            />
+                            <React.Fragment key={d.id}>
+                              <LevelTile
+                                label={d.label}
+                                iconSrc={iconSrc}
+                                controlIconIds={controlIconIds}
+                                deviceId={d.id}
+                                device={deviceObj}
+                                isOn={isOn}
+                                level={level}
+                                infoItems={d.infoItems}
+                                disabled={!connected}
+                                busy={busy.has(`${d.id}:toggle`) || busy.has(`${d.id}:setLevel`) || busy.has(`${d.id}:on`) || busy.has(`${d.id}:off`)}
+                                onToggle={() => {
+                                  if (isOn && canOff) return run(d.id, 'off');
+                                  if (!isOn && canOn) return run(d.id, 'on');
+                                  if (canToggle) return run(d.id, 'toggle');
+                                  return run(d.id, isOn ? 'off' : 'on');
+                                }}
+                                onSetLevel={(next) => {
+                                  const n = Math.max(0, Math.min(100, Math.round(Number(next))));
+                                  return run(d.id, 'setLevel', [n]);
+                                }}
+                                onCommand={(deviceId, command, args) => run(deviceId, command, args)}
+                                uiScheme={resolvedUiScheme}
+                              />
+                            </React.Fragment>
                           );
                         }
 
@@ -1039,29 +1053,30 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                           };
 
                           return (
-                            <SwitchTile
-                              key={d.id}
-                              label={d.label}
-                              iconSrc={iconSrc}
-                              controlIconIds={controlIconIds}
-                              device={deviceObj}
-                              isOn={isOn}
-                              infoItems={d.infoItems}
-                              disabled={!connected}
-                              busyOn={busy.has(`${d.id}:on`)}
-                              busyOff={busy.has(`${d.id}:off`)}
-                              busyToggle={busy.has(`${d.id}:toggle`)}
-                              canOn={canOn}
-                              canOff={canOff}
-                              canToggle={canToggle}
-                              onOn={() => run(d.id, 'on')}
-                              onOff={() => run(d.id, 'off')}
-                              onToggle={onToggle}
-                              onCommand={(deviceId, command, args) => run(deviceId, command, args)}
-                              controlStyle={switchControlStyle}
-                              animationStyle={switchAnimationStyle}
-                              uiScheme={resolvedUiScheme}
-                            />
+                            <React.Fragment key={d.id}>
+                              <SwitchTile
+                                label={d.label}
+                                iconSrc={iconSrc}
+                                controlIconIds={controlIconIds}
+                                device={deviceObj}
+                                isOn={isOn}
+                                infoItems={d.infoItems}
+                                disabled={!connected}
+                                busyOn={busy.has(`${d.id}:on`)}
+                                busyOff={busy.has(`${d.id}:off`)}
+                                busyToggle={busy.has(`${d.id}:toggle`)}
+                                canOn={canOn}
+                                canOff={canOff}
+                                canToggle={canToggle}
+                                onOn={() => run(d.id, 'on')}
+                                onOff={() => run(d.id, 'off')}
+                                onToggle={onToggle}
+                                onCommand={(deviceId, command, args) => run(deviceId, command, args)}
+                                controlStyle={switchControlStyle}
+                                animationStyle={switchAnimationStyle}
+                                uiScheme={resolvedUiScheme}
+                              />
+                            </React.Fragment>
                           );
                         }
 

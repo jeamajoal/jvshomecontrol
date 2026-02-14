@@ -348,6 +348,9 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
   let waterCount = 0; // Total water/leak sensors in room
   let waterAlarm = false;
   let waterAlarmCount = 0;
+  let sirenCount = 0; // Total siren/alarm devices in room
+  let sirenActive = false;
+  let sirenActiveCount = 0;
   let presenceCount = 0; // Total presence sensors in room
   let presenceHome = false;
   let presenceHomeCount = 0;
@@ -454,6 +457,16 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
       }
     }
 
+    // Siren / Alarm device: alarm attribute = 'off' | 'siren' | 'strobe' | 'both'
+    if (typeof attrs.alarm === 'string') {
+      sirenCount += 1;
+      const v = String(attrs.alarm).toLowerCase();
+      if (v === 'siren' || v === 'strobe' || v === 'both') {
+        sirenActive = true;
+        sirenActiveCount += 1;
+      }
+    }
+
     // Presence sensor: presence attribute = 'present' | 'not present'
     if (typeof attrs.presence === 'string') {
       presenceCount += 1; // Track that this room HAS a presence sensor
@@ -499,6 +512,9 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
     waterCount,
     waterAlarm,
     waterAlarmCount,
+    sirenCount,
+    sirenActive,
+    sirenActiveCount,
     presenceCount,
     presenceHome,
     presenceHomeCount,
@@ -586,6 +602,10 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
   const scaleNumRaw = Number(contentScale);
   const scaleNum = Number.isFinite(scaleNumRaw) ? Math.max(0.5, Math.min(2, scaleNumRaw)) : 1;
   const titleStyle = { fontSize: `calc(${Math.round(18 * scaleNum)}px * var(--jvs-primary-text-size-scale, 1))` };
+
+  // When room grid has 1–2 columns the cards are wide — use bigger text & full-width tiles
+  const colsRaw = Number(homeRoomColumnsXl);
+  const isWideCard = Number.isFinite(colsRaw) && colsRaw <= 2;
 
   const metrics = useMemo(
     () => computeRoomMetrics(devices, null, deviceHomeMetricAllowlist),
@@ -724,13 +744,13 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
 
   const hasEnv = Array.isArray(homeRoomMetricKeys) && homeRoomMetricKeys.length > 0;
 
-  // Any active sensor triggers the header glow
-  const hasActiveAlert = metrics.motionActive || metrics.doorOpen || metrics.smokeAlarm || metrics.coAlarm || metrics.waterAlarm || metrics.presenceHome;
+  // Only motion + contact sensors trigger the header glow
+  const hasActiveAlert = metrics.motionActive || metrics.doorOpen;
   const headerGlow = hasActiveAlert
     ? `${uiScheme?.selectedCard || 'border-primary/40'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
     : 'border-white/10';
 
-  const statusIconBase = `inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/5 ${scaleNum === 1 ? 'w-7 h-7' : ''}`;
+  const statusIconBase = `inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/5 ${scaleNum === 1 ? (isWideCard ? 'w-8 h-8' : 'w-7 h-7') : ''}`;
   const statusIconStyle = scaleNum === 1
     ? undefined
     : {
@@ -738,7 +758,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
         height: `${Math.round(28 * scaleNum)}px`,
       };
 
-  const statusIconSizeClass = scaleNum === 1 ? 'w-4 h-4' : '';
+  const statusIconSizeClass = scaleNum === 1 ? (isWideCard ? 'w-5 h-5' : 'w-4 h-4') : '';
   const statusIconSizeStyle = scaleNum === 1
     ? undefined
     : {
@@ -769,27 +789,27 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
     const colorId = sensorIndicatorColors?.smoke;
     if (colorId && colorId !== 'none') {
       const textClass = getToleranceTextClassForColorId(colorId);
-      if (textClass) return `${textClass} ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+      if (textClass) return textClass;
     }
-    return `text-neon-red ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+    return 'text-neon-red';
   })();
 
   const coActiveIconClass = (() => {
     const colorId = sensorIndicatorColors?.co;
     if (colorId && colorId !== 'none') {
       const textClass = getToleranceTextClassForColorId(colorId);
-      if (textClass) return `${textClass} ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+      if (textClass) return textClass;
     }
-    return `text-neon-red ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+    return 'text-neon-red';
   })();
 
   const waterActiveIconClass = (() => {
     const colorId = sensorIndicatorColors?.water;
     if (colorId && colorId !== 'none') {
       const textClass = getToleranceTextClassForColorId(colorId);
-      if (textClass) return `${textClass} ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+      if (textClass) return textClass;
     }
-    return `text-neon-blue ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+    return 'text-neon-blue';
   })();
 
   const presenceActiveIconClass = (() => {
@@ -901,14 +921,25 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
     if (count <= 1) return 'grid-cols-1';
 
     const forcedRaw = Number(homeRoomMetricColumns);
-    const forced = Number.isFinite(forcedRaw) ? Math.max(0, Math.min(3, Math.round(forcedRaw))) : 0;
+    const forced = Number.isFinite(forcedRaw) ? Math.max(0, Math.min(4, Math.round(forcedRaw))) : 0;
     if (forced >= 1) {
       const cols = Math.max(1, Math.min(forced, count));
-      return cols === 1 ? 'grid-cols-1' : cols === 2 ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3';
+      if (cols === 1) return 'grid-cols-1';
+      if (cols === 2) return 'grid-cols-2';
+      if (cols === 3) return 'grid-cols-2 lg:grid-cols-3';
+      return 'grid-cols-2 lg:grid-cols-4';
     }
 
     const roomColsRaw = Number(homeRoomColumnsXl);
     const roomCols = Number.isFinite(roomColsRaw) ? Math.max(1, Math.min(6, Math.round(roomColsRaw))) : 3;
+
+    // Wide cards (1–2 cols) get more metric columns
+    if (roomCols <= 2) {
+      const cols = Math.min(count, 4);
+      if (cols <= 2) return 'grid-cols-2';
+      if (cols === 3) return 'grid-cols-2 md:grid-cols-3';
+      return 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4';
+    }
 
     const cap = roomCols >= 5 ? 1 : roomCols >= 4 ? 2 : 3;
     const cols = Math.max(1, Math.min(cap, count));
@@ -916,10 +947,10 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
   }, [metricCards.length, homeRoomMetricColumns, homeRoomColumnsXl]);
 
   return (
-    <section className={`glass-panel p-4 md:p-5 border ${headerGlow} ${fillHeight ? 'h-full flex flex-col' : ''}`.trim()}>
+    <section className={`glass-panel ${isWideCard ? 'p-5 md:p-6' : 'p-4 md:p-5'} border ${headerGlow} ${fillHeight ? 'h-full flex flex-col' : ''}`.trim()}>
       <div className="flex items-center justify-between gap-3">
         <h2
-          className={`min-w-0 jvs-primary-text-strong ${scaleNum === 1 ? 'jvs-home-room-title' : ''} font-extrabold tracking-wide truncate ${primaryTextColorClassName || 'text-white'}`.trim()}
+          className={`min-w-0 jvs-primary-text-strong ${scaleNum === 1 ? (isWideCard ? 'text-lg md:text-xl' : 'jvs-home-room-title') : ''} font-extrabold tracking-wide truncate ${primaryTextColorClassName || 'text-white'}`.trim()}
           style={scaleNum === 1 ? undefined : titleStyle}
         >
           {roomName}
@@ -1015,17 +1046,15 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
 
       {supportedActions.length ? (
         <div className="mt-4">
-          <div
-            className={`text-[11px] md:text-xs uppercase tracking-[0.2em] jvs-secondary-text font-semibold mb-3 ${secondaryTextColorClassName}`.trim()}
-            style={{ fontSize: `calc(11px * var(--jvs-secondary-text-size-scale, 1))` }}
-          >
-            Controls
-          </div>
-          <div className="flex flex-wrap justify-center gap-3">
+          <div className={isWideCard
+            ? 'grid grid-cols-1 sm:grid-cols-2 gap-3'
+            : 'flex flex-wrap justify-center gap-3'
+          }>
             {supportedActions.map((d) => {
               const iconSrc = getDeviceTypeIconSrc({ ui: { deviceTypeIcons } }, d.internalType);
               
               // Check for per-device control icon assignment (supports array or string)
+              // Settings choices are ALWAYS respected.
               const controlIconVal = (deviceControlIcons && typeof deviceControlIcons === 'object')
                 ? deviceControlIcons[d.id]
                 : null;
@@ -1039,21 +1068,22 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
                 switch: d.attrs?.switch || 'off',
                 level: d.attrs?.level ?? 0,
                 ...d.attrs,
+                commands: d.commands,
               };
 
               return (
                 <div
                   key={d.id}
-                  className={`glass-panel ${scaleNum === 1 ? 'p-3' : ''} border border-white/10 inline-flex flex-col items-center`}
+                  className={`glass-panel ${scaleNum === 1 ? (isWideCard ? 'p-4' : 'p-3') : ''} border border-white/10 ${isWideCard ? 'flex flex-col' : 'inline-flex flex-col items-center'}`}
                   style={scaleNum === 1 ? undefined : { padding: `${Math.round(16 * scaleNum)}px` }}
                 >
                   <div
-                    className={`${scaleNum === 1 ? 'text-[11px] md:text-xs' : ''} text-center uppercase tracking-[0.2em] jvs-secondary-text-strong font-semibold ${secondaryTextColorClassName}`.trim()}
-                    style={{ fontSize: `calc(${Math.round(11 * scaleNum)}px * var(--jvs-secondary-text-size-scale, 1))` }}
+                    className={`${isWideCard ? 'text-xs md:text-sm' : (scaleNum === 1 ? 'text-[11px] md:text-xs' : '')} ${isWideCard ? 'text-left' : 'text-center'} uppercase tracking-[0.2em] jvs-secondary-text-strong font-semibold ${secondaryTextColorClassName}`.trim()}
+                    style={isWideCard ? undefined : { fontSize: `calc(${Math.round(11 * scaleNum)}px * var(--jvs-secondary-text-size-scale, 1))` }}
                   >
                     <span className="truncate">{d.label}</span>
                   </div>
-                  <div className="mt-3 flex flex-wrap justify-center gap-2">
+                  <div className={`mt-3 flex flex-wrap ${isWideCard ? 'gap-3 justify-start' : 'gap-2 justify-center'}`}>
                     {(() => {
                     const commands = Array.isArray(d.commands)
                       ? d.commands.map((v) => String(v || '').trim()).filter(Boolean)
@@ -1114,7 +1144,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
                     // If control icons are assigned, render them instead of the default controls
                     if (controlIconIds.length > 0) {
                       return (
-                        <div className="flex flex-wrap gap-2 justify-center items-end">
+                        <div className={`flex flex-wrap ${isWideCard ? 'gap-3 justify-start' : 'gap-2 justify-center'} items-end`}>
                           {controlIconIds.map((iconId) => (
                             <InteractiveControlIcon
                               key={iconId}
@@ -1122,7 +1152,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
                               device={deviceObj}
                               disabled={!connected}
                               onCommand={(deviceId, command, args) => runAction(deviceId, command, args)}
-                              className="w-16 h-16"
+                              className={isWideCard ? 'w-20 h-20' : 'w-16 h-16'}
                             />
                           ))}
                         </div>
@@ -1288,7 +1318,8 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
                     );
                     })()}
                   </div>
-                  <DeviceInfoGrid items={d.infoItems} scale={scaleNum} primaryTextColorClassName={primaryTextColorClassName} secondaryTextColorClassName={secondaryTextColorClassName} tertiaryTextColorClassName={tertiaryTextColorClassName} />
+
+                  <DeviceInfoGrid items={d.infoItems} scale={isWideCard ? Math.max(scaleNum, 1.15) : scaleNum} primaryTextColorClassName={primaryTextColorClassName} secondaryTextColorClassName={secondaryTextColorClassName} tertiaryTextColorClassName={tertiaryTextColorClassName} />
                 </div>
               );
             })}
@@ -1298,33 +1329,30 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
 
       {sensorDevices.length ? (
         <div className="mt-4">
-          <div
-            className={`text-[11px] md:text-xs uppercase tracking-[0.2em] jvs-secondary-text font-semibold mb-3 ${secondaryTextColorClassName}`.trim()}
-            style={{ fontSize: `calc(11px * var(--jvs-secondary-text-size-scale, 1))` }}
-          >
-            Sensors
-          </div>
-          <div className="flex flex-wrap justify-center gap-3">
+          <div className={isWideCard
+            ? 'grid grid-cols-1 sm:grid-cols-2 gap-3'
+            : 'flex flex-wrap justify-center gap-3'
+          }>
             {sensorDevices.map((d) => {
               const iconSrc = getDeviceTypeIconSrc({ ui: { deviceTypeIcons } }, d.internalType);
               return (
                 <div
                   key={d.id}
-                  className={`glass-panel ${scaleNum === 1 ? 'p-3' : ''} border border-white/10 inline-flex flex-col items-center`}
+                  className={`glass-panel ${scaleNum === 1 ? (isWideCard ? 'p-4' : 'p-3') : ''} border border-white/10 ${isWideCard ? 'flex flex-col' : 'inline-flex flex-col items-center'}`}
                   style={scaleNum === 1 ? undefined : { padding: `${Math.round(16 * scaleNum)}px` }}
                 >
                   <div
-                    className={`${scaleNum === 1 ? 'text-[11px] md:text-xs' : ''} text-center uppercase tracking-[0.2em] jvs-secondary-text-strong font-semibold ${secondaryTextColorClassName}`.trim()}
-                    style={{ fontSize: `calc(${Math.round(11 * scaleNum)}px * var(--jvs-secondary-text-size-scale, 1))` }}
+                    className={`${isWideCard ? 'text-xs md:text-sm' : (scaleNum === 1 ? 'text-[11px] md:text-xs' : '')} ${isWideCard ? 'text-left' : 'text-center'} uppercase tracking-[0.2em] jvs-secondary-text-strong font-semibold ${secondaryTextColorClassName}`.trim()}
+                    style={isWideCard ? undefined : { fontSize: `calc(${Math.round(11 * scaleNum)}px * var(--jvs-secondary-text-size-scale, 1))` }}
                   >
                     <span className="inline-flex items-center gap-2 min-w-0 max-w-full">
                       {iconSrc ? (
-                        <img src={iconSrc} alt="" aria-hidden="true" className="w-4 h-4 shrink-0" />
+                        <img src={iconSrc} alt="" aria-hidden="true" className={isWideCard ? 'w-5 h-5 shrink-0' : 'w-4 h-4 shrink-0'} />
                       ) : null}
                       <span className="truncate">{d.label}</span>
                     </span>
                   </div>
-                  <DeviceInfoGrid items={d.infoItems} scale={scaleNum} primaryTextColorClassName={primaryTextColorClassName} secondaryTextColorClassName={secondaryTextColorClassName} tertiaryTextColorClassName={tertiaryTextColorClassName} />
+                  <DeviceInfoGrid items={d.infoItems} scale={isWideCard ? Math.max(scaleNum, 1.15) : scaleNum} primaryTextColorClassName={primaryTextColorClassName} secondaryTextColorClassName={secondaryTextColorClassName} tertiaryTextColorClassName={tertiaryTextColorClassName} />
                 </div>
               );
             })}
@@ -1335,6 +1363,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
       {!supportedActions.length && !sensorDevices.length && !hasEnv ? (
         <div className="mt-4 text-sm text-white/40">No supported devices in this room.</div>
       ) : null}
+
     </section>
   );
 };
@@ -2090,8 +2119,15 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     weatherError,
   ]);
 
+  // Global emergency state: true when ANY room has smoke/CO/water alarm
+  const hasEmergency = overall.smokeAlarm || overall.coAlarm || overall.waterAlarm || overall.sirenActive;
+
   return (
     <div ref={viewportRef} className="relative w-full h-full overflow-auto p-2 md:p-3">
+      {/* Emergency danger-red vignette from screen edges */}
+      {hasEmergency ? (
+        <div className="jvs-emergency-vignette" aria-hidden="true" />
+      ) : null}
       {homeBackground.enabled && homeBackground.url && !backgroundImageError ? (
         <div
           className="fixed inset-0 z-0 pointer-events-none"
