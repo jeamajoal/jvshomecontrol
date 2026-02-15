@@ -12,7 +12,7 @@ The fastest way to get running. No cloning or building required.
 
 ```bash
 docker run -d --name jvshomecontrol \
-  -p 80:80 \
+  -p 80:80 -p 443:443 \
   -v jvs-data:/app/server/data \
   --restart unless-stopped \
   jeamajoal/jvshomecontrol:latest
@@ -31,7 +31,8 @@ services:
     container_name: jvshomecontrol
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "80:80"      # HTTP  (default)
+      - "443:443"    # HTTPS (after enabling in Settings → Server)
     volumes:
       - jvs-data:/app/server/data
 
@@ -84,6 +85,20 @@ You never need to SSH into the container or edit files by hand.
 
 ---
 
+## Container Entrypoint
+
+The Docker image includes an entrypoint script (`docker-entrypoint.sh`) that runs automatically each time the container starts. It:
+
+1. **Creates data directories** — ensures `backups/`, `sounds/`, `backgrounds/`, `device-icons/`, `control-icons/`, and `certs/` exist inside the mounted volume.
+2. **Seeds `config.json`** — on first run (fresh volume), copies the bundled `config.example.json` so the server has a valid starting configuration.
+3. **Seeds control-icon manifests** — copies any missing default `.manifest.json` files into the volume (useful after image upgrades that add new icon types).
+4. **Fixes file ownership** — if running as root, ensures the `node` user (uid 1000) owns the data directory so the server can read/write without permission errors.
+5. **Hands off to the server** — replaces itself with `node server.js` (via `exec`) so the Node process is PID 1 and receives shutdown signals correctly.
+
+You don't need to configure or call the entrypoint manually — it's built into the image.
+
+---
+
 ## Persistent Data
 
 The `jvs-data` volume stores everything that should survive container restarts:
@@ -100,27 +115,41 @@ The `jvs-data` volume stores everything that should survive container restarts:
 
 ## HTTPS in Docker
 
-By default, the container starts in **HTTP** mode. To enable HTTPS:
+By default, the container starts in **HTTP** mode on port 80. To enable HTTPS, you have several options — the easiest is the built-in Settings UI.
 
-### Option 1: Generate certs interactively
+> **Important:** Always map **both** ports (`80:80` and `443:443`) when you first create the container. Docker does not allow changing port mappings on a running container. By mapping both up front, you can switch between HTTP and HTTPS entirely from the browser without touching Docker.
 
-Run the setup script in the running container:
+### Option 1: Settings UI (recommended)
+
+No terminal or SSH required — everything happens in the browser:
+
+1. Open the dashboard at `http://localhost`.
+2. Go to **Settings** (gear icon) → **Server** tab.
+3. Click **Generate Certificate** (self-signed) or **Upload Certificate** (custom PEM).
+4. Change the **Port** from `80` to `443`.
+5. Click **Restart Server**.
+
+The container will restart automatically (thanks to `restart: unless-stopped`) and come back up on HTTPS at port 443. Open `https://localhost` to continue.
+
+To switch back to HTTP, delete the certificate in Settings → Server, change the port back to `80`, and restart.
+
+### Option 2: Generate certs from the command line
+
+Run the setup script inside the running container:
 
 ```bash
 docker compose exec -it jvshomecontrol node scripts/https-setup.js
 docker compose restart
 ```
 
-The script will prompt for a hostname and generate the cert.
-
-### Option 2: Generate certs non-interactively
-
-Pass the hostname and `--yes` flag:
+Or pass the hostname and `--yes` flag to skip prompts:
 
 ```bash
 docker compose exec jvshomecontrol node scripts/https-setup.js 192.168.1.100 --yes
 docker compose restart
 ```
+
+After restarting, change the port to 443 in Settings → Server → Restart.
 
 ### Option 3: Mount your own certs
 
@@ -128,17 +157,34 @@ If you already have certificates (from Let's Encrypt, your CA, etc.):
 
 ```yaml
 volumes:
+  - jvs-data:/app/server/data
   - ./my-certs/localhost.crt:/app/server/data/certs/localhost.crt:ro
   - ./my-certs/localhost.key:/app/server/data/certs/localhost.key:ro
 ```
 
-The server auto-detects them at startup.
+The server auto-detects them at startup and enables HTTPS.
 
 ### Option 4: Use a reverse proxy
 
 Put nginx, Caddy, or Traefik in front of the container and let it handle TLS. The server will serve HTTP on port 80 internally.
 
 > **Note:** Self-signed certs cause browser warnings. Accept the warning once, or install the cert on your device (see [08-HTTPS.md](08-HTTPS.md)).
+
+### Already created a container with only port 80?
+
+You'll need to recreate it once to add the 443 mapping. Your config and data are safe in the volume:
+
+```bash
+docker stop jvshomecontrol
+docker rm jvshomecontrol
+docker run -d --name jvshomecontrol \
+  -p 80:80 -p 443:443 \
+  -v jvs-data:/app/server/data \
+  --restart unless-stopped \
+  jeamajoal/jvshomecontrol:latest
+```
+
+In **Docker Desktop**: stop and delete the container (the `jvs-data` volume is preserved), then re-run the image with both port mappings.
 
 ---
 
@@ -197,12 +243,17 @@ Additional diagnostic endpoints:
 
 ## Custom Port
 
-The container listens on port 80 internally. Map it to any host port:
+The server port is configurable at runtime via **Settings → Server → Port** in the browser. The default is `80`. When HTTPS is enabled, change it to `443` and restart — the container's port mapping handles the rest.
+
+If you need a non-standard host port (e.g. your host already uses 80/443), adjust the **left side** of the port mapping:
 
 ```yaml
 ports:
-  - "8443:80"    # Host port 8443 → Container port 80
+  - "8080:80"     # HTTP on host port 8080
+  - "8443:443"    # HTTPS on host port 8443
 ```
+
+The **right side** (container port) must match the port configured in Settings → Server.
 
 ---
 

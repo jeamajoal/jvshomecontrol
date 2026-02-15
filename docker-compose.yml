@@ -4,7 +4,8 @@ services:
     container_name: jvshomecontrol
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "80:80"      # HTTP  (default)
+      - "443:443"    # HTTPS (after enabling in Settings → Server)
     volumes:
       # Persist config, backgrounds, certs, and sounds across container restarts
       - jvs-data:/app/server/data
